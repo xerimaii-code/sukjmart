@@ -60,17 +60,20 @@ function generateServerDropItem(baseItem) {
     item.magicOptions = item.magicOptions || [];
     let grade = item.grade || 0;
 
-    // 🔥 [1] 전설 이상 (Grade 4+): 최대 수치 +100까지 무작위 극옵 부여
+    // 🔥 [1] 전설 이상 (Grade 4+): 스탯 최대 +10 및 적정 밸런스 풀
     if (grade >= 4) {
         let optCount = Math.floor(Math.random() * 4) + 2; // 2 ~ 5개 옵션
         let legendaryPool = [
-            () => { let v = Math.floor(Math.random() * 80) + 21; item.magicOptions.push(`[전설] 추가 대미지 +${v}`); },
-            () => { let v = Math.floor(Math.random() * 90) + 11; item.magicOptions.push(`[전설] 추가 방어력 +${v}`); },
-            () => { let v = Math.floor(Math.random() * 50) + 10; item.magicOptions.push(`[스탯] STR +${v}`); },
-            () => { let v = Math.floor(Math.random() * 50) + 10; item.magicOptions.push(`[스탯] INT +${v}`); },
-            () => { let v = Math.floor(Math.random() * 50) + 10; item.magicOptions.push(`[스탯] DEX +${v}`); },
-            () => { let v = (Math.floor(Math.random() * 8) + 2) * 100; item.magicOptions.push(`[생명] 최대 HP +${v}`); },
-            () => { item.magicOptions.push(`[${['화령','수령','풍령','지령'][Math.floor(Math.random()*4)]}] 속성 대미지 +${Math.floor(Math.random()*30)+10}`); },
+            () => { let v = Math.floor(Math.random() * 21) + 15; item.magicOptions.push(`[전설] 추가 대미지 +${v}`); }, // +15 ~ +35
+            () => { let v = Math.floor(Math.random() * 16) + 15; item.magicOptions.push(`[전설] 추가 방어력 +${v}`); }, // +15 ~ +30
+
+            // 💡 스탯 상한치: 최대 +10 유지 (STR/DEX 10 = 대미지 약 32 상승)
+            () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] STR +${v}`); },
+            () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] INT +${v}`); },
+            () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] DEX +${v}`); },
+
+            () => { let v = (Math.floor(Math.random() * 5) + 2) * 100; item.magicOptions.push(`[생명] 최대 HP +${v}`); }, // +200 ~ +600
+            () => { item.magicOptions.push(`[${['화령','수령','풍령','지령'][Math.floor(Math.random()*4)]}] 속성 대미지 +${Math.floor(Math.random()*15)+10}`); },
             () => { item.magicOptions.push("타격 시 HP 흡수"); },
             () => { item.magicOptions.push("타격 시 MP 흡수"); }
         ];
@@ -80,12 +83,12 @@ function generateServerDropItem(baseItem) {
             pick();
         }
     }
-    // ⚔️ [2] 일반/희귀 (Grade 1~3): 정해진 룰에 따라 무작위 옵션 부여
+    // ⚔️ [2] 일반/희귀 (Grade 1~3)
     else if (grade >= 1) {
-        let optCount = Math.floor(Math.random() * grade) + 1; // 1 ~ grade개
+        let optCount = Math.floor(Math.random() * grade) + 1;
         let normalPool = [
-            () => { let v = Math.floor(Math.random() * (grade * 5)) + 1; item.magicOptions.push(`[강화] 추가 대미지 +${v}`); },
-            () => { let v = Math.floor(Math.random() * (grade * 4)) + 1; item.magicOptions.push(`[강화] 추가 방어력 +${v}`); },
+            () => { let v = Math.floor(Math.random() * (grade * 4)) + 1; item.magicOptions.push(`[강화] 추가 대미지 +${v}`); },
+            () => { let v = Math.floor(Math.random() * (grade * 3)) + 1; item.magicOptions.push(`[강화] 추가 방어력 +${v}`); },
             () => { let v = Math.floor(Math.random() * 3) + 1; item.magicOptions.push(`[스탯] STR +${v}`); },
             () => { let v = Math.floor(Math.random() * 3) + 1; item.magicOptions.push(`[스탯] INT +${v}`); },
             () => { item.magicOptions.push(`[${['화령','수령','풍령','지령'][Math.floor(Math.random()*4)]}] 속성 대미지 +${grade * 2}`); }
@@ -241,22 +244,21 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('player_magic_action', (payload) => {
+  socket.on('player_magic_action', (payload) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
+        
+        // 💡 [핵심 수정] 시전자를 제외한 맵 내의 모든 파티원/유저에게 마법/기술 정보 브로드캐스트
         socket.to(mapId).emit('sync_player_magic', {
             casterId: payload.casterId || socket.id, 
-            magicName: payload.magicName,
+            magicName: payload.magicName, // 마법 및 기사 기술 이름 포함
             targetX: payload.targetX,
             targetY: payload.targetY,
             targetId: payload.targetId,
             casterX: payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000),
-            casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000),
-            x: payload.targetX,
-            y: payload.targetY
+            casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000)
         });
     });
-
     socket.on('player_attack_action', (payload) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : 'talking_island';
@@ -271,14 +273,15 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('player_target', (payload) => {
+   socket.on('player_target', (payload) => {
         let p = players[socket.id];
         if (!p) return;
-        p.targetId = payload.targetId;
+        p.targetId = payload.targetId; // null이든 유효한 ID든 그대로 반영
 
         if (p.partyId && parties[p.partyId]) {
             let party = parties[p.partyId];
-            if (party.leader === socket.id && party.mode === 'focus' && payload.targetId) {
+            // 💡 [수정] payload.targetId가 없더라도(null/undefined) 파티원에게 공유하여 점사 타겟을 동시에 해제할 수 있도록 조건 완화
+            if (party.leader === socket.id && party.mode === 'focus') {
                 party.members.forEach(member => {
                     if (member.socketId !== socket.id) {
                         io.to(member.socketId).emit('party_target_shared', { targetId: payload.targetId });
@@ -317,6 +320,18 @@ io.on('connection', (socket) => {
         let monster = mapsState[p.map].monsters.find(m => m.id === payload.targetId);
         if (!monster || monster.hp <= 0) return;
 
+        let actualAttackerId = payload.attackerId || socket.id;
+
+        // 💡 [핵심 추가] 플레이어뿐만 아니라 용병이 공격할 때도 맵 전체에 액션 모션 브로드캐스트[cite: 9]
+        io.to(p.map).emit('sync_player_action', {
+            socketId: actualAttackerId, // 용병 ID 혹은 플레이어 소켓 ID 전송[cite: 9]
+            angle: p.angle || 0,
+            targetId: payload.targetId,
+            targetX: monster.x,
+            targetY: monster.y,
+            actionType: 'slash'
+        });
+
         let hitType = payload.attackType || 'physical';
         let isMagic = hitType === 'magic';
         let spellName = payload.magicName;
@@ -338,7 +353,7 @@ io.on('connection', (socket) => {
         }
 
         monster.damageMap = monster.damageMap || {};
-        let actualAttackerId = payload.attackerId || socket.id;
+        // 💡 [수정] 중복 선언되었던 두 번째 let 선언부를 제거하고 기존 변수 활용
         monster.damageMap[actualAttackerId] = (monster.damageMap[actualAttackerId] || 0) + finalDamage;
 
         let highestDmg = -1;
@@ -363,11 +378,9 @@ io.on('connection', (socket) => {
             monster.hp = 0;
             io.to(p.map).emit('monster_dead', { monsterId: monster.id });
             
-            // 경험치 지급
             let rewardExp = monster.isBoss ? (monster.exp || 50000) : (monster.exp || 100);
             socket.emit('player_exp_gain', { exp: rewardExp });
 
-            // 💰 아데나 지급 (보스는 50,000 ~ 200,000 아데나 폭발)
             let adenaCount = monster.isBoss 
                 ? Math.floor(Math.random() * 150000 + 50000)
                 : Math.floor(Math.random() * 200 + 50);
@@ -376,7 +389,6 @@ io.on('connection', (socket) => {
                 item: { name: '아데나', type: 'currency', count: adenaCount } 
             });
 
-            // 👑 [보스 드롭] 3 ~ 6개 대량 아이템 폭발 드롭
             let dropCount = monster.isBoss ? (Math.floor(Math.random() * 4) + 3) : (Math.random() < 0.25 ? 1 : 0);
 
             for (let i = 0; i < dropCount; i++) {
@@ -390,7 +402,7 @@ io.on('connection', (socket) => {
                     else if (mHp >= 50000) targetGrade = rand < 1.5 ? 6 : (rand < 15.0 ? 5 : (rand < 55.0 ? 4 : 3));
                     else targetGrade = rand < 3.0 ? 5 : (rand < 25.0 ? 4 : (rand < 65.0 ? 3 : 2));
                 } else {
-                    targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() < 0.5 ? 1 : 0)));
+                    targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() * 0.5 ? 1 : 0)));
                 }
 
                 let gradePool = data.itemDb.filter(it => (it.grade || 0) === targetGrade);
@@ -400,7 +412,6 @@ io.on('connection', (socket) => {
                     let baseChosen = gradePool[Math.floor(Math.random() * gradePool.length)];
                     let finalDropItem = generateServerDropItem(baseChosen);
 
-                    // 보스 주변 사방으로 흩뿌려지도록 분산 좌표 설정
                     let spreadAngle = (Math.PI * 2 / Math.max(1, dropCount)) * i + (Math.random() * 0.4 - 0.2);
                     let spreadDist = Math.random() * 60 + 20;
 
@@ -434,6 +445,8 @@ io.on('connection', (socket) => {
             }, 2000);
         }
     };
+
+
 
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
@@ -787,6 +800,23 @@ function processMonsterSpawning() {
         }
     }
 }
+
+// 🧹 [최적화 루틴] 자원을 최소화하기 위해 10초에 한 번씩 사망한 지 오래된 잔여 몬스터 강제 청소
+setInterval(() => {
+    let now = Date.now();
+    for (let mapId in mapsState) {
+        let state = mapsState[mapId];
+        if (!state || !state.monsters) continue;
+
+        // 죽은 지 3초(3000ms)가 넘었음에도 배열에 남아있는 좀비 몬스터 강제 제거
+        state.monsters = state.monsters.filter(m => {
+            if (m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000)) {
+                return false; // 배열에서 제외하여 메모리 및 화면 정돈
+            }
+            return true;
+        });
+    }
+}, 10000); // 10초 주기 실행으로 CPU 자원 소모 극소화
 
 setInterval(processMonsterSpawning, 1000);
 setInterval(processMonsterAI, 100);

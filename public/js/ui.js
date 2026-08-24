@@ -708,6 +708,7 @@ function recalculateStats() {
 
     let cData = localClassData[player.charClass] || localClassData['knight'];
     
+    // 기본 직업별 성장 스탯
     player.str = cData.str + Math.floor(lv / 4); 
     player.dex = cData.dex + Math.floor(lv / 4); 
     player.int = cData.int + Math.floor(lv / 4);
@@ -726,26 +727,34 @@ function recalculateStats() {
             player.int += eq.int || 0;
             totalSp += eq.sp || 0;
             if (eq.mr) totalMr += eq.mr;
-            if (eq.dmgReduct) totalDmgReduction += eq.dmgReduct; // 💡 신화 방어구 대미지 감소 합산
-            if (eq.speed) bonusSpeed += eq.speed;               // 💡 신화 부츠 이동속도 합산
-            if (eq.potionEffect) totalPotionEffect += eq.potionEffect; // 💡 투구 물약 회복량 합산
+            if (eq.dmgReduct) totalDmgReduction += eq.dmgReduct;
+            if (eq.speed) bonusSpeed += eq.speed;
+            if (eq.potionEffect) totalPotionEffect += eq.potionEffect;
+
+            // 💡 [핵심] 전설/초월 무기 및 방어구의 magicOptions 내 수치 실시간 가산
+            if (eq.magicOptions && Array.isArray(eq.magicOptions)) {
+                eq.magicOptions.forEach(opt => {
+                    let match = opt.match(/\+(\d+)/);
+                    let val = match ? parseInt(match[1]) : 0;
+
+                    if (opt.includes('STR')) player.str += val;
+                    if (opt.includes('DEX')) player.dex += val;
+                    if (opt.includes('INT')) player.int += val;
+
+                    if (opt.includes('추가 대미지') || opt.includes('근거리 대미지') || opt.includes('속성')) meleeBonus += val;
+                    if (opt.includes('원거리 대미지') || opt.includes('속성')) rangedBonus += val;
+                    if (opt.includes('SP') || opt.includes('마법 공격력')) totalSp += val;
+                    if (opt.includes('추가 방어력') || opt.includes('[보호]')) totalDef += val;
+                    if (opt.includes('MR') || opt.includes('마법 방어력')) totalMr += val;
+                    if (opt.includes('대미지 감소')) totalDmgReduction += val;
+                });
+            }
 
             if (k !== 'weapon') {
                 totalDef += (eq.def || 0) + (eq.enchantValue || 0);
                 if (eq.mr || eq.name.includes('마법') || eq.name.includes('면갑') || eq.name.includes('반지') || eq.name.includes('망토')) {
                     totalMr += (eq.enchantValue || 0);
                 }
-            }
-
-            if (eq.magicOptions) {
-                eq.magicOptions.forEach(opt => {
-                    let val = parseInt(opt.match(/\+(\d+)/)?.[1]) || 0;
-                    if (opt.includes('근거리 대미지') || opt.includes('추가 대미지') || opt.includes('속성')) meleeBonus += val;
-                    if (opt.includes('원거리 대미지') || opt.includes('속성')) rangedBonus += val;
-                    if (opt.includes('SP') || opt.includes('마법 공격력')) totalSp += val;
-                    if (opt.includes('MR') || opt.includes('마법 방어력')) totalMr += val;
-                    if (opt.includes('대미지 감소')) totalDmgReduction += val;
-                });
             }
         }
     }
@@ -754,7 +763,7 @@ function recalculateStats() {
     player.totalMr = totalMr;
     player.totalDmgReduction = totalDmgReduction;
     player.totalPotionEffect = totalPotionEffect;
-    player.currentSpeed = 180 + bonusSpeed; // 💡 신화 장비 이동속도 적용
+    player.currentSpeed = 180 + bonusSpeed;
     
     let wp = player.equip.weapon; 
     let wpAtk = wp ? (wp.atk || 0) + (wp.enchantValue || 0) : 0;
@@ -768,7 +777,6 @@ function recalculateStats() {
 
     player.def = Math.max(0, Math.floor((player.dex - 10) / 2)) + totalDef; 
 }
-
 
 
 
@@ -1029,8 +1037,6 @@ window.closeAllWindows = function() { 
     ['win-inv', 'win-magic', 'win-option', 'win-shop', 'win-pet', 'win-mercenary', 'save-modal', 'confirm-modal', 'item-action-modal', 'teleport-modal', 'win-party', 'win-transfer'].forEach(id => { if($(id)) $(id).style.display = 'none'; }); 
     hideTooltip(); 
 };
-
-// ui.js -> toggleAutoHunt 함수 교체[cite: 7]
 window.toggleAutoHunt = function() {
     playSound('click');
     if (!player.autoHunt && isInSafeZone(currentMap, player.x, player.y)) {
@@ -1043,11 +1049,15 @@ window.toggleAutoHunt = function() {
     if (player.autoHunt) {
         addMessage("자동 사냥 모드가 활성화되었습니다.", '#5f5');
     } else {
-        // 💡 [수정] player.target = null 제거! 타겟은 고정 유지하고 자동 이동만 정지[cite: 7]
         player.isMoving = false;
         player.moveX = undefined;
         player.moveY = undefined;
-        addMessage("수동 조작 모드 (타겟 유지 / 자유 무빙 가능)", '#aaa');
+        
+        // 💡 [핵심 추가] 자동사냥을 끄면(사냥 OFF) 등록해 둔 자동 마법/스킬 세팅도 함께 해제하여 무한 발동 방지
+        player.activeSpellSlots = []; 
+        player.selectedManualSpell = null;
+        
+        addMessage("수동 조작 모드 (자동 마법 세팅 해제됨)", '#aaa');
     }
     updateUI();
 };
@@ -3153,118 +3163,132 @@ window.openMercenaryUI = async function() {
 
     showCustomPrompt(msg, btns);
 };
-
-window.showMercenaryHireMenu = function() {
-    let cost = player.level * 2000;
-    let activeMercs = entities.filter(e => e.isSummon && e.owner === player && e.isMercenary && e.hp > 0);
-
-    let contentEl = $('mercenary-content');
-    if (contentEl) {
-        contentEl.innerHTML = `
-            <div style="font-weight:bold; color:#fd0; margin-bottom:10px;">⚔️ 용병 단장 영입소</div>
-            <p style="font-size:13px; color:#ccc;">전투를 보조할 강력한 용병을 고용합니다.<br>(현재 동행: <span style="color:#5f5; font-weight:bold;">${activeMercs.length}명</span> / 최대 3명)</p>
-            <button class="confirm-btn bg-dark-green w-full mb-3" onclick="hireMercenary('knight', ${cost})">기사 용병 고용 (${cost.toLocaleString()} A)</button>
-            <button class="confirm-btn bg-dark-green w-full mb-3" onclick="hireMercenary('elf', ${cost})">요정 용병 고용 (${cost.toLocaleString()} A)</button>
-            <button class="confirm-btn bg-dark-green w-full mb-3" onclick="hireMercenary('wizard', ${cost})">마법사 용병 고용 (${cost.toLocaleString()} A)</button>
-        `;
-    }
-    if ($('win-mercenary')) $('win-mercenary').style.display = 'flex';
-  bringToFront('win-mercenary');
-        setTimeout(() => autoCenterWindow('win-mercenary', true), 10);
-};
-
+// 1. window 객체에 hireMercenary 함수 명시적 등록
 window.hireMercenary = function(mercType, cost) {
-    if (player.adena < cost) {
-        return showAlert("아데나가 부족합니다.");
-    }
-    
-    let activeMercs = entities.filter(e => e.isSummon && e.owner === player && e.isMercenary && e.hp > 0);
-    if (activeMercs.length >= 3) {
-        return showAlert("용병은 최대 3명까지만 동시에 데리고 다닐 수 있습니다.");
-    }
+    if (player.adena < cost) {
+        return showAlert("아데나가 부족합니다.");
+    }
+    
+    let activeMercs = entities.filter(e => e.isSummon && e.owner === player && e.isMercenary && e.hp > 0);
+    if (activeMercs.length >= 3) {
+        return showAlert("용병은 최대 3명까지만 동시에 데리고 다닐 수 있습니다.");
+    }
 
-    player.adena -= cost;
-    if (typeof playSound === 'function') playSound('buy');
+    player.adena -= cost;
+    if (typeof playSound === 'function') playSound('buy');
 
-    let typeTitle = mercType === 'knight' ? '기사 용병' : (mercType === 'wizard' ? '마법사 용병' : '요정 용병');
-    let mercName = `${typeTitle} ${activeMercs.length + 1}호`;
-    let color = mercType === 'wizard' ? '#88f' : (mercType === 'elf' ? '#8f8' : '#ccc');
-    let maxHp = player.level * 100 + 200;
-    let maxMp = player.level * 50 + 100;
+    let typeTitle = mercType === 'knight' ? '기사 용병' : (mercType === 'wizard' ? '마법사 용병' : '요정 용병');
+    let mercName = `${typeTitle} ${activeMercs.length + 1}호`;
+    let color = mercType === 'wizard' ? '#88f' : (mercType === 'elf' ? '#8f8' : '#ccc');
+    let maxHp = player.level * 100 + 200;
+    let maxMp = player.level * 50 + 100;
 
-    let defaultWeapon = null;
-    let defaultArmor = null;
-    let starterInventory = [];
+    let defaultWeapon = null;
+    let defaultArmor = null;
+    let starterInventory = [];
 
-    if (mercType === 'knight') {
-        defaultWeapon = { id: 'w_knight_6saura', name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
-        defaultArmor = { id: 'a_knight_4plate', name: '+4 무관의 갑옷', type: 'armor', def: 8 };
-        starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' },
-            { name: '용기의 물약', count: 10, type: 'potion' }
-        ];
-    } else if (mercType === 'elf') {
-        defaultWeapon = { id: 'w_elf_6bow', name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
-        defaultArmor = { id: 'a_elf_4plate', name: '+4 요정족 판금 갑옷', type: 'armor', def: 6 };
-        starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' },
-            { name: '엘븐 와퍼', count: 10, type: 'potion' }
-        ];
-    } else if (mercType === 'wizard') {
-        defaultWeapon = { id: 'w_wiz_6staff', name: '+6 마나의 지팡이', type: 'weapon', atk: 10 };
-        defaultArmor = { id: 'a_wiz_4robe', name: '+4 신관의 로브', type: 'armor', def: 5 };
-        starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '파란 물약', count: 50, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' }
-        ];
-    }
+    if (mercType === 'knight') {
+        defaultWeapon = { id: 'w_knight_6saura', name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
+        defaultArmor = { id: 'a_knight_4plate', name: '+4 무관의 갑옷', type: 'armor', def: 8 };
+        starterInventory = [
+            { name: '주홍 물약', count: 100, type: 'potion' },
+            { name: '초록 물약', count: 20, type: 'potion' },
+            { name: '용기의 물약', count: 10, type: 'potion' }
+        ];
+    } else if (mercType === 'elf') {
+        defaultWeapon = { id: 'w_elf_6bow', name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
+        defaultArmor = { id: 'a_elf_4plate', name: '+4 요정족 판금 갑옷', type: 'armor', def: 6 };
+        starterInventory = [
+            { name: '주홍 물약', count: 100, type: 'potion' },
+            { name: '초록 물약', count: 20, type: 'potion' },
+            { name: '엘븐 와퍼', count: 10, type: 'potion' }
+        ];
+    } else if (mercType === 'wizard') {
+        defaultWeapon = { id: 'w_wiz_6staff', name: '+6 마나의 지팡이', type: 'weapon', atk: 10 };
+        defaultArmor = { id: 'a_wiz_4robe', name: '+4 신관의 로브', type: 'armor', def: 5 };
+        starterInventory = [
+            { name: '주홍 물약', count: 100, type: 'potion' },
+            { name: '파란 물약', count: 50, type: 'potion' },
+            { name: '초록 물약', count: 20, type: 'potion' }
+        ];
+    }
 
-   
-    let targetLevel = player.level;
-    let correctMaxExp = getExpRequiredForLevel(targetLevel); // 💡 레벨에 맞는 정확한 필요 경험치 계산
+    let targetLevel = player.level;
+    let correctMaxExp = typeof getExpRequiredForLevel === 'function' ? getExpRequiredForLevel(targetLevel) : 100;
 
-    let newMerc = {
-        id: 'merc_' + Date.now() + '_' + Math.floor(Math.random()*1000),
-        name: mercName,
-        mercType: mercType,
-        x: player.x + (Math.random() * 40 - 20),
-        y: player.y + (Math.random() * 40 - 20),
-        map: currentMap,
-        size: 20,
-        hp: maxHp,
-        maxHp: maxHp,
-        mp: maxMp,
-        maxMp: maxMp,
-        atk: targetLevel * 3 + 10,
-        def: targetLevel + 2,
-        speed: 150,
-        
-        // 💡 [핵심] 고용 시 플레이어의 레벨과, 그 레벨에 맞는 정확한 maxExp 적용
-        level: targetLevel,
-        exp: 0,
-        maxExp: correctMaxExp, 
-        
-        color: color,
-        isSummon: true,
-        owner: player,
-        isMercenary: true,
-        stance: 'attack',
-        equip: { weapon: defaultWeapon, armor: defaultArmor },
-        mercHpPotionCount: 100,
-        mercMpPotionCount: mercType === 'wizard' ? 50 : 10,
-        inventory: starterInventory,
-        skills: typeof getSkillsForMercenary === 'function' ? getSkillsForMercenary(mercType, targetLevel) : [],
-        activeBuffs: []
-    };
-    entities.push(newMerc);
-    addMessage(`[용병 영입] ${mercName}을(를) 고용했습니다!`, '#5f5');
-    
-    if (typeof updateUI === 'function') updateUI();
-    if ($('win-mercenary')) $('win-mercenary').style.display = 'none';
+    let newMerc = {
+        id: 'merc_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+        name: mercName,
+        mercType: mercType,
+        x: player.x + (Math.random() * 40 - 20),
+        y: player.y + (Math.random() * 40 - 20),
+        map: currentMap,
+        size: 20,
+        hp: maxHp,
+        maxHp: maxHp,
+        mp: maxMp,
+        maxMp: maxMp,
+        atk: targetLevel * 3 + 10,
+        def: targetLevel + 2,
+        speed: 150,
+        level: targetLevel,
+        exp: 0,
+        maxExp: correctMaxExp,
+        color: color,
+        isSummon: true,
+        owner: player,
+        isMercenary: true,
+        stance: 'attack',
+        equip: { weapon: defaultWeapon, armor: defaultArmor },
+        mercHpPotionCount: 100,
+        mercMpPotionCount: mercType === 'wizard' ? 50 : 10,
+        inventory: starterInventory,
+        skills: typeof getSkillsForMercenary === 'function' ? getSkillsForMercenary(mercType, targetLevel) : [],
+        activeBuffs: []
+    };
+    
+    entities.push(newMerc);
+    addMessage(`[용병 영입] ${mercName}을(를) 고용했습니다!`, '#5f5');
+    
+    if (typeof updateUI === 'function') updateUI();
+    if ($('win-mercenary')) $('win-mercenary').style.display = 'none';
 };
+
+
+
+// 2. 고용 메뉴 표시 함수 수정
+window.showMercenaryHireMenu = function() {
+    let cost = player.level * 2000;
+    let activeMercs = entities.filter(e => e.isSummon && e.owner === player && e.isMercenary && e.hp > 0);
+
+    let contentEl = $('mercenary-content');
+    if (contentEl) {
+        contentEl.innerHTML = `
+            <div style="font-weight:bold; color:#fd0; margin-bottom:10px;">⚔️ 용병 단장 영입소</div>
+            <p style="font-size:13px; color:#ccc;">전투를 보조할 강력한 용병을 고용합니다.<br>(현재 동행: <span style="color:#5f5; font-weight:bold;">${activeMercs.length}명</span> / 최대 3명)</p>
+            <button id="btn-hire-knight" class="confirm-btn bg-dark-green w-full mb-3" style="cursor:pointer;">기사 용병 고용 (${cost.toLocaleString()} A)</button>
+            <button id="btn-hire-elf" class="confirm-btn bg-dark-green w-full mb-3" style="cursor:pointer;">요정 용병 고용 (${cost.toLocaleString()} A)</button>
+            <button id="btn-hire-wiz" class="confirm-btn bg-dark-green w-full mb-3" style="cursor:pointer;">마법사 용병 고용 (${cost.toLocaleString()} A)</button>
+        `;
+        
+        // 💡 인라인 onclick 대신 안전하게 엘리먼트 쿼리로 이벤트 리스너 부착
+        setTimeout(() => {
+            let kBtn = document.getElementById('btn-hire-knight');
+            let eBtn = document.getElementById('btn-hire-elf');
+            let wBtn = document.getElementById('btn-hire-wiz');
+
+            if (kBtn) kBtn.onclick = () => window.hireMercenary('knight', cost);
+            if (eBtn) eBtn.onclick = () => window.hireMercenary('elf', cost);
+            if (wBtn) wBtn.onclick = () => window.hireMercenary('wizard', cost);
+        }, 50);
+    }
+    
+    if ($('win-mercenary')) $('win-mercenary').style.display = 'flex';
+    bringToFront('win-mercenary');
+    setTimeout(() => autoCenterWindow('win-mercenary', true), 10);
+};
+
+
 
 window.depositMercenary = async function() {
     let activeMercs = entities.filter(e => e.isSummon && e.owner === player && e.isMercenary && e.hp > 0);
@@ -3769,54 +3793,6 @@ window.hideCharSelect = function() {
     if($('slot-box')) $('slot-box').style.display = 'block';
 };
 
-window.renderMercenaryHUD = function() {
-    const listEl = document.getElementById('mercenary-hud-list');
-    if (!listEl) return;
-
-    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
-
-    if (activeMercs.length === 0) {
-        listEl.innerHTML = '';
-        return;
-    }
-
-    let isMobile = window.innerWidth <= 768;
-    let html = '';
-    
-    activeMercs.forEach((merc) => {
-        let hpPct = Math.max(0, Math.min(100, (merc.hp / merc.maxHp) * 100));
-        let mpPct = Math.max(0, Math.min(100, ((merc.mp || 0) / (merc.maxMp || 50)) * 100));
-        let displayName = isMobile ? (merc.name.match(/\d+호/)?.[0] || merc.name) : `${merc.name} (Lv.${merc.level || 1})`;
-
-        // 💡 슬림하고 컴팩트한 미니 카드 디자인 적용
-        html += `
-        <div class="merc-hud-card" style="
-            pointer-events: auto !important; 
-            cursor: pointer; 
-            position: relative; 
-            z-index: 99999;
-            background: rgba(15, 15, 22, 0.85);
-            border: 1px solid #445;
-            border-radius: 3px;
-            padding: 4px 6px;
-            margin-bottom: 3px;
-            width: 140px;
-            box-sizing: border-box;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.6);
-        " onclick="window.selectMercenary('${merc.id}')"
-          oncontextmenu="event.preventDefault(); window.selectMercenary('${merc.id}'); return false;">
-            <div style="font-size: 10px; font-weight: bold; color: #fd0; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
-            <div style="width: 100%; background: #111; height: 5px; border-radius: 2px; overflow: hidden; margin-bottom: 2px; border: 1px solid #222;">
-                <div style="width: ${hpPct}%; background: #e33; height: 100%;"></div>
-            </div>
-            <div style="width: 100%; background: #111; height: 5px; border-radius: 2px; overflow: hidden; border: 1px solid #222;">
-                <div style="width: ${mpPct}%; background: #36f; height: 100%;"></div>
-            </div>
-        </div>`;
-    });
-
-    listEl.innerHTML = html;
-};
 // 💡 용병 선택 전용 전역 함수 추가
 
 window.selectMercenary = function(mercId) {
@@ -3829,111 +3805,23 @@ window.selectMercenary = function(mercId) {
     }
 };
 
-// 💡 [ui.js] 보조/버프 마법 시전 및 이펙트 연결 함수
-window.castBuff = function(magicName) {
-    let mData = magicDb[magicName];
-    if (!mData) return;
-    if (player.charClass !== 'wizard' && (!player.magic || !player.magic.includes(magicName))) {
-        return;
-    }
-    
-   if (window.socket && currentUser) {
-        window.socket.emit('player_magic_action', {
-            magicName: magicName,
-            targetX: player.x,
-            targetY: player.y,
-            targetId: window.socket.id,
-            casterX: player.x,
-            casterY: player.y,
-            casterId: window.socket.id,
-            map: currentMap
-        });
-    }
-
-    if (magicName !== '블러드 투 소울' && player.mp < mData.mp) {
-        return addMessage("MP가 부족합니다.", '#f55');
-    }    
-    if (magicName !== '블러드 투 소울') {
-        player.mp -= mData.mp;
-    }
-    playSound('spell');
-
-    // ==========================================
-    // 🌟 [모든 보조/버프 마법 그래픽 이펙트 완벽 매핑]
-    // ==========================================
-    if (typeof particles !== 'undefined') {
-        if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
-        } else if (magicName.includes('실드') || magicName.includes('어스 스킨')) {
-            particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'classic_shield' });
-        } else if (magicName.includes('가속') || magicName.includes('초록') || magicName === '홀리 워크' || magicName === '윈드 워크') {
-            // 💡 마법사 및 요정 헤이스트/가속 회오리 이펙트 고정 출력
-            particles.push({ x: player.x, y: player.y, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
-        } else if (magicName === '스톰 샷' || magicName === '파이어 웨폰') {
-            // 💡 요정 스톰샷 및 파이어웨폰 버프 이펙트
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'haste_tornado', size: 50 });
-        } else if (magicName === '어드밴스 스피릿') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'advance_spirit' });
-        } else if (magicName === '이뮨 투 함') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'immune_to_harm' });
-        } else if (magicName === '앱솔루트 배리어') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'absolute_barrier' });
-        } else if (magicName === '마제스티') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'majesty_shield' });
-        } else if (magicName === '서먼 몬스터' || magicName === '매스 텔레포트') {
-            particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'summon_effect' });
-        } else if (magicName === '블러드 투 소울') {
-            particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'drain' });
-        } else {
-            particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'buff_effect' });
-        }
-    }
-
-    // --- 마법 효과(로직) 적용 ---
-    if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
-        let healAmt = Math.floor((mData.heal || 40) * (1 + (player.int - 10) * 0.05));
-        player.hp = Math.min(currentMaxHp, player.hp + healAmt);
-        addMessage(`[${magicName}] HP ${healAmt} 회복`, '#5f5');
-        if (typeof dmgTexts !== 'undefined') {
-            dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${healAmt} ✨`, life: 1.2, color: '#5f5' });
-        }
-    } else if (magicName === '블러드 투 소울') {
-        if (player.hp > 40) {
-            player.hp -= 40;
-            player.mp = Math.min(currentMaxMp, player.mp + 15);
-            addMessage(`[블러드 투 소울] HP를 40 소모하여 MP를 15 회복했습니다.`, '#55f');
-            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+15 MP`, life: 1.2, color: '#55f' });
-        } else {
-            addMessage("체력이 부족하여 블러드 투 소울을 사용할 수 없습니다.", '#f55');
-        }
-    } else if (magicName === '스톰 샷') {
-        applyBuff('스톰 샷', mData.duration || 300000, mData.icon || '🌪️', 'atk', 5);
-    } else if (mData.buffType) {
-        applyBuff(magicName, mData.duration || 300000, mData.icon, mData.buffType, mData.val || 0);
-    }
-    
-    updateUI();
-};
 
 window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
     let now = performance.now();
 
-    // 💡 [1] 물약 ON 상태일 때: 체력/마나 및 버프 물약 자동 사용
+    // 1. 물약 자동 복용 (사냥 OFF여도 동작)
     if (player.autoPotion) {
-        // HP 물약 자동 복용 (50% 이하)
         if (player.hp < currentMaxHp * 0.50) { 
             let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
             if (hpPot) useItem(getStackKey(hpPot));
         }
 
-        // MP 물약 자동 복용 (35% 이하)
         if (player.mp < currentMaxMp * 0.35) { 
             let mpPot = player.inv.find(it => it && it.type === 'potion' && it.name.includes('파란'));
             if (mpPot) useItem(getStackKey(mpPot));
         }
 
-        // 💡 [버프 물약 상시 감지]: 버프가 아예 없거나(undefined 또는 만료됨) 3초 전일 때 즉시 복용
         const autoDrinkBuff = (potKeyword, buffKeyList) => {
             let b = null;
             if (player.buffs) {
@@ -3944,13 +3832,9 @@ window.processAutoConsumablesAndBuffs = function() {
                     }
                 }
             }
-
-            // 버프가 없거나 잔여 시간이 3초 이하일 때
             if (!b || (b.expire - now <= 3000)) {
                 let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(potKeyword));
-                if (pot) {
-                    useItem(getStackKey(pot));
-                }
+                if (pot) useItem(getStackKey(pot));
             }
         };
 
@@ -3963,41 +3847,30 @@ window.processAutoConsumablesAndBuffs = function() {
         }
     }
 
-    // 💡 [2] 사냥(ON) 상태일 때: 퀵슬롯 버프/힐 마법 자동 시전
+    // 💡 [핵심 수정] 사냥(ON) 상태가 아닐 경우(사냥 OFF), 여기서 즉시 차단하여 스킬 자동 사용 원천 방지
     if (!player.autoHunt) return;
 
+    // 2. 퀵슬롯 공격 스킬 및 버프/힐 자동 시전 (사냥 ON일 때만 동작)
     hotkeys.forEach((hk, idx) => {
         if (!hk || hk.type !== 'magic') return;
-        
-        let hasLearned = (player.magic && player.magic.includes(hk.id)) || 
-                         (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드'].includes(hk.id));
-        if (!hasLearned) return;
         
         let mData = typeof magicDb !== 'undefined' ? magicDb[hk.id] : null;
         if (!mData) return;
 
-        // 힐 마법 자동 시전
-        if (mData.heal || hk.id.includes('힐') || hk.id === '네이쳐스 터치') {
-            if (player.hp < currentMaxHp * 0.70 && player.mp >= mData.mp) {
-                player.lastAutoHealTime = player.lastAutoHealTime || 0;
-                if (now - player.lastAutoHealTime > 1200) {
-                    player.lastAutoHealTime = now;
-                    castBuff(hk.id);
-                }
-            }
-        } 
-        // 버프 마법 자동 시전 (버프가 아예 없거나 만료 직전일 때)
-        else if (mData.type === 'buff' || mData.buffType || hk.id.includes('실드') || hk.id.includes('스톰') || hk.id.includes('워크') || hk.id.includes('가속') || hk.id.includes('웨폰') || hk.id.includes('어스')) {
-            let buffKey = hk.id;
-            if (hk.id.includes('가속') || hk.id.includes('헤이스트') || hk.id.includes('초록')) buffKey = '가속(헤이스트)';
+        if (player.target && player.target.hp > 0 && !player.target.isDead) {
+            let isAttackSkill = mData.type === 'attack' || mData.dmg || hk.id === '쇼크 스턴';
             
-            let b = player.buffs ? player.buffs[buffKey] : null;
-            if (!b || (b.expire - now <= 3000)) {
-                if (player.mp >= mData.mp) {
-                    player.lastAutoBuffTime = player.lastAutoBuffTime || {};
-                    if (now - (player.lastAutoBuffTime[hk.id] || 0) > 1500) {
-                        player.lastAutoBuffTime[hk.id] = now;
-                        castBuff(hk.id);
+            if (isAttackSkill && player.mp >= mData.mp) {
+                let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
+                let allowedRange = (mData.range || 120) + (player.target.size || 20);
+                
+                if (dist <= allowedRange) {
+                    player.lastAutoSkillTime = player.lastAutoSkillTime || {};
+                    let cd = mData.cd || 5000;
+                    
+                    if (now - (player.lastAutoSkillTime[hk.id] || 0) > cd) {
+                        player.lastAutoSkillTime[hk.id] = now;
+                        castAttackSpell(player.target, hk.id, player);
                     }
                 }
             }
@@ -4063,15 +3936,6 @@ window.renderMercenaryHUD = function() {
     listEl.innerHTML = html;
 };
 
-window.selectMercenary = function(mercId) {
-    let target = entities.find(e => e.id === mercId);
-    if (target) {
-        player.target = target;
-        playSound('click');
-        addMessage(`[용병 지정] ${target.name}`, '#5ff');
-        if (typeof openPetUI === 'function') openPetUI(target);
-    }
-};
 
 // 💡 용병 선택 전용 전역 함수 (중복 제거 및 단일화)
 window.selectMercenary = function(mercId) {
