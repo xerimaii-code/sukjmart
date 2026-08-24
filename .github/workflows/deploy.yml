@@ -1,14 +1,4 @@
-name: Auto Deploy to HostDare
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Connect SSH and Deploy
+- name: Connect SSH and Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST_IP }}
@@ -16,7 +6,8 @@ jobs:
           password: ${{ secrets.PASSWORD }}
           script: |
             cd /root/sukjmart
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             npm install
             pm2 delete mygame || true
             pm2 start server.js --name "mygame"
