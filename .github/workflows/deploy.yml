@@ -1,4 +1,17 @@
-- name: Connect SSH and Deploy
+name: Auto Deploy to HostDare
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Connect SSH and Deploy
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.HOST_IP }}
