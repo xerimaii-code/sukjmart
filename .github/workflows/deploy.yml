@@ -18,10 +18,10 @@ jobs:
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
           script: |
-            cd /root/sukjmart
+              cd /root/sukjmart
             git fetch origin main
             git reset --hard origin/main
             npm install
-            pm2 delete mygame || true
-            pm2 start server.js --name "mygame"
+            pm2 delete sukjmart || true
+            pm2 start server.js --name "sukjmart"
             pm2 save
