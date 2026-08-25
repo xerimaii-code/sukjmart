@@ -333,11 +333,42 @@ function getGeneratedMap(mapId) {
 }
 
 let wakeLock = null;
+let wakeLockVideo = null;
+
 async function requestWakeLock() {
-    try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
+    try { 
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        }
+    } catch (err) { }
+    
+    // HTTP 접속이나 iOS 사파리 등 WakeLock API 미지원 환경을 위한 무음 비디오 트릭
+    if (!wakeLockVideo) {
+        wakeLockVideo = document.createElement('video');
+        wakeLockVideo.setAttribute('loop', '');
+        wakeLockVideo.setAttribute('muted', '');
+        wakeLockVideo.setAttribute('playsinline', '');
+        // 1x1 픽셀 투명 무음 영상 Base64
+        wakeLockVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAH0MDk3//wAAAAAAAAAAAAAAABAAAAB/wD/G21vb3YAAABsbXZoZAAAAADawT7M2sE+zAAAAAACSAAAACQAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAADV0cmFrAAAAXHRraGQAAAAD2sE+zNrBPswAAAABAAAAAAAkAAAAAAAAAAAAAAAAAAEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAIAAAAAIAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAAAJAAAAAACAAAAAABybWRpYQAAACBtZGhkAAAAANrBPszawT7MAAAAIAAAACQAAAAAAAAAAAAAAAB1aGRscgAAAAAAAAAAdmlkZQAAAAAAAAAAAAAAAAAAAAAAO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAABNzdGJsAAAAb3N0c2QAAAAAAAAAAQAAAF9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAgACAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAxYXZjQwH0AAr/4QAYZ/QwKqKysxIBAgEBAwAQAAMB6gBvwBEAAAMAEAAAAwPI8SgAAAAIcHThAigAAABMc3R0cwAAAAAAAAABAAAAAQAAAAIAAAAoc3RzYwAAAAAAAAABAAAAFHN0Y28AAAAAAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAAAAQAAAAEAAAAUc3RjbwAAAAAAAAABAAAAMg==';
+        wakeLockVideo.style.display = 'none';
+        document.body.appendChild(wakeLockVideo);
+    }
+    wakeLockVideo.play().catch(() => {});
 }
-window.addEventListener('click', requestWakeLock, { once: true });
-window.addEventListener('touchstart', requestWakeLock, { once: true });
+
+const enableNoSleep = () => {
+    requestWakeLock();
+    window.removeEventListener('click', enableNoSleep);
+    window.removeEventListener('touchstart', enableNoSleep);
+};
+
+window.addEventListener('click', enableNoSleep);
+window.addEventListener('touchstart', enableNoSleep);
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') requestWakeLock();
+});
 
 // ==========================================
 // [2. 원본 100% 그래픽 복구 (캐릭터/몬스터/마법)]
@@ -363,14 +394,120 @@ function getArmorColor(charClass, grade) {
     return ['#64748b', '#334155'];
 }
 
+// 🌟 [추가] 고급 망토 렌더링 전용 함수
+// 🌟 [교체] 고급 망토 렌더링 전용 함수 (대형 로고 및 구겨짐 효과 추가)
+function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide) {
+    if (!eq || !eq.cloak) return;
+    ctx.save();
+    
+    // 망토 색상 
+    let cBase, cDark, cLight;
+    if (eq.cloak.grade >= 4 || (eq.cloak.name && eq.cloak.name.includes('금빛'))) {
+        cBase = '#b8860b'; cDark = '#5c4305'; cLight = '#ffd700'; 
+    } else if (eq.cloak.name && eq.cloak.name.includes('은빛')) {
+        cBase = '#94a3b8'; cDark = '#475569'; cLight = '#e2e8f0'; 
+    } else if (eq.cloak.name && eq.cloak.name.includes('투명')) {
+        cBase = 'rgba(255, 255, 255, 0.4)'; cDark = 'rgba(200, 200, 200, 0.2)'; cLight = 'rgba(255, 255, 255, 0.6)';
+    } else if (charClass === 'elf') { 
+        cBase = '#15803d'; cDark = '#064e3b'; cLight = '#4ade80'; 
+    } else if (charClass === 'wizard') { 
+        cBase = '#3730a3'; cDark = '#1e1b4b'; cLight = '#818cf8'; 
+    } else { 
+        cBase = '#991b1b'; cDark = '#450a0a'; cLight = '#f87171'; 
+    }
+
+    let sway = isMoving ? Math.sin(timestamp / 90) * (sz * 0.3) : Math.sin(timestamp / 200) * (sz * 0.05);
+    let wave = isMoving ? Math.cos(timestamp / 120) * (sz * 0.15) : 0;
+    
+    let grad = ctx.createLinearGradient(-sz, 0, sz, 0);
+    grad.addColorStop(0, cDark);
+    grad.addColorStop(0.3, cBase);
+    grad.addColorStop(0.5, cLight);
+    grad.addColorStop(0.7, cBase);
+    grad.addColorStop(1, cDark);
+
+    ctx.fillStyle = grad;
+    ctx.strokeStyle = cDark;
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    if (isSide) {
+        ctx.moveTo(-sz * 0.2, -sz * 0.7);
+        ctx.quadraticCurveTo(-sz * 0.6, -sz * 0.3, -sz * 0.8 - sway, sz * 0.7 + wave);
+        ctx.lineTo(-sz * 0.1 - sway * 0.5, sz * 0.8 + wave);
+        ctx.quadraticCurveTo(sz * 0.2, 0, sz * 0.1, -sz * 0.7);
+    } else if (isUp) {
+        // 💡 [해결 1] 뒷모습일 때 몸통(어깨) 폭보다 넓고 높게 감싸서 양옆/위로 몸이 삐져나오는 비침 현상 차단
+        ctx.moveTo(-sz * 0.75, -sz * 0.85);
+        ctx.quadraticCurveTo(-sz * 1.1, -sz * 0.2, -sz * 1.2 + sway, sz * 0.9 + wave);
+        ctx.quadraticCurveTo(0, sz * 1.1 + Math.abs(sway), sz * 1.2 - sway, sz * 0.9 - wave);
+        ctx.quadraticCurveTo(sz * 1.1, -sz * 0.2, sz * 0.75, -sz * 0.85);
+    } else if (isDown) {
+        ctx.moveTo(-sz * 0.6, -sz * 0.6);
+        ctx.quadraticCurveTo(-sz * 1.0, 0, -sz * 1.1 - sway, sz * 0.8 + wave);
+        ctx.lineTo(sz * 1.1 + sway, sz * 0.8 - wave);
+        ctx.quadraticCurveTo(sz * 1.0, 0, sz * 0.6, -sz * 0.6);
+    }
+    ctx.closePath();
+    
+    ctx.shadowColor = 'rgba(0,0,0,0.6)';
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 4;
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    if (isUp) {
+        ctx.save();
+        ctx.translate(sway * 0.4, sz * 0.2 - wave * 0.3);
+        
+        let emblem = '🛡️';
+        if (charClass === 'elf') emblem = '🏹';
+        else if (charClass === 'wizard') emblem = '✡️';
+        
+        // 💡 [해결 2] 캔버스를 투명하게 만들던 overlay 버그 제거 -> 기본 모드와 투명도 조절로 자수 연출
+        ctx.globalAlpha = 0.35; 
+        ctx.globalCompositeOperation = 'source-over'; 
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        
+        ctx.scale(1 + Math.abs(sway)/(sz*2), 0.85); 
+        ctx.font = `bold ${sz * 1.2}px Arial`;
+        ctx.fillText(emblem, 0, 0);
+
+        ctx.globalAlpha = 0.15;
+        ctx.fillStyle = cLight;
+        ctx.fillText(emblem, 0, -1);
+        
+        ctx.restore();
+    }
+    
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.lineWidth = 1.5;
+    if (isSide) {
+        ctx.beginPath(); ctx.moveTo(-sz * 0.15, -sz * 0.6); ctx.quadraticCurveTo(-sz * 0.5, 0, -sz * 0.6 - sway, sz * 0.7 + wave); ctx.stroke();
+    } else if (isUp) {
+        // 💡 넓어진 망토에 맞춰 구겨짐(주름) 위치 재조정
+        ctx.beginPath(); ctx.moveTo(-sz * 0.4, -sz * 0.8); ctx.quadraticCurveTo(-sz * 0.8, 0, -sz * 0.6 + sway, sz * 0.9 + wave); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -sz * 0.8); ctx.quadraticCurveTo(0, 0, sway * 0.5, sz * 1.0 + Math.abs(sway)*0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.4, -sz * 0.8); ctx.quadraticCurveTo(sz * 0.8, 0, sz * 0.6 - sway, sz * 0.9 - wave); ctx.stroke();
+    } else {
+        ctx.beginPath(); ctx.moveTo(-sz * 0.3, -sz * 0.6); ctx.quadraticCurveTo(-sz * 0.7, 0, -sz * 0.5 + sway, sz * 0.9 + wave); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -sz * 0.6); ctx.quadraticCurveTo(0, 0, sway * 0.5, sz * 1.0 + Math.abs(sway)*0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sz * 0.3, -sz * 0.6); ctx.quadraticCurveTo(sz * 0.7, 0, sz * 0.5 - sway, sz * 0.9 - wave); ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+// 🌟 [교체] 캐릭터 통합 렌더링 함수 (렌더링 순서 버그 해결)
 function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp) {
     if (isNaN(ent.x) || isNaN(ent.y)) { ent.x = 2000; ent.y = 2000; }
     if (isNaN(ent.lastAttack)) ent.lastAttack = 0;
 
     let charClass = ent.charClass || ent.mercType || 'knight';
-    let level = ent.level || 1;
     let buffs = ent.buffs || {};
-
     let actualAtkDelay = 500;
     if (buffs['가속(헤이스트)']) actualAtkDelay -= 150;
     if (buffs['용기물약']) actualAtkDelay -= 100;
@@ -380,10 +517,8 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
     let t = elapsed / actualAtkDelay; if (t > 1.0) t = 1.0;
     let isSwinging = isAttacking && t < 1.0;
     
-    // 💡 eq.armor 및 name 안전 검사
     let isDeath = eq && eq.armor && typeof eq.armor.name === 'string' && eq.armor.name.includes('데스');
     
-    // 💡 [개선] 무기 타입을 다리(하체) 렌더링 전 미리 판별하도록 순서 변경
     let wpName = '';
     let wpType = 'sword'; 
     if (eq && eq.weapon) {
@@ -392,6 +527,11 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
         else if (wpName.includes('지팡이')) wpType = 'staff'; 
         else if (wpName.includes('단검')) wpType = 'dagger';
     }
+
+    let normAngle = ent.angle || 0;
+    let isUp = normAngle < -Math.PI*0.35 && normAngle > -Math.PI*0.65;
+    let isDown = normAngle > Math.PI*0.35 && normAngle < Math.PI*0.65;
+    let isSide = !isUp && !isDown;
 
     ctx.save();
     try {
@@ -403,13 +543,13 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
             }
         }
 
-        if (eq && eq.cloak) { 
-            ctx.fillStyle = charClass === 'elf' ? '#274e13' : (charClass === 'wizard' ? '#1e1b4b' : '#822'); 
-            ctx.beginPath(); ctx.moveTo(-sz*0.5, -sz*0.7); ctx.lineTo(sz*0.5, -sz*0.7); 
-            let cloakSway = isMoving ? 0.8 : 1.0;
-            ctx.lineTo(sz*0.9, sz*cloakSway); ctx.lineTo(-sz*0.9, sz*cloakSway); 
-            ctx.fill(); ctx.strokeStyle = '#111'; ctx.stroke(); 
+        // 🌟 망토 레이어 1 (앞/측면일 때 등 뒤에 깔림)
+        if (!isUp && !isDeath && eq && eq.cloak) {
+            drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
         }
+
+        let bodyW = isSide ? sz*1.2 : sz*1.4;
+        let bodyX = isSide ? -sz*0.6 : -sz*0.7;
 
         if (isDeath) {
             ctx.fillStyle = '#111'; ctx.fillRect(-sz*0.5, -sz*0.8, sz*1.0, sz*1.0);
@@ -419,95 +559,123 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
                 ctx.beginPath(); ctx.moveTo(0, -sz*0.6 + i*4); ctx.lineTo(sz*0.4, -sz*0.65 + i*4); ctx.lineTo(sz*0.4, -sz*0.6 + i*4 + 2); ctx.lineTo(0, -sz*0.55 + i*4); ctx.fill();
             }
             ctx.fillStyle = '#f00'; ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#111'; ctx.fillRect(-sz*0.2, -sz*1.2, 2, 2); ctx.fillRect(sz*0.1, -sz*1.2, 2, 2);
+            if (!isUp) { ctx.fillStyle = '#111'; ctx.fillRect(-sz*0.2, -sz*1.2, 2, 2); ctx.fillRect(sz*0.1, -sz*1.2, 2, 2); }
         } 
         else if (charClass === 'knight') {
             let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, 0); 
             let armorColor = getArmorColor('knight', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
             cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
             ctx.fillStyle = cGrad; ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.roundRect(-sz*0.6, -sz*0.8, sz*1.2, sz*0.9, 3); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = armorColor[1]; 
-            ctx.beginPath(); ctx.arc(-sz*0.6, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(sz*0.6, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             
-            ctx.fillStyle = '#b4860b'; ctx.fillRect(-sz*0.2, -sz*0.7, sz*0.4, sz*0.6);
+            ctx.beginPath(); ctx.roundRect(bodyX, -sz*0.8, bodyW, sz*0.9, 3); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = armorColor[1]; 
+            ctx.beginPath(); ctx.arc(bodyX, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bodyX + bodyW, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            
             ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('knight', eq.helmet.grade || 0)[0] : '#e0ac69';
             ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            
             if(eq && eq.helmet) {
                 ctx.fillStyle = '#b4860b';
-                ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*1.5); ctx.lineTo(-sz*0.4, -sz*1.8); ctx.lineTo(-sz*0.1, -sz*1.5); ctx.fill();
-                ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*1.5); ctx.lineTo(sz*0.4, -sz*1.8); ctx.lineTo(sz*0.1, -sz*1.5); ctx.fill();
-            } else { ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); }
+                if (!isUp) { 
+                    ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*1.5); ctx.lineTo(-sz*0.4, -sz*1.8); ctx.lineTo(-sz*0.1, -sz*1.5); ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*1.5); ctx.lineTo(sz*0.4, -sz*1.8); ctx.lineTo(sz*0.1, -sz*1.5); ctx.fill();
+                }
+            } else if (isUp) { 
+                ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, 0, Math.PI*2); ctx.fill(); 
+            } else { 
+                ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); 
+            }
         }
         else if (charClass === 'elf') {
+            let eBodyW = isSide ? sz*0.9 : sz*1.1;
+            let eBodyX = isSide ? -sz*0.45 : -sz*0.55;
+
             let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, 0); 
             let armorColor = getArmorColor('elf', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
             cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
             ctx.fillStyle = cGrad; ctx.strokeStyle = '#14532d'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.roundRect(-sz*0.45, -sz*0.8, sz*0.9, sz*0.9, 2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#78350f'; ctx.fillRect(-sz*0.45, -sz*0.3, sz*0.9, sz*0.15);
-            ctx.beginPath(); ctx.moveTo(-sz*0.45, -sz*0.8); ctx.lineTo(sz*0.45, -sz*0.3); ctx.stroke();
+            ctx.beginPath(); ctx.roundRect(eBodyX, -sz*0.8, eBodyW, sz*0.9, 2); ctx.fill(); ctx.stroke();
+            
+            if (!isUp) {
+                ctx.fillStyle = '#78350f'; ctx.fillRect(eBodyX, -sz*0.3, eBodyW, sz*0.15);
+                ctx.beginPath(); ctx.moveTo(eBodyX, -sz*0.8); ctx.lineTo(eBodyX + eBodyW, -sz*0.3); ctx.stroke();
+            }
             
             ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('elf', eq.helmet.grade || 0)[0] : '#fde047'; 
             ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            if(!(eq && eq.helmet) || (eq.helmet.name && typeof eq.helmet.name === 'string' && eq.helmet.name.includes('엘름'))) {
+            
+            if(!isUp && (!(eq && eq.helmet) || (eq.helmet.name && typeof eq.helmet.name === 'string' && eq.helmet.name.includes('엘름')))) {
                 ctx.fillStyle = '#e0ac69';
                 ctx.beginPath(); ctx.ellipse(-sz*0.4, -sz*1.1, sz*0.25, sz*0.1, Math.PI/4, 0, Math.PI*2); ctx.fill();
                 ctx.beginPath(); ctx.ellipse(sz*0.4, -sz*1.1, sz*0.25, sz*0.1, -Math.PI/4, 0, Math.PI*2); ctx.fill();
             }
         }
         else if (charClass === 'wizard') {
+            let wBodyW = isSide ? sz*1.2 : sz*1.4;
+            let wBodyX = isSide ? -sz*0.6 : -sz*0.7;
+
             let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, sz*0.6); 
             let armorColor = getArmorColor('wizard', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
             cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
             ctx.fillStyle = cGrad; ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(-sz*0.4, -sz*0.8); ctx.lineTo(sz*0.4, -sz*0.8); ctx.lineTo(sz*0.6, sz*0.6); ctx.lineTo(-sz*0.6, sz*0.6); ctx.fill(); ctx.stroke();
-            ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*0.8); ctx.lineTo(-sz*0.3, sz*0.6); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*0.8); ctx.lineTo(sz*0.3, sz*0.6); ctx.stroke();
             
+            ctx.beginPath(); ctx.moveTo(wBodyX + sz*0.2, -sz*0.8); ctx.lineTo(wBodyX + wBodyW - sz*0.2, -sz*0.8); 
+            ctx.lineTo(wBodyX + wBodyW, sz*0.6); ctx.lineTo(wBodyX, sz*0.6); ctx.fill(); ctx.stroke();
+            
+            if (!isUp) {
+                ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*0.8); ctx.lineTo(-sz*0.3, sz*0.6); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*0.8); ctx.lineTo(sz*0.3, sz*0.6); ctx.stroke();
+            }
+
             ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('wizard', eq.helmet.grade || 0)[0] : '#e0ac69';
             ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            
             if(eq && eq.helmet) {
                 ctx.fillStyle = armorColor[1];
                 ctx.beginPath(); ctx.ellipse(0, -sz*0.9, sz*0.8, sz*0.15, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(-sz*0.3, -sz*0.9); ctx.lineTo(0, -sz*1.6); ctx.lineTo(sz*0.3, -sz*0.9); ctx.fill();
-            } else { ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); }
+                if (!isUp) { ctx.beginPath(); ctx.moveTo(-sz*0.3, -sz*0.9); ctx.lineTo(0, -sz*1.6); ctx.lineTo(sz*0.3, -sz*0.9); ctx.fill(); }
+            } else if (isUp) {
+                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, 0, Math.PI*2); ctx.fill(); 
+            } else { 
+                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); 
+            }
         }
 
-        if(!isDeath) { ctx.fillStyle = '#111'; ctx.fillRect(-sz*0.15, -sz*1.15, 2, 2); ctx.fillRect(sz*0.05, -sz*1.15, 2, 2); }
+        if(!isDeath && !isUp) { 
+            ctx.fillStyle = '#111'; ctx.fillRect(-sz*0.15, -sz*1.15, 2, 2); ctx.fillRect(sz*0.05, -sz*1.15, 2, 2); 
+        }
 
-        // 💡 [개선] 다리 애니메이션 및 렌더링 디테일
+        // 💡 [해결 3] 이 위치에 있던 망토 그리기 코드를 완전히 제거했습니다!
+        
         let legOffset = (isMoving && !isSwinging && frame === 0) ? sz*0.3 : 0; 
         let legSpread = 0;
         let bowStance = 0;
 
         if (isSwinging) {
             if (wpType === 'bow') {
-                bowStance = sz * 0.25; // 활 쏠 때 앞뒤로 다리를 벌리는 스탠스 적용
+                bowStance = isSide ? sz * 0.25 : sz * 0.1; 
             } else {
                 legSpread = charClass === 'knight' ? sz * 0.2 : (charClass === 'elf' ? sz * 0.1 : 0); 
+                if (!isSide) legSpread *= 0.5; 
             }
         }
         
         if (charClass !== 'wizard' && !isDeath) {
-            // 그라데이션 명암으로 다리 디테일 추가
             let legGrad = ctx.createLinearGradient(0, 0, 0, sz*0.8);
-            legGrad.addColorStop(0, '#222'); 
-            legGrad.addColorStop(1, '#4a4a4a');
+            legGrad.addColorStop(0, '#222'); legGrad.addColorStop(1, '#4a4a4a');
             ctx.fillStyle = legGrad; 
             
-            // 왼쪽 다리
             ctx.fillRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
             ctx.strokeRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
-            // 오른쪽 다리
             ctx.fillRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); 
             ctx.strokeRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); 
             
-            // 골반 / 벨트 라인 디테일
-            ctx.fillStyle = '#181818'; ctx.fillRect(-sz*0.3, 0, sz*0.6, sz*0.15);
-            ctx.fillStyle = '#d4af37'; ctx.fillRect(-sz*0.1, 0, sz*0.2, sz*0.15); // 금빛 벨트 버클
+            if (!isUp) {
+                ctx.fillStyle = '#181818'; ctx.fillRect(-sz*0.3, 0, sz*0.6, sz*0.15);
+                ctx.fillStyle = '#d4af37'; ctx.fillRect(-sz*0.1, 0, sz*0.2, sz*0.15);
+            }
         } else if (charClass === 'wizard' && !isDeath) {
             ctx.fillStyle = '#222';
             ctx.fillRect(-sz*0.25 - legSpread, sz*0.6, sz*0.2, sz*0.2 - legOffset); 
@@ -516,38 +684,45 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
 
         if (eq && eq.weapon) {
             ctx.save();
-            let shoulderX = sz * 0.1; let shoulderY = -sz * 0.5; let armAngle = 0; let swordAbsAngle = 0; let armLen = sz * 0.5;
+            let shoulderX = isSide ? sz * 0.1 : (isDown ? -sz * 0.4 : sz * 0.4); 
+            let shoulderY = -sz * 0.5; 
+            let armAngle = 0; let swordAbsAngle = 0; let armLen = sz * 0.5;
 
             if (isSwinging) {
                 if (wpType === 'bow') {
                     armLen = sz * 0.6;
                     if (t < 0.5) {
-                        let phase = t / 0.5; armAngle = (-Math.PI / 6) * (1 - phase) + (-Math.PI / 2) * phase; swordAbsAngle = (0) * (1 - phase) + (Math.PI / 2) * phase; shoulderX = sz * 0.1 + (sz * 0.2 * phase);
+                        let phase = t / 0.5; 
+                        armAngle = (-Math.PI / 6) * (1 - phase) + (-Math.PI / 2) * phase; 
+                        swordAbsAngle = (0) * (1 - phase) + (Math.PI / 2) * phase; 
+                        shoulderX = (isSide ? sz * 0.1 : shoulderX) + (sz * 0.2 * phase);
                     } else {
-                        let phase = (t - 0.5) / 0.5; armAngle = (-Math.PI / 2) * (1 - phase) + (-Math.PI / 6) * phase; swordAbsAngle = (Math.PI / 2) * (1 - phase) + (0) * phase; shoulderX = sz * 0.3 * (1 - phase);
+                        let phase = (t - 0.5) / 0.5; 
+                        armAngle = (-Math.PI / 2) * (1 - phase) + (-Math.PI / 6) * phase; 
+                        swordAbsAngle = (Math.PI / 2) * (1 - phase) + (0) * phase; 
+                        shoulderX = (isSide ? sz * 0.3 : shoulderX) * (1 - phase);
                     }
                 } else if (charClass === 'knight') {
                     let idleArm = Math.PI / 8, idleSword = -Math.PI * 0.75; armLen = sz * 0.6;
-                    if (t < 0.2) { armAngle = -Math.PI * 0.7; swordAbsAngle = -Math.PI * 0.2; shoulderX = sz * 0.1; shoulderY = -sz * 0.6; } 
-                    else if (t < 0.5) { armAngle = Math.PI / 4; swordAbsAngle = Math.PI * 0.7; shoulderX = sz * 0.3; shoulderY = -sz * 0.4; } 
-                    else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI / 4) * (1 - p*p) + idleArm * (p*p); swordAbsAngle = (Math.PI * 0.7) * (1 - p*p) + idleSword * (p*p); shoulderX = sz * 0.2; }
+                    if (t < 0.2) { armAngle = -Math.PI * 0.7; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } 
+                    else if (t < 0.5) { armAngle = Math.PI / 4; swordAbsAngle = Math.PI * 0.7; shoulderY = -sz * 0.4; } 
+                    else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI / 4) * (1 - p*p) + idleArm * (p*p); swordAbsAngle = (Math.PI * 0.7) * (1 - p*p) + idleSword * (p*p); }
                 } else if (charClass === 'elf') {
                     let idleArm = Math.PI / 8, idleSword = -Math.PI * 0.75; armLen = sz * 0.6;
-                    if (t < 0.2) { armAngle = 0; swordAbsAngle = -Math.PI * 0.3; shoulderX = 0; shoulderY = -sz * 0.5; } 
-                    else if (t < 0.5) { armAngle = -Math.PI * 0.3; swordAbsAngle = Math.PI * 0.55; shoulderX = sz * 0.4; shoulderY = -sz * 0.5; } 
-                    else { let p = (t - 0.5) / 0.5; armAngle = (-Math.PI * 0.3) * (1 - p) + idleArm * p; swordAbsAngle = (Math.PI * 0.55) * (1 - p) + idleSword * p; shoulderX = sz * 0.1; }
+                    if (t < 0.2) { armAngle = 0; swordAbsAngle = -Math.PI * 0.3; shoulderY = -sz * 0.5; } 
+                    else if (t < 0.5) { armAngle = -Math.PI * 0.3; swordAbsAngle = Math.PI * 0.55; shoulderY = -sz * 0.5; } 
+                    else { let p = (t - 0.5) / 0.5; armAngle = (-Math.PI * 0.3) * (1 - p) + idleArm * p; swordAbsAngle = (Math.PI * 0.55) * (1 - p) + idleSword * p; }
                 } else if (charClass === 'wizard') {
                     let idleArm = Math.PI / 6, idleSword = -Math.PI * 0.4; armLen = sz * 0.5;
-                    if (t < 0.2) { armAngle = -Math.PI * 0.2; swordAbsAngle = -Math.PI * 0.2; shoulderX = sz * 0.1; shoulderY = -sz * 0.6; } 
-                    else if (t < 0.5) { armAngle = Math.PI * 0.1; swordAbsAngle = -Math.PI * 0.6; shoulderX = sz * 0.2; shoulderY = -sz * 0.5; } 
+                    if (t < 0.2) { armAngle = -Math.PI * 0.2; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } 
+                    else if (t < 0.5) { armAngle = Math.PI * 0.1; swordAbsAngle = -Math.PI * 0.6; shoulderY = -sz * 0.5; } 
                     else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI * 0.1) * (1 - p) + idleArm * p; swordAbsAngle = (-Math.PI * 0.6) * (1 - p) + idleSword * p; }
                 }
             } else {
-                if (wpType === 'bow') { armAngle = -Math.PI / 6; swordAbsAngle = 0; shoulderX = sz * 0.1; } 
+                if (wpType === 'bow') { armAngle = -Math.PI / 6; swordAbsAngle = 0; } 
                 else if (wpType === 'staff') { armAngle = Math.PI / 6; swordAbsAngle = -Math.PI * 0.4; } 
                 else { armAngle = Math.PI / 8; swordAbsAngle = -Math.PI * 0.75; }
                 
-                // 💡 [개선] 마법사 지팡이(staff) 이동 시 흔들림(sway)을 0.05에서 0.015로 대폭 축소
                 if (isMoving && wpType !== 'bow') { 
                     let sway = (wpType === 'staff') ? 0.015 : 0.05;
                     armAngle += Math.sin(timestamp / 150) * (sway * 2); 
@@ -594,6 +769,12 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
             }
             ctx.restore();
         }
+
+        // 🌟 망토 레이어 2 (뒷모습일 때 몸, 팔, 다리, 무기 등 "모든 것"을 화면 앞으로 완벽히 덮어줌)
+        if (isUp && !isDeath && eq && eq.cloak) {
+            drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
+        }
+
     } finally {
         ctx.restore();
     }
@@ -1887,15 +2068,27 @@ ctx.strokeText(pName, Math.round(player.x), Math.round(player.y - player.size - 
             }
             else if (p.type === 'lightning') { 
                 if (progress % 0.2 < 0.12) {
+                    let r = p.size || 90; // 콜 라이트닝은 작게, 라이트닝 스톰은 크게 적용
                     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 7; ctx.shadowBlur = 35; ctx.shadowColor = '#00ffff';
-                    ctx.beginPath(); ctx.moveTo(0, -800);
-                    let lx = 0, ly = -800;
-                    for(let k=0; k<7; k++) {
-                        lx += (Math.random() - 0.5) * 80; ly += 110;
-                        ctx.lineTo(lx, ly);
+                    
+                    // 스톰같이 반경이 크면 번개를 3갈래로 내리침
+                    let boltCount = r > 150 ? 3 : 1; 
+                    
+                    for(let b = 0; b < boltCount; b++) {
+                        let offsetX = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.8) : 0;
+                        let offsetY = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.3) : 0;
+                        
+                        ctx.beginPath(); ctx.moveTo(offsetX, -800);
+                        let lx = offsetX, ly = -800;
+                        for(let k=0; k<7; k++) {
+                            lx += (Math.random() - 0.5) * 80; ly += 110;
+                            ctx.lineTo(lx, ly);
+                        }
+                        ctx.lineTo(offsetX, offsetY); ctx.stroke();
                     }
-                    ctx.lineTo(0, 0); ctx.stroke();
-                    let ringR = 90 * easeOut;
+                    
+                    // 범위 링 표시
+                    let ringR = r * easeOut;
                     ctx.strokeStyle = '#88ffff'; ctx.lineWidth = 4.5;
                     ctx.beginPath(); ctx.ellipse(0, 0, ringR, ringR * 0.4, 0, 0, Math.PI * 2); ctx.stroke();
                 }
@@ -2681,6 +2874,7 @@ canvas.addEventListener('pointerdown', (e) => {
     handleInput(e.clientX, e.clientY, e.button); 
 });
 
+let touchTimer = null;
 canvas.addEventListener('touchstart', (e) => { 
     e.preventDefault(); 
     if(!gameStarted) return; 
@@ -2691,11 +2885,20 @@ canvas.addEventListener('touchstart', (e) => {
     if(cy > window.innerHeight - uiHeight) return; 
     
     let now = performance.now();
-    if (now - lastTouchHandledTime < 120) return; // 💡 120ms 내 중복 터치 무시
+    if (now - lastTouchHandledTime < 120) return; 
     lastTouchHandledTime = now;
 
     let pos = getWorldPos(cx, cy);
-    let clickedSummon = entities.find(ent => ent.map === currentMap && ent.isSummon && ent.owner === player && Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size||20)+10);
+    
+    // 💡 [핵심 수정] 타 플레이어 길게 터치 시 파티 초대 메뉴 팝업 (터치 범위 30 -> 65로 대폭 상향)
+    let targetPlayer = entities.find(ent => ent.map === currentMap && ent.isPlayer && ent.id !== (window.currentUser ? window.currentUser.id : null) && Math.hypot(ent.x - pos.x, ent.y - pos.y) < 65);
+    if (targetPlayer) {
+        touchTimer = setTimeout(() => { window.showPartyMenu(targetPlayer); }, 500);
+        return;
+    }
+
+    // 소환수 터치 범위도 10 -> 30으로 상향
+    let clickedSummon = entities.find(ent => ent.map === currentMap && ent.isSummon && ent.owner === player && Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size||20)+30);
     if(clickedSummon) {
         if (!player.autoHunt) player.target = clickedSummon; 
         player.moveX = undefined; 
@@ -2707,11 +2910,18 @@ canvas.addEventListener('touchstart', (e) => {
     }
 }, {passive: false});
 
+// 터치 이동 시 길게 누르기 취소
+canvas.addEventListener('touchmove', () => { clearTimeout(touchTimer); });
+canvas.addEventListener('touchend', () => { clearTimeout(touchTimer); });
+
+// 🌟 [교체] PC(마우스) 우클릭 시 파티원 선택 범위 대폭 상향
 canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault(); if (!gameStarted) return;
     let rect = canvas.getBoundingClientRect(); let cx = e.clientX - rect.left; let cy = e.clientY - rect.top;
     let pos = getWorldPos(cx, cy);
-    let targetEntity = entities.find(ent => ent.map === currentMap && Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size||20) + 15);
+    
+    // 💡 [핵심 수정] 우클릭 시 캐릭터 인식 반경 +15 -> +45 로 대폭 상향
+    let targetEntity = entities.find(ent => ent.map === currentMap && Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size||20) + 45);
     
     if (targetEntity && targetEntity.isPlayer && targetEntity.id !== currentUser.id) {
         if (typeof showPartyMenu === 'function') {
@@ -2725,7 +2935,6 @@ canvas.addEventListener('contextmenu', (e) => {
         else { addMessage(`[대상 정보] 이름: ${targetEntity.name || '몬스터'}, HP: ${targetEntity.hp}/${targetEntity.maxHp}, 공격력: ${targetEntity.atk || 0}`, '#ff0'); }
     }
 });
-
 canvas.addEventListener('touchend', () => { clearTimeout(touchTimer); });
 canvas.addEventListener('touchmove', () => { clearTimeout(touchTimer); });
 window.addEventListener('contextmenu', e => e.preventDefault());
@@ -3025,72 +3234,88 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
     }
 
 // ========================================================
-    // 12. 타겟 추적 이동 및 공격 실행 (모든 원거리 클래스 공통 카이팅 적용)
-    // ========================================================
-    if (target && typeof target.y === 'number' && target.hp > 0 && !target.isDead) {
-        if (target.isSummon && target.owner === player) {
-            player.isMoving = false;
-        } 
-        else if (typeof isInSafeZone === 'function' && isInSafeZone(currentMap, target.x, target.y)) {
-            player.target = null;
+// 12. 타겟 추적 이동 및 공격 실행 (모든 원거리 클래스 공통 카이팅 적용)
+// ========================================================
+if (target && typeof target.y === 'number' && target.hp > 0 && !target.isDead) {
+    if (target.isSummon && target.owner === player) {
+        player.isMoving = false;
+    } 
+    else if (typeof isInSafeZone === 'function' && isInSafeZone(currentMap, target.x, target.y)) {
+        player.target = null;
+    } else {
+        let dist = Math.hypot(target.x - player.x, target.y - player.y);
+        let isBow = Boolean(player.equip.weapon && player.equip.weapon.isBow);
+        let isWizard = player.charClass === 'wizard';
+        let isRangedAttacker = isBow || isWizard;
+
+        let baseMeleeRange = 65;
+        let atkRange = isRangedAttacker ? 280 : ((target.size || 20) + baseMeleeRange);
+        
+        // 💡 [수정] 화면 구석 공격 시 끼임 현상 완벽 방지
+        // 단순히 거리(450)로 체크하는 것이 아니라, 카메라(화면) 안쪽 80px 까지 확실히 들어왔는지 검사
+        let isFullyOnScreen = true;
+        if (typeof isEntityOnScreen === 'function') {
+            let zoom = ZOOM || 0.72;
+            let uiBar = document.getElementById('ui-bottom-bar');
+            let uiHeight = uiBar ? uiBar.offsetHeight : 165;
+            let safeHalfW = (window.innerWidth / zoom) / 2 - 80; 
+            let safeHalfH = ((window.innerHeight - uiHeight) / zoom) / 2 - 80;
+            isFullyOnScreen = Math.abs(target.x - player.x) < safeHalfW && Math.abs(target.y - player.y) < safeHalfH;
         } else {
-            let dist = Math.hypot(target.x - player.x, target.y - player.y);
-            let isBow = Boolean(player.equip.weapon && player.equip.weapon.isBow);
-            let isWizard = player.charClass === 'wizard';
-            let isRangedAttacker = isBow || isWizard;
+            isFullyOnScreen = dist < 350;
+        }
 
-            let baseMeleeRange = 65;
-            let atkRange = isRangedAttacker ? 280 : ((target.size || 20) + baseMeleeRange);
-            let onScreen = typeof isEntityOnScreen === 'function' ? isEntityOnScreen(target) : (dist < 450);
-            let isManualMoving = performance.now() < (player.manualOverrideUntil || 0);
+        let isManualMoving = performance.now() < (player.manualOverrideUntil || 0);
 
-            // 🏹 [1] 원거리 공통 스마트 카이팅 및 접근 이동 (수동 조작 중이 아닐 때)
-            if (!isManualMoving) {
-                // 💡 적이 150px 이내로 근접하면 요정과 마법사 모두 반대 방향으로 후퇴
-                if (isRangedAttacker && dist < 150) {
-                    let fleeAngle = Math.atan2(player.y - target.y, player.x - target.x);
-                    let targetSpotX = player.x + Math.cos(fleeAngle) * 120;
-                    let targetSpotY = player.y + Math.sin(fleeAngle) * 120;
+        // 🏹 [1] 원거리 공통 스마트 카이팅 및 접근 이동 (수동 조작 중이 아닐 때)
+        if (!isManualMoving) {
+            // 적이 150px 이내로 근접하면 요정과 마법사 모두 반대 방향으로 후퇴
+            if (isRangedAttacker && dist < 150) {
+                let fleeAngle = Math.atan2(player.y - target.y, player.x - target.x);
+                let targetSpotX = player.x + Math.cos(fleeAngle) * 120;
+                let targetSpotY = player.y + Math.sin(fleeAngle) * 120;
 
-                    player.moveX = Math.max(100, Math.min(mapSize - 100, targetSpotX));
-                    player.moveY = Math.max(100, Math.min(mapSize - 100, targetSpotY));
-                    player.isMoving = true;
-                }
-                // 사거리 밖이면 적에게 접근
-                else if (dist > atkRange - 10) {
-                    let charAngle = Math.atan2(target.y - player.y, target.x - player.x);
-                    let stopOffset = isRangedAttacker ? 210 : ((target.size || 20) + 25);
-                    player.moveX = target.x - Math.cos(charAngle) * stopOffset;
-                    player.moveY = target.y - Math.sin(charAngle) * stopOffset;
-                    player.isMoving = true;
-                } 
-                // 적정 사거리 유지 시 제자리에서 공격
-                else {
-                    player.isMoving = false;
-                    player.moveX = undefined;
-                    player.moveY = undefined;
-                }
+                player.moveX = Math.max(100, Math.min(mapSize - 100, targetSpotX));
+                player.moveY = Math.max(100, Math.min(mapSize - 100, targetSpotY));
+                player.isMoving = true;
             }
+            // 💡 [핵심] 사거리 밖이거나, 사거리 안이더라도 몬스터가 화면에 완전히 들어오지 않았으면 계속 접근!
+            else if (dist > atkRange - 10 || !isFullyOnScreen) {
+                let charAngle = Math.atan2(target.y - player.y, target.x - player.x);
+                let stopOffset = isRangedAttacker ? 210 : ((target.size || 20) + 25);
+                player.moveX = target.x - Math.cos(charAngle) * stopOffset;
+                player.moveY = target.y - Math.sin(charAngle) * stopOffset;
+                player.isMoving = true;
+            } 
+            // 적정 사거리 유지 + 화면 안에 완전히 들어왔을 때 제자리에서 공격
+            else {
+                player.isMoving = false;
+                player.moveX = undefined;
+                player.moveY = undefined;
+            }
+        }
 
-            // 🏹 [2] 사거리 내 타격 및 스킬 실행
-            let timeSinceLastAtk = timestamp - (player.lastAttack || 0);
+        // 🏹 [2] 사거리 내 타격 및 스킬 실행
+        let timeSinceLastAtk = timestamp - (player.lastAttack || 0);
 
-            if (dist <= atkRange && onScreen && timeSinceLastAtk > atkDelay) {
-                player.lastAttack = timestamp;
-                player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+        if (dist <= atkRange && isFullyOnScreen && timeSinceLastAtk > atkDelay) {
+            player.lastAttack = timestamp;
+            player.angle = Math.atan2(target.y - player.y, target.x - player.x);
+            
+            let isFury = (player.charClass === 'knight' && performance.now() < (player.furyUntil || 0));
+            let baseAtk = player.atk;
+
+            // 🔮 [A] 마법사: 자동 마법 시전
+            if (isWizard) {
+                let chosenSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
                 
-                let isFury = (player.charClass === 'knight' && performance.now() < (player.furyUntil || 0));
-                let baseAtk = player.atk;
-
-                // 🔮 [A] 마법사: 자동 마법 시전
-                if (isWizard) {
-                    let chosenSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
-                    if (!chosenSpell) {
-                        chosenSpell = (player.magic && player.magic.find(m => magicDb[m] && (magicDb[m].type === 'attack' || magicDb[m].dmg))) || '에너지 볼트';
-                    }
-                    if (chosenSpell && typeof castAttackSpell === 'function') {
-                        castAttackSpell(target, chosenSpell, player);
-                    }
+                if (chosenSpell && typeof castAttackSpell === 'function') {
+                    castAttackSpell(target, chosenSpell, player);
+                } else {
+                    // 💡 [수정] 마법사가 공격 마법이 없거나 마나가 부족하면 아무것도 하지 않음.
+                    // 지팡이 평타 모션을 삭제하여, 이럽션 등이 터지거나 적에게 달려가는 것을 원천 차단함.
+                }
+            
                 }
                 // 🏹 [B] 요정 (활 공격 + 카이팅 스택 + 화살비 + 스톰 블레이드)
                 else if (isBow) {
@@ -3441,6 +3666,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
     }
 
    // ========================================================
+// ========================================================
 // 16. 발밑 근접 아이템 습득 처리
 // ========================================================
 if (typeof items !== 'undefined' && Array.isArray(items)) {
@@ -3450,6 +3676,10 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
         // 💡 [자동사냥 중]: 타겟팅된 아이템이거나, 등급 필터를 만족하는 발밑 아이템만 루팅
         nearbyItem = player.targetItem || items.find(it => {
             if (!it || (it.map && it.map !== currentMap)) return false;
+            
+            // 👉 [여기에 추가됨] 내가 방금(3000ms 이내) 버린 아이템은 무시
+            if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
+            
             let itemGrade = (typeof it.grade === 'number') ? it.grade : 0;
             let isAlwaysLoot = ['scroll', 'book', 'potion', 'currency'].includes(it.type);
             let minGrade = (typeof gameOptions !== 'undefined' && gameOptions.minLootGrade) || 0;
@@ -3459,7 +3689,14 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
         });
     } else {
         // 💡 [수동 조작 중]: 등급 필터 없이 발밑(35px 이내)을 지나가는 모든 아이템 획득
-        nearbyItem = items.find(it => it && (it.map === currentMap || !it.map) && Math.hypot(it.x - player.x, it.y - player.y) <= 35);
+        nearbyItem = items.find(it => {
+            if (!it || (it.map && it.map !== currentMap)) return false;
+            
+            // 👉 [여기에 추가됨] 내가 방금(3000ms 이내) 버린 아이템은 무시
+            if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
+            
+            return Math.hypot(it.x - player.x, it.y - player.y) <= 35;
+        });
     }
 
     if (nearbyItem && Math.hypot(nearbyItem.x - player.x, nearbyItem.y - player.y) <= 35) {
@@ -3731,7 +3968,12 @@ window.socket.on('sync_player_magic', (data) => {
     } else if (mName === '선버스트' || mName === '파이어볼' || mName === '이럽션') {
         particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'explosion', size: 180, color: mName === '파이어볼' ? '#ff4400' : '#ffffaa' });
         if (typeof playSound === 'function') playSound('fireball');
-    } else if (mName === '라이트닝 스톰' || mName === '콜 라이트닝') {
+    
+    // 👇 [수정됨] 라이트닝 스톰은 size: 250의 대형으로, 콜 라이트닝은 size: 100 소형으로 분리
+    } else if (mName === '라이트닝 스톰') {
+        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'lightning', size: 250 });
+        if (typeof playSound === 'function') playSound('lightning');
+    } else if (mName === '콜 라이트닝') {
         particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'lightning', size: 100 });
         if (typeof playSound === 'function') playSound('lightning');
     } else if (mName === '트리플 애로우') {
@@ -5258,4 +5500,106 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 
+// 🌟 [최종 완성] 사냥 ON + 붉은 테두리 선택 시에만 딜레이 없이 즉시 작동하는 오토 버프/마법 시스템
+window.processAutoConsumablesAndBuffs = function() {
+    if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
+    let now = performance.now();
 
+    // 1. 물약 자동 복용 (물약 ON 버튼이 켜져 있을 때만 작동)
+    if (player.autoPotion) {
+        if (player.hp < currentMaxHp * 0.50) { 
+            let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
+            if (hpPot) window.useItem(getStackKey(hpPot));
+        }
+        if (player.mp < currentMaxMp * 0.35) { 
+            let mpPot = player.inv.find(it => it && it.type === 'potion' && it.name.includes('파란'));
+            if (mpPot) window.useItem(getStackKey(mpPot));
+        }
+
+        const autoDrinkBuff = (potKeyword, buffKeyList) => {
+            let b = null;
+            if (player.buffs) {
+                for (let k of buffKeyList) {
+                    if (player.buffs[k] && player.buffs[k].expire > now) {
+                        b = player.buffs[k];
+                        break;
+                    }
+                }
+            }
+            if (!b || (b.expire - now <= 3000)) {
+                let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(potKeyword));
+                if (pot) window.useItem(getStackKey(pot));
+            }
+        };
+
+        autoDrinkBuff('초록', ['가속(헤이스트)', '초록물약']);
+        if (player.charClass === 'knight' || player.charClass === 'royal') autoDrinkBuff('용기', ['용기물약']);
+        if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
+    }
+
+    // 💡 [규칙 1] 자동사냥(ON)이 꺼져있으면 퀵슬롯 스킬 사용 중지
+    if (!player.autoHunt) return;
+
+    // 💡 [규칙 2] 퀵슬롯에 등록된 마법 검사 (자동사냥 ON + 빨간 테두리 선택된 경우에만 작동)
+    if (window.hotkeys && Array.isArray(window.hotkeys)) {
+        window.hotkeys.forEach((hk, idx) => {
+            if (!hk || hk.type !== 'magic') return;
+            
+            // 퀵슬롯이 활성화(빨간 테두리) 상태인지 확인 (안전한 타입 변환 포함)
+            if (!player.activeSpellSlots || !player.activeSpellSlots.some(slotIdx => Number(slotIdx) === Number(idx))) return;
+            
+            let rawId = hk.id || '';
+            let cleanMagicName = rawId.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
+            let matchedKey = Object.keys(magicDb).find(k => k === rawId || k === cleanMagicName || rawId.includes(k));
+
+            let mData = matchedKey ? magicDb[matchedKey] : null;
+            if (!mData) return;
+
+            let actualMagicName = matchedKey;
+            player.lastAutoSkillTime = player.lastAutoSkillTime || {};
+            let cd = mData.cd || 1200; 
+
+            // 🔮 [버프 / 힐 / 특수 마법 자동 시전]
+            if (mData.type === 'buff' || mData.heal || actualMagicName === '블러드 투 소울') {
+                let needsBuff = false;
+
+                if (actualMagicName === '블러드 투 소울') {
+                    needsBuff = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
+                    cd = 1500;
+                } else if (mData.heal) {
+                    needsBuff = (player.hp < currentMaxHp * 0.75); 
+                    cd = 1000;
+                } else if (mData.buffType) {
+                    let buffKey = actualMagicName;
+                    if (buffKey.includes('가속') || buffKey.includes('초록') || buffKey === '윈드 워크') buffKey = '가속(헤이스트)';
+                    let b = player.buffs && player.buffs[buffKey];
+                    needsBuff = !b || (b.expire - now <= 3000); 
+                } else {
+                    needsBuff = true; 
+                }
+
+                if (needsBuff && player.mp >= (mData.mp || 0) && (now - (player.lastAutoSkillTime[actualMagicName] || 0) > cd)) {
+                    player.lastAutoSkillTime[actualMagicName] = now;
+                    if (typeof window.castBuff === 'function') window.castBuff(actualMagicName, player); 
+                }
+            } 
+            // ⚔️ [공격 마법 자동 시전]
+            else if (mData.type === 'attack' || mData.dmg) {
+                if (player.target && player.target.hp > 0 && !player.target.isDead) {
+                    let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
+                    let allowedRange = (mData.range || 120) + (player.target.size || 20);
+                    
+                    if (dist <= allowedRange && player.mp >= mData.mp) {
+                        if (actualMagicName === '트리플 애로우') cd = 1000; 
+                        else if (actualMagicName === '쇼크 스턴') cd = 5000; 
+                        
+                        if (now - (player.lastAutoSkillTime[actualMagicName] || 0) > cd) {
+                            player.lastAutoSkillTime[actualMagicName] = now;
+                            if (typeof castAttackSpell === 'function') castAttackSpell(player.target, actualMagicName, player, true);
+                        }
+                    }
+                }
+            }
+        });
+    }
+};

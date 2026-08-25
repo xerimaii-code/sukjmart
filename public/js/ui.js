@@ -1053,11 +1053,11 @@ window.toggleAutoHunt = function() {
         player.moveX = undefined;
         player.moveY = undefined;
         
-        // 💡 [핵심 추가] 자동사냥을 끄면(사냥 OFF) 등록해 둔 자동 마법/스킬 세팅도 함께 해제하여 무한 발동 방지
-        player.activeSpellSlots = []; 
+        // 💡 [수정] 자동사냥을 꺼도 등록해둔 빨간테두리(버프 등)는 유지하도록 삭제 방지!
+        // player.activeSpellSlots = []; <-- 이 원흉 코드를 삭제했습니다.
         player.selectedManualSpell = null;
         
-        addMessage("수동 조작 모드 (자동 마법 세팅 해제됨)", '#aaa');
+        addMessage("수동 조작 모드 (자동 마법 설정 유지됨)", '#aaa');
     }
     updateUI();
 };
@@ -1110,62 +1110,52 @@ window.respawnPlayer = function() {
 // ==========================================
 // [5. 툴팁 & 단축키]
 // ==========================================
+function getBookColor(name) {
+    if(!name) return '#ffffff';
+    if(name.includes('기술서')) return '#f87171'; // 기사 빨간색
+    if(name.includes('정령의 수정')) return '#4ade80'; // 요정 초록색
+    if(name.includes('마법서')) return '#60a5fa'; // 마법사 파란색
+    return '#ffffff';
+}
+
 function getItemDetailsHTML(it, isEq) {
-    let dName = it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : (it.enchantValue && isEq ? `+${it.enchantValue} ${it.name}` : it.name);
-    let gIdx = it.grade || 0; 
-    let html = `<b class="tooltip-title grade-${gIdx}">${dName}</b><span style="font-size:12px; color:#aaa;">[${gradeNames[gIdx]}]</span><br>`; 
-    
-    // ★ [추가] 마법서(book)일 경우 배우기 위한 요구 레벨 표시
-    if (it.type === 'book') {
-        let reqLv = (it.grade || 0) * 15 + 1;
-        html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
-    }
+    let dName = it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : (it.enchantValue && isEq ? `+${it.enchantValue} ${it.name}` : it.name);
+    let gIdx = it.grade || 0; 
+    let titleColor = it.type === 'book' ? getBookColor(it.name) : gradeColors[gIdx] || '#fff';
+    
+    let html = `<b class="tooltip-title" style="color:${titleColor}">${dName}</b><span style="font-size:12px; color:#aaa; margin-left:5px;">[${gradeNames[gIdx]}]</span><br>`; 
+    
+    if (it.type === 'book') {
+        let reqLv = (it.grade || 0) * 15 + 1;
+        html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
+    }
 
-    let mrBonus = (it.type !== 'weapon' && it.enchantValue > 0) ? `<br><span style="color:#5cf;">마법 방어력(MR): +${it.enchantValue} (강화 보너스)</span>` : '';
+    if(it.atk) html += `공격력: ${it.atk}<br>`; 
+    if(it.def) html += `방어력: ${it.def}<br>`;
+    
+    // [수정 3] 숨겨진 상세 스탯 모두 표시
+    if(it.str) html += `<div style="color:#fff;">STR +${it.str}</div>`;
+    if(it.dex) html += `<div style="color:#fff;">DEX +${it.dex}</div>`;
+    if(it.int) html += `<div style="color:#fff;">INT +${it.int}</div>`;
+    if(it.hpBonus) html += `<div style="color:#f55;">최대 HP +${it.hpBonus}</div>`;
+    if(it.mpBonus) html += `<div style="color:#55f;">최대 MP +${it.mpBonus}</div>`;
+    if(it.hpRegen) html += `<div style="color:#f88;">HP 회복률 +${it.hpRegen}</div>`;
+    if(it.mpRegen) html += `<div style="color:#88f;">MP 회복률 +${it.mpRegen}</div>`;
+    if(it.sp) html += `<div style="color:#a855f7;">SP (마법공격력) +${it.sp}</div>`;
+    if(it.mr) html += `<div style="color:#5cf;">MR (마법방어력) +${it.mr}</div>`;
+    if(it.dmgReduct) html += `<div style="color:#fd0;">대미지 감소 +${it.dmgReduct}</div>`;
 
-    if(!isEq && it.type && !['potion','scroll', 'book'].includes(it.type)) { 
-        let cur = player.equip[it.type]; if(it.type==='ring') cur = player.equip.ring1; let diff = 0; 
-        if(it.type === 'weapon') { 
-            diff = it.atk - (cur ? cur.atk + (cur.enchantValue||0) : 0); 
-            html += `공격력: ${it.atk} ${diff>0?`<span class="compare-up">(▲${diff})</span>`:diff<0?`<span class="compare-down">(▼${-diff})</span>`:''}<br>`; 
-        } 
-        else { 
-            diff = it.def - (cur ? cur.def + (cur.enchantValue||0) : 0); 
-            html += `방어력: ${it.def} ${diff>0?`<span class="compare-up">(▲${diff})</span>`:diff<0?`<span class="compare-down">(▼${-diff})</span>`:''}${mrBonus}<br>`; 
-        } 
-    } else { 
-        if(it.atk) html += `공격력: ${it.atk}<br>`; 
-        if(it.def) html += `방어력: ${it.def}${mrBonus}<br>`; 
-    }
-    
-    if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
-    if(it.desc) html += `<div class="tooltip-desc">${it.desc}</div>`; 
-   
-    if(it.magicOptions && it.magicOptions.length > 0) { html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; it.magicOptions.forEach(opt => { html += `<div class="tooltip-bonus">✨ ${opt}</div>`; }); html += `</div>`; } 
-    
-    if (isEq && it.type && !['potion','scroll','book'].includes(it.type)) {
-        let best = null;
-        player.inv.forEach(invIt => {
-            if(invIt.type === it.type) {
-                if(!best) best = invIt;
-                else {
-                    let invVal = (invIt.atk||0) + (invIt.def||0) + (invIt.enchantValue||0);
-                    let bestVal = (best.atk||0) + (best.def||0) + (best.enchantValue||0);
-                    if(invVal > bestVal) best = invIt;
-                }
-            }
-        });
-        if(best) {
-            let myVal = (it.atk||0) + (it.def||0) + (it.enchantValue||0);
-            let bestVal = (best.atk||0) + (best.def||0) + (best.enchantValue||0);
-            let diff = bestVal - myVal;
-            if(diff > 0) html += `<div style="color:#f55; font-size:12px; margin-top:6px; font-weight:bold; border-top:1px dashed #555; padding-top:5px;">⚠️ 가방에 더 좋은 장비 있음 (수치 ▲${diff})</div>`;
-        }
-    }
+    let mrBonus = (it.type !== 'weapon' && it.enchantValue > 0) ? `<br><span style="color:#5cf;">마법 방어력(MR): +${it.enchantValue} (강화 보너스)</span>` : '';
+    if (mrBonus) html += mrBonus;
 
-    let extra = getExtraDesc(it.name); if(extra) html += `<div class="tooltip-desc" style="color:#ada;">${extra}</div>`;
-    if (it.type === 'book' && it.magicName && magicDb[it.magicName] && magicDb[it.magicName].desc) { html += `<div class="tooltip-desc" style="color:#aaf; margin-top:6px; border-top:1px dashed #555; padding-top:5px;">${magicDb[it.magicName].desc}</div>`; }
-    return html;
+    if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
+    if(it.desc) html += `<div class="tooltip-desc">${it.desc}</div>`; 
+   
+    if(it.magicOptions && it.magicOptions.length > 0) { html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; it.magicOptions.forEach(opt => { html += `<div class="tooltip-bonus">✨ ${opt}</div>`; }); html += `</div>`; } 
+    
+    let extra = getExtraDesc(it.name); if(extra) html += `<div class="tooltip-desc" style="color:#ada;">${extra}</div>`;
+    if (it.type === 'book' && it.magicName && magicDb[it.magicName] && magicDb[it.magicName].desc) { html += `<div class="tooltip-desc" style="color:#aaf; margin-top:6px; border-top:1px dashed #555; padding-top:5px;">${magicDb[it.magicName].desc}</div>`; }
+    return html;
 }
 
 window.showTooltip = function(e, dataStr, isEq) { let it = JSON.parse(decodeURIComponent(dataStr)); let t = $('tooltip'); t.innerHTML = getItemDetailsHTML(it, isEq); t.style.display = 'block'; positionTooltip(e, t); };
@@ -1745,29 +1735,82 @@ function bindPromptButtons() { 
 // ==========================================
 // [8. 아이템 사용, 액션 모달 & 강화]
 // ==========================================
-window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) { 
-    e.stopPropagation(); hideTooltip(); 
-    let it = JSON.parse(decodeURIComponent(dataStr)); 
-    let hasMagic = (it.magicOptions && it.magicOptions.length > 0); 
-    selectedItemForAction = { isMagic: false, stackKey, itemName, count, itemType: it.type, hasMagic: hasMagic, magicOptions: it.magicOptions }; 
-    if($('action-modal-title')) $('action-modal-title').innerText = `아이템 관리 (${count}개)`; 
-    let dName = it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : (it.enchantValue ? `+${it.enchantValue} ${it.name}` : it.name);
-    let gIdx = it.grade || 0; 
-    let html = `<b class="tooltip-title grade-${gIdx}">${dName}</b><span style="font-size:12px; color:#aaa;">[${gradeNames[gIdx]}]</span><br>`; 
-    if(it.atk) html += `공격력: ${it.atk}<br>`; if(it.def) html += `방어력: ${it.def}<br>`;
-    if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
-    if(hasMagic) { 
-        html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; 
-        it.magicOptions.forEach((opt, idx) => { 
-            html += `<div class="tooltip-bonus flex justify-between items-center my-1">✨ ${opt} <button onclick="removeMagicOption('${stackKey}', ${idx})" class="text-red-500 bg-gray-800 px-2 rounded border border-gray-600 hover:bg-gray-700 font-bold ml-2">삭제</button></div>`; 
-        }); 
-        html += `</div>`; 
-    } 
-    let extra = getExtraDesc(it.name); if(extra) html += `<div class="tooltip-desc" style="color:#ada;">${extra}</div>`;
-    if($('action-modal-desc')) $('action-modal-desc').innerHTML = html; 
-    if($('btn-purge-magic')) $('btn-purge-magic').style.display = hasMagic ? 'block' : 'none'; 
-    if($('action-modal-item-mgmt')) $('action-modal-item-mgmt').style.display = 'flex'; 
-    if($('item-action-modal')) $('item-action-modal').style.display = 'flex'; 
+window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) { 
+    e.stopPropagation(); hideTooltip(); 
+    let it = JSON.parse(decodeURIComponent(dataStr)); 
+    let hasMagic = (it.magicOptions && it.magicOptions.length > 0); 
+    selectedItemForAction = { isMagic: false, stackKey, itemName, count, itemType: it.type, hasMagic: hasMagic, magicOptions: it.magicOptions }; 
+    if($('action-modal-title')) $('action-modal-title').innerText = `아이템 관리 (${count}개)`; 
+    
+    let dName = it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : (it.enchantValue ? `+${it.enchantValue} ${it.name}` : it.name);
+    let gIdx = it.grade || 0; 
+
+    // 책 종류에 따른 타이틀 색상
+    function getBookColor(name) {
+        if(!name) return '#ffffff';
+        if(name.includes('기술서')) return '#f87171';
+        if(name.includes('정령의 수정')) return '#4ade80';
+        if(name.includes('마법서')) return '#60a5fa';
+        return '#ffffff';
+    }
+
+    let titleColor = it.type === 'book' ? getBookColor(it.name) : (typeof gradeColors !== 'undefined' ? gradeColors[gIdx] : '#fff');
+    let gradeName = typeof gradeNames !== 'undefined' ? gradeNames[gIdx] : '';
+
+    let html = `<b class="tooltip-title" style="color:${titleColor}">${dName}</b><span style="font-size:12px; color:#aaa; margin-left:5px;">[${gradeName}]</span><br>`; 
+    
+    // 1. 마법서 요구 레벨 표시
+    if (it.type === 'book') {
+        let reqLv = (it.grade || 0) * 15 + 1;
+        html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
+    }
+
+    if(it.atk) html += `공격력: ${it.atk}<br>`; 
+    if(it.def) html += `방어력: ${it.def}<br>`;
+    
+    // 2. 모든 상세 스탯 표시
+    if(it.str) html += `<div style="color:#fff;">STR +${it.str}</div>`;
+    if(it.dex) html += `<div style="color:#fff;">DEX +${it.dex}</div>`;
+    if(it.int) html += `<div style="color:#fff;">INT +${it.int}</div>`;
+    if(it.hpBonus) html += `<div style="color:#f55;">최대 HP +${it.hpBonus}</div>`;
+    if(it.mpBonus) html += `<div style="color:#55f;">최대 MP +${it.mpBonus}</div>`;
+    if(it.hpRegen) html += `<div style="color:#f88;">HP 회복률 +${it.hpRegen}</div>`;
+    if(it.mpRegen) html += `<div style="color:#88f;">MP 회복률 +${it.mpRegen}</div>`;
+    if(it.sp) html += `<div style="color:#a855f7;">SP (마법공격력) +${it.sp}</div>`;
+    if(it.mr) html += `<div style="color:#5cf;">MR (마법방어력) +${it.mr}</div>`;
+    if(it.dmgReduct) html += `<div style="color:#fd0;">대미지 감소 +${it.dmgReduct}</div>`;
+
+    let mrBonus = (it.type !== 'weapon' && (it.enchantValue || 0) > 0) ? `<br><span style="color:#5cf;">마법 방어력(MR): +${it.enchantValue} (강화 보너스)</span>` : '';
+    if (mrBonus) html += mrBonus;
+
+    if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
+    if(it.desc) html += `<div class="tooltip-desc" style="color:#ccc; margin-top:4px;">${it.desc}</div>`;
+
+    // 3. 마법 옵션 (환상 주문서) 및 삭제 버튼
+    if(hasMagic) { 
+        html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; 
+        it.magicOptions.forEach((opt, idx) => { 
+            html += `<div class="tooltip-bonus" style="display:flex; justify-content:space-between; align-items:center; margin:2px 0;">
+                        <span>✨ ${opt}</span> 
+                        <button onclick="removeMagicOption('${stackKey}', ${idx})" style="color:#f88; background:#222; border:1px solid #555; border-radius:3px; padding:2px 6px; font-size:10px; font-weight:bold; cursor:pointer;">삭제</button>
+                     </div>`; 
+        }); 
+        html += `</div>`; 
+    } 
+    
+    // 4. 아이템 별 추가 설명
+    let extra = typeof getExtraDesc === 'function' ? getExtraDesc(it.name) : ''; 
+    if(extra) html += `<div class="tooltip-desc" style="color:#ada; margin-top:4px;">${extra}</div>`;
+    
+    // 마법서의 경우 발동 마법 효과 설명
+    if (it.type === 'book' && it.magicName && typeof magicDb !== 'undefined' && magicDb[it.magicName] && magicDb[it.magicName].desc) { 
+        html += `<div class="tooltip-desc" style="color:#aaf; margin-top:6px; border-top:1px dashed #555; padding-top:5px;">${magicDb[it.magicName].desc}</div>`; 
+    }
+
+    if($('action-modal-desc')) $('action-modal-desc').innerHTML = html; 
+    if($('btn-purge-magic')) $('btn-purge-magic').style.display = hasMagic ? 'block' : 'none'; 
+    if($('action-modal-item-mgmt')) $('action-modal-item-mgmt').style.display = 'flex'; 
+    if($('item-action-modal')) $('item-action-modal').style.display = 'flex'; 
 };
 
 window.hideItemActionModal = function() { if($('item-action-modal')) $('item-action-modal').style.display = 'none'; hideTooltip(); };
@@ -1838,23 +1881,29 @@ window.execItemAction = function(action) { 
     } 
 };
 
-function handleItemRemoval(stackKey, qty, action) { 
-    let remainingToRemove = qty; let lastItem = null;
-    for(let i = player.inv.length - 1; i >= 0; i--) { 
-        if(getStackKey(player.inv[i]) === stackKey) { 
-            lastItem = player.inv[i];
-            if (lastItem.count && lastItem.count > remainingToRemove) { lastItem.count -= remainingToRemove; remainingToRemove = 0; break; } 
-            else if (lastItem.count) { remainingToRemove -= lastItem.count; player.inv.splice(i, 1); } 
-            else { player.inv.splice(i, 1); remainingToRemove--; }
-            if(remainingToRemove <= 0) break; 
-        } 
-    } 
-    if(qty > remainingToRemove && lastItem) { 
-        let actualRemoved = qty - remainingToRemove;
-        if(action === 'drop') { items.push({ ...lastItem, count: actualRemoved, x: player.x + (Math.random()*40-20), y: player.y + (Math.random()*40-20), map: currentMap, droppedTime: performance.now() }); addMessage(`${lastItem.name} ${actualRemoved}개를 땅에 버렸습니다.`, '#aaa'); } 
-        else { addMessage(`${lastItem.name} ${actualRemoved}개를 영구적으로 파괴했습니다.`, '#f55'); } 
-        playSound('click'); updateUI(); 
-    } 
+function handleItemRemoval(stackKey, qty, action) { 
+    let remainingToRemove = qty; let lastItem = null;
+    for(let i = player.inv.length - 1; i >= 0; i--) { 
+        if(getStackKey(player.inv[i]) === stackKey) { 
+            lastItem = player.inv[i];
+            if (lastItem.count && lastItem.count > remainingToRemove) { lastItem.count -= remainingToRemove; remainingToRemove = 0; break; } 
+            else if (lastItem.count) { remainingToRemove -= lastItem.count; player.inv.splice(i, 1); } 
+            else { player.inv.splice(i, 1); remainingToRemove--; }
+            if(remainingToRemove <= 0) break; 
+        } 
+    } 
+    if(qty > remainingToRemove && lastItem) { 
+        let actualRemoved = qty - remainingToRemove;
+        if(action === 'drop') { 
+            // [수정 4] 땅에 버릴 때 현재 위치보다 60~80px 멀리 버리고, 드랍 시간과 주인을 기록
+            let dropX = Math.max(50, Math.min(mapSize - 50, player.x + (Math.random()*120 - 60)));
+            let dropY = Math.max(50, Math.min(mapSize - 50, player.y + (Math.random()*120 - 60)));
+            items.push({ ...lastItem, count: actualRemoved, x: dropX, y: dropY, map: currentMap, droppedTime: Date.now(), dropperId: window.socket ? window.socket.id : 'me' }); 
+            addMessage(`${lastItem.name} ${actualRemoved}개를 땅에 버렸습니다.`, '#aaa'); 
+        } 
+        else { addMessage(`${lastItem.name} ${actualRemoved}개를 영구적으로 파괴했습니다.`, '#f55'); } 
+        playSound('click'); updateUI(); 
+    } 
 }
 
 let itemClickTimer = null;
@@ -2287,14 +2336,24 @@ function renderShopList(npcId, tab) {
         wares.forEach(w => { 
             let dStr = encodeURIComponent(JSON.stringify(w)).replace(/'/g, "%27"); 
             let iconHtml = getItemIcon(w); 
-            let sName = w.dispName || w.name; 
             let sPrice = w.dispPrice || w.price; 
             
+            // [수정 5 & 6] 배운 스킬 확인 및 색상 지정
+            let isLearned = false;
+            if (w.type === 'book' && player.magic && player.magic.includes(w.magicName)) {
+                isLearned = true;
+            }
+            
+            let nameColor = w.type === 'book' ? getBookColor(w.name) : '#ffffff';
+            let sName = w.dispName || w.name;
+            let learnedTag = isLearned ? `<span style="color:#f55; font-size:10px; margin-left:4px;">[습득완료]</span>` : '';
+            let opacity = isLearned ? '0.5' : '1.0';
+
             html += `
-            <div class="shop-row">
-                <div class="shop-item-info" oncontextmenu="showTooltip(event, '${dStr}', false); return false;" onmouseenter="if(window.innerWidth >= 768) showTooltip(event, '${dStr}', false)" onmouseleave="hideTooltip()">
+            <div class="shop-row" style="opacity: ${opacity};">
+                <div class="shop-item-info" onclick="showTooltip(event, '${dStr}', false)">
                     <span class="shop-item-icon">${iconHtml}</span>
-                    <span class="shop-item-name">${sName}</span>
+                    <span class="shop-item-name" style="color: ${nameColor} !important;">${sName}${learnedTag}</span>
                     <span class="shop-item-price">(${sPrice.toLocaleString()} A)</span>
                 </div>
                 <div class="shop-item-btns">
@@ -2302,7 +2361,10 @@ function renderShopList(npcId, tab) {
                     <button type="button" class="btn-shop-action" onclick="buyItemPrompt('${baseType}', '${w.name}')">수량</button>
                 </div>
             </div>`; 
-        }); 
+        });
+
+
+
     } else { 
         let counts = {}; 
         player.inv.forEach(it => { 
@@ -3824,92 +3886,6 @@ window.selectMercenary = function(mercId) {
 };
 
 
-window.processAutoConsumablesAndBuffs = function() {
-    if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
-    let now = performance.now();
-
-    // 1. 물약 자동 복용 (사냥 OFF여도 동작)
-    if (player.autoPotion) {
-        if (player.hp < currentMaxHp * 0.50) { 
-            let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
-            if (hpPot) useItem(getStackKey(hpPot));
-        }
-        if (player.mp < currentMaxMp * 0.35) { 
-            let mpPot = player.inv.find(it => it && it.type === 'potion' && it.name.includes('파란'));
-            if (mpPot) useItem(getStackKey(mpPot));
-        }
-
-        const autoDrinkBuff = (potKeyword, buffKeyList) => {
-            let b = null;
-            if (player.buffs) {
-                for (let k of buffKeyList) {
-                    if (player.buffs[k] && player.buffs[k].expire > now) {
-                        b = player.buffs[k];
-                        break;
-                    }
-                }
-            }
-            if (!b || (b.expire - now <= 3000)) {
-                let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(potKeyword));
-                if (pot) useItem(getStackKey(pot));
-            }
-        };
-
-        autoDrinkBuff('초록', ['가속(헤이스트)', '초록물약']);
-        if (player.charClass === 'knight' || player.charClass === 'royal') autoDrinkBuff('용기', ['용기물약']);
-        if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
-    }
-
-    // 💡 2. 자동 사냥(ON)이 아니면 절대 스킬이 자동으로 나가지 않도록 차단!
-    if (!player.autoHunt) return;
-
-    // 3. 퀵슬롯 공격 스킬 및 버프/힐 자동 시전
-    hotkeys.forEach((hk, idx) => {
-        if (!hk || hk.type !== 'magic') return;
-        
-        // 💡 [핵심 버그 수정] 더블클릭해서 빨간 테두리로 활성화 시킨(activeSpellSlots) 스킬만 나감!
-        if (!player.activeSpellSlots || !player.activeSpellSlots.includes(idx)) return;
-        
-        let mData = typeof magicDb !== 'undefined' ? magicDb[hk.id] : null;
-        if (!mData) return;
-
-        // 🔮 버프/힐 자동 시전 로직
-        if (mData.type === 'buff' || mData.heal) {
-            player.lastAutoSkillTime = player.lastAutoSkillTime || {};
-            let cd = mData.cd || 2000;
-            let needsBuff = false;
-
-            if (mData.heal) {
-                needsBuff = (player.hp < currentMaxHp * 0.7); // 체력 70% 미만 시 힐
-            } else if (mData.buffType) {
-                let b = player.buffs && player.buffs[hk.id];
-                needsBuff = !b || (b.expire - now <= 3000); // 지속시간 3초 전 리필
-            } else {
-                needsBuff = (now - (player.lastAutoSkillTime[hk.id] || 0) > cd);
-            }
-
-            if (needsBuff && player.mp >= mData.mp && (now - (player.lastAutoSkillTime[hk.id] || 0) > cd)) {
-                player.lastAutoSkillTime[hk.id] = now;
-                castBuff(hk.id, player);
-            }
-        } 
-        // ⚔️ 공격 마법 자동 시전 로직
-        else if (player.target && player.target.hp > 0 && !player.target.isDead) {
-            let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
-            let allowedRange = (mData.range || 120) + (player.target.size || 20);
-            
-            if (dist <= allowedRange && player.mp >= mData.mp) {
-                player.lastAutoSkillTime = player.lastAutoSkillTime || {};
-                let cd = mData.cd || 1200; 
-                
-                if (now - (player.lastAutoSkillTime[hk.id] || 0) > cd) {
-                    player.lastAutoSkillTime[hk.id] = now;
-                    castAttackSpell(player.target, hk.id, player);
-                }
-            }
-        }
-    });
-};
 
 
 document.addEventListener('DOMContentLoaded', () => {
