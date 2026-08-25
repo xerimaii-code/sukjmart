@@ -248,10 +248,9 @@ io.on('connection', (socket) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
         
-        // 💡 [핵심 수정] 시전자를 제외한 맵 내의 모든 파티원/유저에게 마법/기술 정보 브로드캐스트
         socket.to(mapId).emit('sync_player_magic', {
             casterId: payload.casterId || socket.id, 
-            magicName: payload.magicName, // 마법 및 기사 기술 이름 포함
+            magicName: payload.magicName, 
             targetX: payload.targetX,
             targetY: payload.targetY,
             targetId: payload.targetId,
@@ -277,7 +276,6 @@ io.on('connection', (socket) => {
         let p = players[socket.id];
         if (!p) return;
 
-        // 💡 [핵심] 동일한 타겟이면 무시하여 서버 렉/다운 원천 차단
         if (p.targetId === payload.targetId) return;
         p.targetId = payload.targetId; 
 
@@ -324,9 +322,8 @@ io.on('connection', (socket) => {
 
         let actualAttackerId = payload.attackerId || socket.id;
 
-        // 💡 [핵심 추가] 플레이어뿐만 아니라 용병이 공격할 때도 맵 전체에 액션 모션 브로드캐스트[cite: 9]
         io.to(p.map).emit('sync_player_action', {
-            socketId: actualAttackerId, // 용병 ID 혹은 플레이어 소켓 ID 전송[cite: 9]
+            socketId: actualAttackerId, 
             angle: p.angle || 0,
             targetId: payload.targetId,
             targetX: monster.x,
@@ -355,7 +352,6 @@ io.on('connection', (socket) => {
         }
 
         monster.damageMap = monster.damageMap || {};
-        // 💡 [수정] 중복 선언되었던 두 번째 let 선언부를 제거하고 기존 변수 활용
         monster.damageMap[actualAttackerId] = (monster.damageMap[actualAttackerId] || 0) + finalDamage;
 
         let highestDmg = -1;
@@ -380,16 +376,39 @@ io.on('connection', (socket) => {
             monster.hp = 0;
             io.to(p.map).emit('monster_dead', { monsterId: monster.id });
             
-            let rewardExp = monster.isBoss ? (monster.exp || 50000) : (monster.exp || 100);
-            socket.emit('player_exp_gain', { exp: rewardExp });
-
-            let adenaCount = monster.isBoss 
+            let baseRewardExp = monster.isBoss ? (monster.exp || 50000) : (monster.exp || 100);
+            let baseAdenaCount = monster.isBoss 
                 ? Math.floor(Math.random() * 150000 + 50000)
                 : Math.floor(Math.random() * 200 + 50);
 
-            socket.emit('item_looted_success', { 
-                item: { name: '아데나', type: 'currency', count: adenaCount } 
-            });
+            // 💡 [파티 경험치 & 아데나 버프 및 공유 시스템]
+            if (p.partyId && parties[p.partyId]) {
+                let party = parties[p.partyId];
+                let memberCount = party.members.length;
+                
+                // 파티원 수 비례 경험치 및 아데나 파이 30%씩 증가 후 1/n 분배
+                let partyBonusMultiplier = 1 + (memberCount - 1) * 0.30; 
+                let sharedExp = Math.floor((baseRewardExp * partyBonusMultiplier) / memberCount);
+                let sharedAdena = Math.floor((baseAdenaCount * partyBonusMultiplier) / memberCount);
+
+                party.members.forEach(m => {
+                    let memberSocket = io.sockets.sockets.get(m.socketId);
+                    if (memberSocket) {
+                        let memberPlayer = players[m.socketId];
+                        if (memberPlayer && memberPlayer.map === p.map) {
+                            memberSocket.emit('player_exp_gain', { exp: sharedExp });
+                            memberSocket.emit('item_looted_success', { 
+                                item: { name: '아데나', type: 'currency', count: sharedAdena } 
+                            });
+                        }
+                    }
+                });
+            } else {
+                socket.emit('player_exp_gain', { exp: baseRewardExp });
+                socket.emit('item_looted_success', { 
+                    item: { name: '아데나', type: 'currency', count: baseAdenaCount } 
+                });
+            }
 
             let dropCount = monster.isBoss ? (Math.floor(Math.random() * 4) + 3) : (Math.random() < 0.25 ? 1 : 0);
 
@@ -447,8 +466,6 @@ io.on('connection', (socket) => {
             }, 2000);
         }
     };
-
-
 
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
@@ -559,7 +576,6 @@ io.on('connection', (socket) => {
 function processMonsterAI() {
     let now = Date.now();
     
-    // 💡 [최적화 및 분리] 파티원 체력 동기화는 0.5초 주기로 가볍게 처리하여 렉 원인 제거
     if (Math.random() < 0.2) { 
         for (let pKey in parties) {
             let party = parties[pKey];
@@ -768,11 +784,12 @@ function processMonsterAI() {
                 isBoss: m.isBoss, 
                 angle: m.angle, 
                 color: m.color,
-                targetId: m.targetId // 💡 몬스터가 누굴 때리는지 클라이언트로 전송!
+                targetId: m.targetId 
             }))
         });
     }
 }
+
 // 몬스터 자동 리스폰
 function processMonsterSpawning() {
     for (let mapId in data.maps) {
@@ -804,22 +821,20 @@ function processMonsterSpawning() {
     }
 }
 
-// 🧹 [최적화 루틴] 자원을 최소화하기 위해 10초에 한 번씩 사망한 지 오래된 잔여 몬스터 강제 청소
 setInterval(() => {
     let now = Date.now();
     for (let mapId in mapsState) {
         let state = mapsState[mapId];
         if (!state || !state.monsters) continue;
 
-        // 죽은 지 3초(3000ms)가 넘었음에도 배열에 남아있는 좀비 몬스터 강제 제거
         state.monsters = state.monsters.filter(m => {
             if (m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000)) {
-                return false; // 배열에서 제외하여 메모리 및 화면 정돈
+                return false; 
             }
             return true;
         });
     }
-}, 10000); // 10초 주기 실행으로 CPU 자원 소모 극소화
+}, 10000); 
 
 setInterval(processMonsterSpawning, 1000);
 setInterval(processMonsterAI, 100);
