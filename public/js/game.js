@@ -5365,7 +5365,7 @@ window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
     let now = performance.now();
 
-    // 1. 자동 물약 복용 (물약 ON 상태일 때)
+    // 1. 자동 물약 복용 (HP/MP)
     if (player.autoPotion) {
         if (player.hp < currentMaxHp * 0.55) { 
             let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
@@ -5376,19 +5376,32 @@ window.processAutoConsumablesAndBuffs = function() {
             if (mpPot) window.useItem(getStackKey(mpPot));
         }
 
+        // 💡 [핵심 수정] 버프 물약(초록물약, 용기물약, 엘븐와퍼) 5초 미만 남았을 때만 1회 복용 & 중복 방지 쿨다운 적용
         const autoDrinkBuff = (potKeyword, buffKeyList) => {
-            let hasActiveBuff = false;
+            let needsPotion = true;
             if (player.buffs) {
                 for (let k of buffKeyList) {
                     let b = player.buffs[k];
-                    if (b && b.expire > now && (b.expire - now <= 300000)) {
-                        if (b.expire - now > 3000) hasActiveBuff = true;
+                    // 버프가 존재하고, 만료까지 5초(5000ms) 이상 남았다면 마시지 않음
+                    if (b && b.expire > now && (b.expire - now > 5000)) {
+                        needsPotion = false;
+                        break;
                     }
                 }
             }
-            if (!hasActiveBuff) {
+
+            if (needsPotion) {
+                // 최근 8초 이내에 이미 마셨다면 재복용 차단 (물약 증발 방지)
+                player.lastBuffDrinkTime = player.lastBuffDrinkTime || {};
+                if (player.lastBuffDrinkTime[potKeyword] && now - player.lastBuffDrinkTime[potKeyword] < 8000) {
+                    return;
+                }
+
                 let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(potKeyword));
-                if (pot) window.useItem(getStackKey(pot));
+                if (pot) {
+                    player.lastBuffDrinkTime[potKeyword] = now;
+                    window.useItem(getStackKey(pot));
+                }
             }
         };
 
@@ -5397,7 +5410,7 @@ window.processAutoConsumablesAndBuffs = function() {
         if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
     }
 
-    // 2. 자동사냥 ON 상태 시 단축키 붉은 테두리 버프 자동 시전
+    // 2. 자동사냥 ON 상태 시 단축키 붉은 테두리 버프 마법 자동 시전
     if (!player.autoHunt) return;
 
     let activeSlots = player.activeSpellSlots || [];
@@ -5420,7 +5433,7 @@ window.processAutoConsumablesAndBuffs = function() {
 
         let lastCast = player.lastAutoSkillTime[cleanName] || 0;
         if (lastCast > now) lastCast = 0;
-        let cd = (mData && mData.cd) ? mData.cd : 1200;
+        let cd = (mData && mData.cd) ? mData.cd : 2000;
 
         let isBuff = !mData || mData.type === 'buff' || mData.heal || ['실드', '윈드 워크', '홀리 워크', '가속', '힐', '블러드 투 소울', '어스 스킨', '스톰 샷', '인챈트'].some(n => cleanName.includes(n));
 
@@ -5429,16 +5442,17 @@ window.processAutoConsumablesAndBuffs = function() {
 
             if (cleanName.includes('소울')) {
                 needsCast = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
-                cd = 1500;
+                cd = 3000;
             } else if (cleanName.includes('힐') || (mData && mData.heal)) {
                 needsCast = (player.hp < currentMaxHp * 0.75);
-                cd = 1000;
+                cd = 2000;
             } else {
                 let bKey = cleanName;
                 if (cleanName === '가속') bKey = '가속(헤이스트)';
                 
                 let b = player.buffs ? player.buffs[bKey] : null;
-                if (!b || b.expire > (now + 310000) || (b.expire - now <= 3000)) {
+                // 💡 버프가 없거나, 만료시간이 5초(5000ms) 이하로 남았을 때만 재시전
+                if (!b || (b.expire - now <= 5000)) {
                     needsCast = true;
                 }
             }
