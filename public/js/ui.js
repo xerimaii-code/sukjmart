@@ -995,22 +995,22 @@ window.autoCenterWindow = function(id, forceCenter = true) {
     }
 };
 
-window.toggleWindow = function(id) { 
-    playSound('click'); const el = $(id); if (!el) return;
-    
-    if (el.style.display === 'flex' || el.style.display === 'block') { 
-        el.style.display = 'none'; hideTooltip(); 
-    } else { 
-        if(id === 'win-shop') el.style.display = 'flex'; 
-        else el.style.display = 'flex'; 
-        
-        // 창을 열 때 정보 갱신 후 화면 중앙으로 강제 이동
-        if(id === 'win-inv') { switchInvTab('bag'); renderInventory(); }
-        if(id === 'win-magic') renderMagicBook(); 
-        
-        autoCenterWindow(id, true); // 무조건 중앙에 띄우기
-        bringToFront(id); // 무조건 맨 앞으로
-    } 
+window.toggleWindow = function(id) { 
+    playSound('click'); 
+    const el = $(id); 
+    if (!el) return;
+    
+    hideTooltip(); // 창을 열고 닫을 때 잔여 툴팁 즉시 제거
+
+    if (el.style.display === 'flex' || el.style.display === 'block') { 
+        el.style.display = 'none'; 
+    } else { 
+        el.style.display = 'flex'; 
+        if(id === 'win-inv') { switchInvTab('bag'); renderInventory(); }
+        if(id === 'win-magic') renderMagicBook(); 
+        autoCenterWindow(id, true);
+        bringToFront(id);
+    } 
 };
 
 let dragEl = null, dragOffsetX = 0, dragOffsetY = 0; 
@@ -1126,7 +1126,9 @@ function getItemDetailsHTML(it, isEq) {
     let html = `<b class="tooltip-title" style="color:${titleColor}">${dName}</b><span style="font-size:12px; color:#aaa; margin-left:5px;">[${gradeNames[gIdx]}]</span><br>`; 
     
     if (it.type === 'book') {
-        let reqLv = (it.grade || 0) * 15 + 1;
+        let mName = it.magicName || it.name.replace(/.*\(|\).*/g, '').trim();
+        let tier = (typeof getMagicLevelTier === 'function') ? getMagicLevelTier(mName) : 1;
+        let reqLv = tier === 4 ? 45 : (tier === 3 ? 30 : (tier === 2 ? 15 : 1));
         html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
     }
 
@@ -1242,42 +1244,40 @@ window.startDragItem = function(e, iName, iType) { if(iType === 'ring' || iName.
 window.dropHotkey = function(e, idx) { e.preventDefault(); try { hotkeys[idx] = JSON.parse(e.dataTransfer.getData('text/plain')); addMessage(`단축키 등록됨`, '#5f5'); playSound('click'); updateUI(); } catch(err) {} };
 
 window.useHotkey = function(idx) { 
-    const hk = hotkeys[idx]; if(!hk) return; 
+    // 전역과 로컬 hotkeys 일치화
+    if (!window.hotkeys) window.hotkeys = hotkeys;
+    const hk = window.hotkeys[idx] || hotkeys[idx]; 
+    if(!hk) return; 
+
     let now = performance.now(); 
     let isDoubleClick = lastHotkeyClickTime[idx] && (now - lastHotkeyClickTime[idx] < 350); 
     lastHotkeyClickTime[idx] = now;
 
     if(hk.type === 'item') { 
         if(hk.id === '순간이동 조종 반지' || hk.name === '순간이동 조종 반지') { 
-            if (typeof teleportPrompt === 'function') {
-                teleportPrompt(); 
-            } else {
-                addMessage("텔레포트 창을 불러올 수 없습니다.", '#f55');
-            }
-        } 
-        else { 
+            if (typeof teleportPrompt === 'function') teleportPrompt(); 
+        } else { 
             useItemByName(hk.id); 
         } 
     } 
     else if(hk.type === 'magic') { 
-        let mData = magicDb[hk.id]; if (!mData) return;
+        let mData = magicDb[hk.id]; 
+        if (!mData) return;
         
         if (isDoubleClick) {
             player.activeSpellSlots = player.activeSpellSlots || []; 
-            let slotIdx = player.activeSpellSlots.indexOf(idx);
+            let existingPos = player.activeSpellSlots.indexOf(Number(idx));
             
-            if(slotIdx > -1) { 
-                player.activeSpellSlots.splice(slotIdx, 1); 
+            if(existingPos > -1) { 
+                player.activeSpellSlots.splice(existingPos, 1); 
                 addMessage(`[${hk.id}] 자동사냥 마법 세팅 해제`, '#aaa'); 
-            } 
-            else { 
-                if(player.activeSpellSlots.length >= 8) player.activeSpellSlots.shift(); 
-                player.activeSpellSlots.push(idx); 
+            } else { 
+                player.activeSpellSlots.push(Number(idx)); 
                 addMessage(`[${hk.id}] 자동사냥 마법 세팅 완료`, '#5f5'); 
             }
             player.selectedManualSpell = null;
-            // 💡 [필수 추가] 전역 단축키 동기화
-            window.hotkeys = hotkeys;
+            // 💡 [핵심] UI와 게임 엔진 간 단축키 배열 강제 복제
+            window.hotkeys = [...hotkeys];
         } else {
             if (mData.type === 'buff' || mData.heal) {
                 castBuff(hk.id); 
@@ -1286,8 +1286,7 @@ window.useHotkey = function(idx) {
                 if (player.selectedManualSpell === hk.id) { 
                     player.selectedManualSpell = null; 
                     addMessage(`[${hk.id}] 수동 마법 선택 취소`, '#aaa'); 
-                } 
-                else { 
+                } else { 
                     player.selectedManualSpell = hk.id; 
                     addMessage(`[${hk.id}] 준비 완료! 몬스터를 클릭(터치)하세요.`, '#5cf'); 
                 }
@@ -1323,7 +1322,6 @@ window.switchInvTab = function(tabName) {
 };
 
 function renderInventory() {
-    // 1. 인벤토리 및 장착 아이템 목록 취합
     const displayList = [];
     player.inv.forEach((it, idx) => {
         displayList.push({ ...it, isEquipped: false, originalIndex: idx });
@@ -1334,19 +1332,15 @@ function renderInventory() {
         }
     }
 
-    // 2. 아이템 정렬 (포션 -> 장비 -> 스킬북 -> 주문서 순 / 장착 여부 / 등급 순)
     const typeOrder = {
-        'potion': 1,
-        'weapon': 3, 'armor': 3, 'helmet': 3, 'shield': 3, 'tshirt': 3,
+        'potion': 1, 'weapon': 3, 'armor': 3, 'helmet': 3, 'shield': 3, 'tshirt': 3,
         'cloak': 3, 'gloves': 3, 'boots': 3, 'belt': 3, 'ring': 3, 'ring1': 3, 'ring2': 3,
-        'book': 4,
-        'scroll': 5
+        'book': 4, 'scroll': 5
     };
 
     displayList.sort((a, b) => {
         const orderA = typeOrder[a.type] || 99;
         const orderB = typeOrder[b.type] || 99;
-
         if (orderA === 1 && orderB !== 1) return -1;
         if (orderB === 1 && orderA !== 1) return 1;
         if (a.isEquipped && !b.isEquipped) return -1;
@@ -1359,7 +1353,6 @@ function renderInventory() {
         $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
     }
 
-    // 3. 중복 아이템 스택(수량) 집계
     const counts = new Map();
     displayList.forEach((it) => {
         const key = getStackKey(it);
@@ -1375,7 +1368,6 @@ function renderInventory() {
         counts.get(key).count += (it.count || 1);
     });
 
-    // 4. 인벤토리 슬롯 DOM 렌더링
     const invListEl = $('inv-list');
     if (invListEl) {
         invListEl.innerHTML = '';
@@ -1389,15 +1381,11 @@ function renderInventory() {
                 const dStr = encodeURIComponent(JSON.stringify(c.item)).replace(/'/g, "%27");
                 const itemElement = document.createElement('div');
                 itemElement.className = `inv-slot grade-${c.item.grade || 0}`;
-                itemElement.draggable = !isTouchDevice; // 모바일 롱터치 가로챔 방지
 
-                // 터치 / 클릭 제어 변수
-                let touchTimer = null;
-                let isLongTouch = false;
                 let clickCount = 0;
                 let clickTimer = null;
 
-                // [PC] 툴팁 표시
+                // PC 마우스 호버 툴팁
                 itemElement.addEventListener('mouseenter', (e) => {
                     if (!isTouchDevice && !window.activeEnchantScrollKey) {
                         showTooltip(e, dStr, c.isEquipped);
@@ -1405,80 +1393,35 @@ function renderInventory() {
                 });
                 itemElement.addEventListener('mouseleave', hideTooltip);
 
-                // [PC] 우클릭 설정창 오픈
-                itemElement.addEventListener('mousedown', (e) => {
-                    if (e.button === 2) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (!c.isEquipped) {
-                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                            bringToFront('item-action-modal');
-                            autoCenterWindow('item-action-modal', true);
-                        }
-                    }
-                });
+                // PC 우클릭 메뉴
                 itemElement.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    hideTooltip();
+                    openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
+                    bringToFront('item-action-modal');
+                    autoCenterWindow('item-action-modal', true);
                 });
 
-                // [모바일] 터치 이벤트 (원터치 툴팁 & 0.4초 롱터치 설정창)
-                itemElement.addEventListener('touchstart', (e) => {
-                    isLongTouch = false;
-                    if (e.touches && e.touches.length > 1) return;
-
-                    // 1) 즉시 툴팁 표시
-                    if (!c.isEquipped) {
-                        showTooltip(e, dStr, false);
-                    }
-
-                    // 2) 0.4초 롱터치 타이머 시작 (모달 오픈)
-                    touchTimer = setTimeout(() => {
-                        isLongTouch = true;
-                        if (!c.isEquipped) {
-                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                            bringToFront('item-action-modal');
-                            autoCenterWindow('item-action-modal', true);
-                        }
-                    }, 400);
-                }, { passive: true });
-
-                itemElement.addEventListener('touchmove', () => {
-                    if (touchTimer) clearTimeout(touchTimer);
-                }, { passive: true });
-
-                itemElement.addEventListener('touchcancel', () => {
-                    if (touchTimer) clearTimeout(touchTimer);
-                }, { passive: true });
-
-                itemElement.addEventListener('touchend', (e) => {
-                    if (touchTimer) clearTimeout(touchTimer);
-                    // 롱터치 모달이 열린 경우 클릭 이벤트 트리거 방지
-                    if (isLongTouch && e.cancelable) {
-                        e.preventDefault();
-                    }
-                }, { passive: false });
-
-                // [공통] 클릭 이벤트 (인챈트 적용 및 더블 클릭 아이템 사용/장착)
+                // 터치 / 클릭 통합
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
-                    if (isLongTouch) return;
                     hideTooltip();
 
-                    // 인챈트 스크롤 사용 중인 경우 즉시 적용
                     if (window.activeEnchantScrollKey) {
-                        if (!c.isEquipped) {
-                            useItem(c.rawKey);
-                        }
+                        if (!c.isEquipped) useItem(c.rawKey);
                         return;
                     }
 
-                    // 더블 클릭(터치) 판정
                     clickCount++;
                     if (clickCount === 1) {
                         clickTimer = setTimeout(() => {
                             clickCount = 0;
-                        }, 300);
+                            // 💡 모바일/PC 원터치 시 설정 및 상세 정보 모달 오픈
+                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
+                            bringToFront('item-action-modal');
+                            autoCenterWindow('item-action-modal', true);
+                        }, 250);
                     } else if (clickCount === 2) {
                         clearTimeout(clickTimer);
                         clickCount = 0;
@@ -1490,29 +1433,22 @@ function renderInventory() {
                     }
                 });
 
-                // 슬롯 내부 HTML 구성
                 const eMarkHtml = c.isEquipped ? `<div class="e-mark">E</div>` : '';
                 const qtyHtml = c.count > 1 ? `<span class="inv-qty">${c.count}</span>` : '';
                 itemElement.innerHTML = `${eMarkHtml}<div class="inv-icon">${getItemIcon(c.item)}</div>${qtyHtml}`;
-
                 invListEl.appendChild(itemElement);
             });
         }
     }
 
-    // 5. 장착 장비 그리드 렌더링
+    // 장착 장비 그리드 렌더링
     let eqHTML = '';
     const slots = [
-        { k: 'helmet', n: '투구', c: 'ce-helm' },
-        { k: 'tshirt', n: '티셔츠', c: 'ce-tshirt' },
-        { k: 'armor', n: '갑옷', c: 'ce-armor' },
-        { k: 'cloak', n: '망토', c: 'ce-cloak' },
-        { k: 'weapon', n: '무기', c: 'ce-weapon' },
-        { k: 'shield', n: '방패', c: 'ce-shield' },
-        { k: 'belt', n: '벨트', c: 'ce-belt' },
-        { k: 'gloves', n: '장갑', c: 'ce-gloves' },
-        { k: 'boots', n: '신발', c: 'ce-boots' },
-        { k: 'ring1', n: '반지1', c: 'ce-ring1' },
+        { k: 'helmet', n: '투구', c: 'ce-helm' }, { k: 'tshirt', n: '티셔츠', c: 'ce-tshirt' },
+        { k: 'armor', n: '갑옷', c: 'ce-armor' }, { k: 'cloak', n: '망토', c: 'ce-cloak' },
+        { k: 'weapon', n: '무기', c: 'ce-weapon' }, { k: 'shield', n: '방패', c: 'ce-shield' },
+        { k: 'belt', n: '벨트', c: 'ce-belt' }, { k: 'gloves', n: '장갑', c: 'ce-gloves' },
+        { k: 'boots', n: '신발', c: 'ce-boots' }, { k: 'ring1', n: '반지1', c: 'ce-ring1' },
         { k: 'ring2', n: '반지2', c: 'ce-ring2' }
     ];
 
@@ -1525,7 +1461,7 @@ function renderInventory() {
             const name = it.enchantValue ? `+${it.enchantValue}` : '';
             const enchantBadge = name ? `<span style="position:absolute; top:2px; right:2px; font-size:10px; font-weight:bold; color:#fff;">${name}</span>` : '';
 
-            eqHTML += `<div class="ce-slot ${s.c} grade-${it.grade || 0}" ${dropAttr} onclick="unequip('${s.k}'); hideTooltip();" onmouseenter="showTooltip(event, '${dStr}', true)" onmouseleave="hideTooltip()">${getItemIcon(it)}${enchantBadge}</div>`;
+            eqHTML += `<div class="ce-slot ${s.c} grade-${it.grade || 0}" ${dropAttr} onclick="openItemActionModal(event, '${getStackKey(it)}', '${it.name}', 1, '${dStr}'); bringToFront('item-action-modal'); autoCenterWindow('item-action-modal', true); hideTooltip();" onmouseenter="showTooltip(event, '${dStr}', true)" onmouseleave="hideTooltip()">${getItemIcon(it)}${enchantBadge}</div>`;
         } else {
             eqHTML += `<div class="ce-slot ${s.c}" ${dropAttr}><span class="ce-label">${s.n}</span></div>`;
         }
