@@ -5365,7 +5365,7 @@ window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
     let now = performance.now();
 
-    // 1. 자동 물약 복용 (HP/MP)
+    // 1. 자동 물약 복용 (물약 ON 상태일 때)
     if (player.autoPotion) {
         if (player.hp < currentMaxHp * 0.55) { 
             let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
@@ -5376,24 +5376,21 @@ window.processAutoConsumablesAndBuffs = function() {
             if (mpPot) window.useItem(getStackKey(mpPot));
         }
 
-        // 💡 [핵심 수정] 버프 물약(초록물약, 용기물약, 엘븐와퍼) 5초 미만 남았을 때만 1회 복용 & 중복 방지 쿨다운 적용
         const autoDrinkBuff = (potKeyword, buffKeyList) => {
-            let needsPotion = true;
+            let b = null;
             if (player.buffs) {
                 for (let k of buffKeyList) {
-                    let b = player.buffs[k];
-                    // 버프가 존재하고, 만료까지 5초(5000ms) 이상 남았다면 마시지 않음
-                    if (b && b.expire > now && (b.expire - now > 5000)) {
-                        needsPotion = false;
+                    if (player.buffs[k] && player.buffs[k].expire > now) {
+                        b = player.buffs[k];
                         break;
                     }
                 }
             }
-
-            if (needsPotion) {
-                // 최근 8초 이내에 이미 마셨다면 재복용 차단 (물약 증발 방지)
+            // 💡 버프가 없거나 3초 이하로 남았을 때만 작동
+            if (!b || (b.expire - now <= 3000)) {
+                // 🌟 [안전 패치] 최근 10초(10000ms) 이내에 이미 마신 물약이라면 중복 사용(증발) 전격 차단!
                 player.lastBuffDrinkTime = player.lastBuffDrinkTime || {};
-                if (player.lastBuffDrinkTime[potKeyword] && now - player.lastBuffDrinkTime[potKeyword] < 8000) {
+                if (player.lastBuffDrinkTime[potKeyword] && (now - player.lastBuffDrinkTime[potKeyword] < 10000)) {
                     return;
                 }
 
@@ -5410,13 +5407,13 @@ window.processAutoConsumablesAndBuffs = function() {
         if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
     }
 
-    // 2. 자동사냥 ON 상태 시 단축키 붉은 테두리 버프 마법 자동 시전
+    // 2. 자동사냥 ON 상태 시 단축키 붉은 테두리 버프 자동 시전
     if (!player.autoHunt) return;
 
     let activeSlots = player.activeSpellSlots || [];
     if (activeSlots.length === 0) return;
 
-    let hkList = (window.hotkeys && window.hotkeys.length > 0) ? window.hotkeys : (typeof hotkeys !== 'undefined' ? hotkeys : []);
+    let hkList = window.hotkeys || (typeof hotkeys !== 'undefined' ? hotkeys : []);
     if (!player.lastAutoSkillTime) player.lastAutoSkillTime = {};
 
     activeSlots.forEach(slotNum => {
@@ -5424,44 +5421,34 @@ window.processAutoConsumablesAndBuffs = function() {
         let hk = hkList[sIdx];
         if (!hk) return;
 
-        let rawName = (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).trim();
-        if (!rawName) return;
+        let spellName = (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).trim();
+        if (!spellName) return;
 
-        let cleanName = rawName.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
-        let dbRef = typeof magicDb !== 'undefined' ? magicDb : (window.magicDb || {});
-        let mData = dbRef[cleanName] || dbRef[rawName] || Object.values(dbRef).find(v => v && v.name === cleanName);
-
-        let lastCast = player.lastAutoSkillTime[cleanName] || 0;
-        if (lastCast > now) lastCast = 0;
-        let cd = (mData && mData.cd) ? mData.cd : 2000;
-
-        let isBuff = !mData || mData.type === 'buff' || mData.heal || ['실드', '윈드 워크', '홀리 워크', '가속', '힐', '블러드 투 소울', '어스 스킨', '스톰 샷', '인챈트'].some(n => cleanName.includes(n));
+        let cleanName = spellName.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
+        let isBuff = ['실드', '윈드 워크', '홀리 워크', '가속', '힐', '블러드 투 소울', '어스 스킨', '스톰 샷'].some(n => cleanName.includes(n));
 
         if (isBuff) {
+            let lastCast = player.lastAutoSkillTime[cleanName] || 0;
+            let cd = 1200;
             let needsCast = false;
 
             if (cleanName.includes('소울')) {
                 needsCast = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
-                cd = 3000;
-            } else if (cleanName.includes('힐') || (mData && mData.heal)) {
+                cd = 1500;
+            } else if (cleanName.includes('힐')) {
                 needsCast = (player.hp < currentMaxHp * 0.75);
-                cd = 2000;
-            } else {
-                let bKey = cleanName;
-                if (cleanName === '가속') bKey = '가속(헤이스트)';
-                
-                let b = player.buffs ? player.buffs[bKey] : null;
-                // 💡 버프가 없거나, 만료시간이 5초(5000ms) 이하로 남았을 때만 재시전
-                if (!b || (b.expire - now <= 5000)) {
-                    needsCast = true;
-                }
+                cd = 1000;
+            } else if (cleanName.includes('실드')) {
+                let currentBuff = player.buffs ? player.buffs['실드'] : null;
+                needsCast = !currentBuff || (currentBuff.expire - now <= 3000);
+            } else if (cleanName.includes('윈드') || cleanName.includes('홀리') || cleanName.includes('가속')) {
+                let currentBuff = player.buffs ? (player.buffs['가속(헤이스트)'] || player.buffs['윈드 워크'] || player.buffs['홀리 워크']) : null;
+                needsCast = !currentBuff || (currentBuff.expire - now <= 3000);
             }
 
-            let requiredMp = (mData && mData.mp) ? mData.mp : 8;
-
-            if (needsCast && player.mp >= requiredMp && (now - lastCast > cd)) {
+            if (needsCast && player.mp >= 8 && (now - lastCast > cd)) {
                 player.lastAutoSkillTime[cleanName] = now;
-                player.mp -= (cleanName.includes('소울') ? 0 : requiredMp);
+                player.mp -= (cleanName.includes('소울') ? 0 : 8);
 
                 if (typeof playSound === 'function') playSound('spell');
 
@@ -5478,34 +5465,13 @@ window.processAutoConsumablesAndBuffs = function() {
                 if (cleanName.includes('힐')) {
                     let healAmt = Math.floor(40 * (1 + ((player.int || 10) - 10) * 0.05));
                     player.hp = Math.min(currentMaxHp, player.hp + healAmt);
-                    if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${healAmt} ✨`, life: 1.2, color: '#5f5' });
                 } else if (cleanName.includes('실드')) {
                     if (typeof applyBuff === 'function') applyBuff('실드', 300000, '🛡️', 'ac', 2, player);
                 } else if (cleanName.includes('윈드') || cleanName.includes('홀리') || cleanName.includes('가속')) {
-                    let speedIcon = cleanName.includes('윈드') ? '🍃' : (cleanName.includes('홀리') ? '✨' : '💨');
-                    if (typeof applyBuff === 'function') applyBuff(cleanName, 300000, speedIcon, 'speed', 60, player);
+                    if (typeof applyBuff === 'function') applyBuff('가속(헤이스트)', 300000, '💨', 'speed', 60, player);
                 } else if (cleanName.includes('소울')) {
                     player.hp -= 40;
                     player.mp = Math.min(currentMaxMp, player.mp + 15);
-                    if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+15 MP`, life: 1.2, color: '#55f' });
-                } else {
-                    let bIcon = (mData && mData.icon) ? mData.icon : '✨';
-                    let bType = (mData && mData.buffType) ? mData.buffType : 'buff';
-                    let bVal = (mData && mData.val) ? mData.val : 0;
-                    if (typeof applyBuff === 'function') applyBuff(cleanName, 300000, bIcon, bType, bVal, player);
-                }
-
-                if (window.socket && currentUser) {
-                    window.socket.emit('player_magic_action', {
-                        magicName: cleanName,
-                        targetX: player.x,
-                        targetY: player.y,
-                        targetId: player.id || window.socket.id,
-                        casterX: player.x,
-                        casterY: player.y,
-                        casterId: window.socket.id,
-                        map: currentMap
-                    });
                 }
 
                 if (typeof updateUI === 'function') updateUI();
