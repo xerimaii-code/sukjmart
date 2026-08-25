@@ -140,6 +140,28 @@ io.on('connection', (socket) => {
         });
     });
 
+// 💡 클라이언트에서 버린 아이템 수신 및 전체 브로드캐스트
+    socket.on('player_drop_item', (droppedItemData) => {
+        let p = players[socket.id];
+        let mapId = (p && p.map) ? p.map : (droppedItemData.map || 'talking_island');
+        
+        if (!mapsState[mapId]) {
+            mapsState[mapId] = { monsters: [], items: [], deadBosses: [] };
+        }
+
+        let floorItem = {
+            ...droppedItemData,
+            id: droppedItemData.id || ('drop_' + Date.now() + '_' + Math.floor(Math.random() * 1000)),
+            map: mapId,
+            spawnTime: Date.now(),
+            dropperId: socket.id
+        };
+
+        mapsState[mapId].items.push(floorItem);
+        socket.to(mapId).emit('item_spawned', { item: floorItem });
+    });
+
+
     socket.on('player_update', (payload) => {
         let p = players[socket.id];
         let currentMap = payload.map || 'talking_island';

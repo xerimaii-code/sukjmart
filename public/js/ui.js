@@ -1241,58 +1241,60 @@ window.startDragMagic = function(e, mName) { e.dataTransfer.setData('text/plain'
 window.startDragItem = function(e, iName, iType) { if(iType === 'ring' || iName.includes('반지')) e.dataTransfer.setData('text/plain', JSON.stringify({type:'item', id:iName, itemType:'ring'})); else e.dataTransfer.setData('text/plain', JSON.stringify({type:'item', id:iName})); };
 window.dropHotkey = function(e, idx) { e.preventDefault(); try { hotkeys[idx] = JSON.parse(e.dataTransfer.getData('text/plain')); addMessage(`단축키 등록됨`, '#5f5'); playSound('click'); updateUI(); } catch(err) {} };
 
-window.useHotkey = function(idx) { 
-    const hk = hotkeys[idx]; if(!hk) return; 
-    let now = performance.now(); 
-    let isDoubleClick = lastHotkeyClickTime[idx] && (now - lastHotkeyClickTime[idx] < 350); 
-    lastHotkeyClickTime[idx] = now;
+window.useHotkey = function(idx) { 
+    const hk = hotkeys[idx]; if(!hk) return; 
+    let now = performance.now(); 
+    let isDoubleClick = lastHotkeyClickTime[idx] && (now - lastHotkeyClickTime[idx] < 350); 
+    lastHotkeyClickTime[idx] = now;
 
-    if(hk.type === 'item') { 
-        if(hk.id === '순간이동 조종 반지' || hk.name === '순간이동 조종 반지') { 
-            if (typeof teleportPrompt === 'function') {
-                teleportPrompt(); 
-            } else {
-                addMessage("텔레포트 창을 불러올 수 없습니다.", '#f55');
-            }
-        } 
-        else { 
-            useItemByName(hk.id); 
-        } 
-    } 
-    else if(hk.type === 'magic') { 
-        let mData = magicDb[hk.id]; if (!mData) return;
-        
-        if (isDoubleClick) {
-            player.activeSpellSlots = player.activeSpellSlots || []; 
-            let slotIdx = player.activeSpellSlots.indexOf(idx);
-            
-            if(slotIdx > -1) { 
-                player.activeSpellSlots.splice(slotIdx, 1); 
-                addMessage(`[${hk.id}] 자동사냥 마법 세팅 해제`, '#aaa'); 
-            } 
-            else { 
-                if(player.activeSpellSlots.length >= 8) player.activeSpellSlots.shift(); 
-                player.activeSpellSlots.push(idx); 
-                addMessage(`[${hk.id}] 자동사냥 마법 세팅 완료`, '#5f5'); 
-            }
-            player.selectedManualSpell = null;
-        } else {
-            if (mData.type === 'buff' || mData.heal) {
-                castBuff(hk.id); 
-                player.selectedManualSpell = null;
-            } else {
-                if (player.selectedManualSpell === hk.id) { 
-                    player.selectedManualSpell = null; 
-                    addMessage(`[${hk.id}] 수동 마법 선택 취소`, '#aaa'); 
-                } 
-                else { 
-                    player.selectedManualSpell = hk.id; 
-                    addMessage(`[${hk.id}] 준비 완료! 몬스터를 클릭(터치)하세요.`, '#5cf'); 
-                }
-            }
-        }
-    } 
-    updateUI(); 
+    if(hk.type === 'item') { 
+        if(hk.id === '순간이동 조종 반지' || hk.name === '순간이동 조종 반지') { 
+            if (typeof teleportPrompt === 'function') {
+                teleportPrompt(); 
+            } else {
+                addMessage("텔레포트 창을 불러올 수 없습니다.", '#f55');
+            }
+        } 
+        else { 
+            useItemByName(hk.id); 
+        } 
+    } 
+    else if(hk.type === 'magic') { 
+        let mData = magicDb[hk.id]; if (!mData) return;
+        
+        if (isDoubleClick) {
+            player.activeSpellSlots = player.activeSpellSlots || []; 
+            let slotIdx = player.activeSpellSlots.indexOf(idx);
+            
+            if(slotIdx > -1) { 
+                player.activeSpellSlots.splice(slotIdx, 1); 
+                addMessage(`[${hk.id}] 자동사냥 마법 세팅 해제`, '#aaa'); 
+            } 
+            else { 
+                if(player.activeSpellSlots.length >= 8) player.activeSpellSlots.shift(); 
+                player.activeSpellSlots.push(idx); 
+                addMessage(`[${hk.id}] 자동사냥 마법 세팅 완료`, '#5f5'); 
+            }
+            player.selectedManualSpell = null;
+            // 💡 [필수 추가] 전역 단축키 동기화
+            window.hotkeys = hotkeys;
+        } else {
+            if (mData.type === 'buff' || mData.heal) {
+                castBuff(hk.id); 
+                player.selectedManualSpell = null;
+            } else {
+                if (player.selectedManualSpell === hk.id) { 
+                    player.selectedManualSpell = null; 
+                    addMessage(`[${hk.id}] 수동 마법 선택 취소`, '#aaa'); 
+                } 
+                else { 
+                    player.selectedManualSpell = hk.id; 
+                    addMessage(`[${hk.id}] 준비 완료! 몬스터를 클릭(터치)하세요.`, '#5cf'); 
+                }
+            }
+        }
+    } 
+    updateUI(); 
 };
 
 window.addEventListener('keydown', (e) => { if(e.key === 'Control') isCtrlPressed = true; if(e.key.startsWith('F')) { let fNum = parseInt(e.key.substring(1)); if(fNum >= 5 && fNum <= 12) { e.preventDefault(); useHotkey(fNum - 5); } } });
@@ -1882,27 +1884,57 @@ window.execItemAction = function(action) { 
 };
 
 function handleItemRemoval(stackKey, qty, action) { 
-    let remainingToRemove = qty; let lastItem = null;
+    let remainingToRemove = qty; 
+    let lastItem = null;
     for(let i = player.inv.length - 1; i >= 0; i--) { 
         if(getStackKey(player.inv[i]) === stackKey) { 
             lastItem = player.inv[i];
-            if (lastItem.count && lastItem.count > remainingToRemove) { lastItem.count -= remainingToRemove; remainingToRemove = 0; break; } 
-            else if (lastItem.count) { remainingToRemove -= lastItem.count; player.inv.splice(i, 1); } 
-            else { player.inv.splice(i, 1); remainingToRemove--; }
+            if (lastItem.count && lastItem.count > remainingToRemove) { 
+                lastItem.count -= remainingToRemove; 
+                remainingToRemove = 0; 
+                break; 
+            } 
+            else if (lastItem.count) { 
+                remainingToRemove -= lastItem.count; 
+                player.inv.splice(i, 1); 
+            } 
+            else { 
+                player.inv.splice(i, 1); 
+                remainingToRemove--; 
+            }
             if(remainingToRemove <= 0) break; 
         } 
     } 
+
     if(qty > remainingToRemove && lastItem) { 
         let actualRemoved = qty - remainingToRemove;
         if(action === 'drop') { 
-            // [수정 4] 땅에 버릴 때 현재 위치보다 60~80px 멀리 버리고, 드랍 시간과 주인을 기록
             let dropX = Math.max(50, Math.min(mapSize - 50, player.x + (Math.random()*120 - 60)));
             let dropY = Math.max(50, Math.min(mapSize - 50, player.y + (Math.random()*120 - 60)));
-            items.push({ ...lastItem, count: actualRemoved, x: dropX, y: dropY, map: currentMap, droppedTime: Date.now(), dropperId: window.socket ? window.socket.id : 'me' }); 
+            
+            let droppedItemData = { 
+                ...lastItem, 
+                id: (lastItem.id || 'item') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                count: actualRemoved, 
+                x: dropX, 
+                y: dropY, 
+                map: currentMap, 
+                spawnTime: Date.now(), 
+                dropperId: window.socket ? window.socket.id : 'me' 
+            };
+
+            items.push(droppedItemData);
+
+            if (window.socket && currentUser) {
+                window.socket.emit('player_drop_item', droppedItemData);
+            }
+
             addMessage(`${lastItem.name} ${actualRemoved}개를 땅에 버렸습니다.`, '#aaa'); 
+        } else { 
+            addMessage(`${lastItem.name} ${actualRemoved}개를 영구적으로 파괴했습니다.`, '#f55'); 
         } 
-        else { addMessage(`${lastItem.name} ${actualRemoved}개를 영구적으로 파괴했습니다.`, '#f55'); } 
-        playSound('click'); updateUI(); 
+        playSound('click'); 
+        updateUI(); 
     } 
 }
 

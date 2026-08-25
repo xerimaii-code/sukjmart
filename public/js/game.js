@@ -400,7 +400,6 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
     if (!eq || !eq.cloak) return;
     ctx.save();
     
-    // 망토 색상 
     let cBase, cDark, cLight;
     if (eq.cloak.grade >= 4 || (eq.cloak.name && eq.cloak.name.includes('금빛'))) {
         cBase = '#b8860b'; cDark = '#5c4305'; cLight = '#ffd700'; 
@@ -411,7 +410,8 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
     } else if (charClass === 'elf') { 
         cBase = '#15803d'; cDark = '#064e3b'; cLight = '#4ade80'; 
     } else if (charClass === 'wizard') { 
-        cBase = '#3730a3'; cDark = '#1e1b4b'; cLight = '#818cf8'; 
+        // 💡 마법사 망토: 깊이감 있는 다크 네이비 톤
+        cBase = '#231f65'; cDark = '#0e0b30'; cLight = '#6366f1'; 
     } else { 
         cBase = '#991b1b'; cDark = '#450a0a'; cLight = '#f87171'; 
     }
@@ -437,7 +437,6 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
         ctx.lineTo(-sz * 0.1 - sway * 0.5, sz * 0.8 + wave);
         ctx.quadraticCurveTo(sz * 0.2, 0, sz * 0.1, -sz * 0.7);
     } else if (isUp) {
-        // 💡 [해결 1] 뒷모습일 때 몸통(어깨) 폭보다 넓고 높게 감싸서 양옆/위로 몸이 삐져나오는 비침 현상 차단
         ctx.moveTo(-sz * 0.75, -sz * 0.85);
         ctx.quadraticCurveTo(-sz * 1.1, -sz * 0.2, -sz * 1.2 + sway, sz * 0.9 + wave);
         ctx.quadraticCurveTo(0, sz * 1.1 + Math.abs(sway), sz * 1.2 - sway, sz * 0.9 - wave);
@@ -462,10 +461,9 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
         
         let emblem = '🛡️';
         if (charClass === 'elf') emblem = '🏹';
-        else if (charClass === 'wizard') emblem = '✡️';
+        else if (charClass === 'wizard') emblem = '✨'; // 💡 신비로운 별 로고
         
-        // 💡 [해결 2] 캔버스를 투명하게 만들던 overlay 버그 제거 -> 기본 모드와 투명도 조절로 자수 연출
-        ctx.globalAlpha = 0.35; 
+        ctx.globalAlpha = 0.40; 
         ctx.globalCompositeOperation = 'source-over'; 
         
         ctx.fillStyle = '#ffffff';
@@ -473,10 +471,10 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
         ctx.textBaseline = 'middle';
         
         ctx.scale(1 + Math.abs(sway)/(sz*2), 0.85); 
-        ctx.font = `bold ${sz * 1.2}px Arial`;
+        ctx.font = `bold ${sz * 1.3}px Arial`;
         ctx.fillText(emblem, 0, 0);
 
-        ctx.globalAlpha = 0.15;
+        ctx.globalAlpha = 0.20;
         ctx.fillStyle = cLight;
         ctx.fillText(emblem, 0, -1);
         
@@ -488,7 +486,6 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
     if (isSide) {
         ctx.beginPath(); ctx.moveTo(-sz * 0.15, -sz * 0.6); ctx.quadraticCurveTo(-sz * 0.5, 0, -sz * 0.6 - sway, sz * 0.7 + wave); ctx.stroke();
     } else if (isUp) {
-        // 💡 넓어진 망토에 맞춰 구겨짐(주름) 위치 재조정
         ctx.beginPath(); ctx.moveTo(-sz * 0.4, -sz * 0.8); ctx.quadraticCurveTo(-sz * 0.8, 0, -sz * 0.6 + sway, sz * 0.9 + wave); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, -sz * 0.8); ctx.quadraticCurveTo(0, 0, sway * 0.5, sz * 1.0 + Math.abs(sway)*0.5); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(sz * 0.4, -sz * 0.8); ctx.quadraticCurveTo(sz * 0.8, 0, sz * 0.6 - sway, sz * 0.9 - wave); ctx.stroke();
@@ -1689,7 +1686,17 @@ function draw(timestamp) {
     
     if(mData.links) mData.links.forEach(l => { ctx.fillStyle = '#4af'; ctx.beginPath(); ctx.ellipse(l.x, l.y, 30 + Math.sin(timestamp/200)*5, 15 + Math.sin(timestamp/200)*2, 0, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'rgba(100, 150, 255, 0.4)'; ctx.beginPath(); ctx.ellipse(l.x, l.y - 20, 20, 40 + Math.sin(timestamp/150)*10, 0, 0, Math.PI*2); ctx.fill(); if(gameOptions.showNames) { drawNameTag(ctx, `${l.name} 이동`, l.x, l.y - 40, false, true); } });
     
-    items.forEach(it => { if (it.map === currentMap && it.x > camX-50 && it.x < camX+worldW+50 && it.y > camY-50 && it.y < camY+worldH+50) { drawItem(ctx, it, timestamp); if(gameOptions.showNames) drawNameTag(ctx, it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : it.name, it.x, it.y - 12, false, false); } });
+    // 💡 [교체할 코드] 바닥 아이템 렌더링 (map 속성 누락 방어)
+    items.forEach(it => { 
+        if (it && (it.map === currentMap || !it.map)) {
+            if (it.x > camX - 50 && it.x < camX + worldW + 50 && it.y > camY - 50 && it.y < camY + worldH + 50) { 
+                drawItem(ctx, it, timestamp); 
+                if (gameOptions.showNames) {
+                    drawNameTag(ctx, it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : it.name, it.x, it.y - 12, false, false); 
+                }
+            } 
+        }
+    });
     npcs.forEach(n => { if(n.map === currentMap) { drawNPC(ctx, n, timestamp); drawNameTag(ctx, n.name, n.x, n.y - 30, false, true); } });
    
        
@@ -2958,6 +2965,10 @@ function update(timestamp) {
     lastTime = timestamp;
     const now = Date.now();
 
+  if (typeof window.processAutoConsumablesAndBuffs === 'function') {
+        window.processAutoConsumablesAndBuffs();
+    }
+
     // 1. 엔티티 부드러운 보간 이동 (보스 포함)
     let moveDelta = Math.min(1.0, (dt / 1000) * 12); // 초당 12회 속도로 부드럽게 좌표 수렴
 
@@ -3036,7 +3047,7 @@ if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
     if (document.getElementById('win-pet') && document.getElementById('win-pet').style.display === 'flex' && typeof window.updatePetUI === 'function') window.updatePetUI();
 }
 
-if (typeof processAutoConsumablesAndBuffs === 'function') processAutoConsumablesAndBuffs();
+
 if (typeof updateMercenaryAI === 'function') updateMercenaryAI();
 
 // 6. 소켓 서버 위치 및 용병 동기화 (초당 60회 -> 100ms당 1회로 제한)
@@ -5500,12 +5511,14 @@ document.addEventListener('fullscreenchange', () => {
 });
 
 
-// 🌟 [최종 완성] 사냥 ON + 붉은 테두리 선택 시에만 딜레이 없이 즉시 작동하는 오토 버프/마법 시스템
+
+
+// 🌟 [완전 해결] 시간 기준 통일 및 사냥 ON + 빨간 테두리 버프 강제 자동 시전
 window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
     let now = performance.now();
 
-    // 1. 물약 자동 복용 (물약 ON 버튼이 켜져 있을 때만 작동)
+    // 1. 물약 자동 복용 (물약 ON 상태일 때만)
     if (player.autoPotion) {
         if (player.hp < currentMaxHp * 0.50) { 
             let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
@@ -5537,69 +5550,124 @@ window.processAutoConsumablesAndBuffs = function() {
         if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
     }
 
-    // 💡 [규칙 1] 자동사냥(ON)이 꺼져있으면 퀵슬롯 스킬 사용 중지
+    // 💡 [핵심 규칙] 자동사냥(ON)이 꺼져있으면 퀵슬롯 마법/스킬 사용 안 함
     if (!player.autoHunt) return;
 
-    // 💡 [규칙 2] 퀵슬롯에 등록된 마법 검사 (자동사냥 ON + 빨간 테두리 선택된 경우에만 작동)
-    if (window.hotkeys && Array.isArray(window.hotkeys)) {
-        window.hotkeys.forEach((hk, idx) => {
-            if (!hk || hk.type !== 'magic') return;
-            
-            // 퀵슬롯이 활성화(빨간 테두리) 상태인지 확인 (안전한 타입 변환 포함)
-            if (!player.activeSpellSlots || !player.activeSpellSlots.some(slotIdx => Number(slotIdx) === Number(idx))) return;
-            
-            let rawId = hk.id || '';
-            let cleanMagicName = rawId.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
-            let matchedKey = Object.keys(magicDb).find(k => k === rawId || k === cleanMagicName || rawId.includes(k));
+    // 💡 2. 퀵슬롯 등록 마법 탐색 (전역/로컬 단축키 통합 탐색)
+    let hkList = (typeof window.hotkeys !== 'undefined' && Array.isArray(window.hotkeys) && window.hotkeys.some(k => k !== null)) 
+                 ? window.hotkeys 
+                 : ((typeof hotkeys !== 'undefined' && Array.isArray(hotkeys)) ? hotkeys : []);
 
-            let mData = matchedKey ? magicDb[matchedKey] : null;
-            if (!mData) return;
+    if (!Array.isArray(hkList) || !player.activeSpellSlots || player.activeSpellSlots.length === 0) return;
 
-            let actualMagicName = matchedKey;
-            player.lastAutoSkillTime = player.lastAutoSkillTime || {};
-            let cd = mData.cd || 1200; 
+    player.activeSpellSlots.forEach(slotIdx => {
+        let idx = Number(slotIdx);
+        let hk = hkList[idx];
+        if (!hk) return;
 
-            // 🔮 [버프 / 힐 / 특수 마법 자동 시전]
-            if (mData.type === 'buff' || mData.heal || actualMagicName === '블러드 투 소울') {
-                let needsBuff = false;
+        // 마법 식별자 추출 (객체/문자열 완벽 대응)
+        let rawId = (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).trim();
+        if (!rawId) return;
 
-                if (actualMagicName === '블러드 투 소울') {
-                    needsBuff = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
-                    cd = 1500;
-                } else if (mData.heal) {
-                    needsBuff = (player.hp < currentMaxHp * 0.75); 
-                    cd = 1000;
-                } else if (mData.buffType) {
-                    let buffKey = actualMagicName;
-                    if (buffKey.includes('가속') || buffKey.includes('초록') || buffKey === '윈드 워크') buffKey = '가속(헤이스트)';
-                    let b = player.buffs && player.buffs[buffKey];
-                    needsBuff = !b || (b.expire - now <= 3000); 
-                } else {
-                    needsBuff = true; 
+        let cleanName = rawId.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
+        let dbRef = typeof magicDb !== 'undefined' ? magicDb : (window.magicDb || {});
+        let spellKey = Object.keys(dbRef).find(k => k === rawId || k === cleanName || rawId.includes(k));
+        if (!spellKey) return;
+
+        let mData = dbRef[spellKey];
+        if (!mData) return;
+
+        player.lastAutoSkillTime = player.lastAutoSkillTime || {};
+        let lastCast = player.lastAutoSkillTime[spellKey] || 0;
+        let cd = mData.cd || 1200;
+
+        // 🔮 [A. 버프 / 힐 / 유틸리티 마법 처리]
+        let isBuffOrHeal = mData.type === 'buff' || mData.heal || ['실드', '홀리 워크', '가속', '힐', '블러드 투 소울', '어스 스킨', '스톰 샷'].includes(spellKey);
+
+        if (isBuffOrHeal) {
+            let needsCast = false;
+
+            if (spellKey === '블러드 투 소울') {
+                needsCast = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
+                cd = 1500;
+            } else if (mData.heal || spellKey.includes('힐')) {
+                needsCast = (player.hp < currentMaxHp * 0.75);
+                cd = 1000;
+            } else {
+                let bKey = spellKey;
+                if (bKey.includes('가속') || bKey.includes('초록') || bKey === '윈드 워크') bKey = '가속(헤이스트)';
+                
+                let currentBuff = player.buffs ? player.buffs[bKey] : null;
+                // 버프가 아예 없거나, 남은 시간이 3초 이하일 때
+                if (!currentBuff || (currentBuff.expire - now <= 3000)) {
+                    needsCast = true;
+                }
+            }
+
+            // 조건 충족 시 즉시 직접 시전
+            if (needsCast && player.mp >= (mData.mp || 0) && (now - lastCast > cd)) {
+                player.lastAutoSkillTime[spellKey] = now;
+                player.mp -= (mData.mp || 0);
+
+                if (typeof playSound === 'function') playSound('spell');
+
+                // 파티클 이펙트
+                if (typeof particles !== 'undefined') {
+                    if (mData.heal || spellKey.includes('힐') || spellKey === '네이쳐스 터치') {
+                        particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
+                    } else if (spellKey.includes('실드') || spellKey.includes('어스 스킨')) {
+                        particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'classic_shield' });
+                    } else {
+                        particles.push({ x: player.x, y: player.y, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
+                    }
                 }
 
-                if (needsBuff && player.mp >= (mData.mp || 0) && (now - (player.lastAutoSkillTime[actualMagicName] || 0) > cd)) {
-                    player.lastAutoSkillTime[actualMagicName] = now;
-                    if (typeof window.castBuff === 'function') window.castBuff(actualMagicName, player); 
+                // 수치 및 버프 적용
+                if (mData.heal || spellKey.includes('힐')) {
+                    let healAmt = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
+                    player.hp = Math.min(currentMaxHp, player.hp + healAmt);
+                    if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${healAmt} ✨`, life: 1.2, color: '#5f5' });
+                } else if (mData.buffType || ['실드', '홀리 워크', '가속', '어스 스킨', '스톰 샷'].includes(spellKey)) {
+                    if (typeof applyBuff === 'function') {
+                        applyBuff(spellKey, mData.duration || 300000, mData.icon || '✨', mData.buffType || 'buff', mData.val || 0, player);
+                    }
                 }
-            } 
-            // ⚔️ [공격 마법 자동 시전]
-            else if (mData.type === 'attack' || mData.dmg) {
-                if (player.target && player.target.hp > 0 && !player.target.isDead) {
-                    let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
-                    let allowedRange = (mData.range || 120) + (player.target.size || 20);
-                    
-                    if (dist <= allowedRange && player.mp >= mData.mp) {
-                        if (actualMagicName === '트리플 애로우') cd = 1000; 
-                        else if (actualMagicName === '쇼크 스턴') cd = 5000; 
-                        
-                        if (now - (player.lastAutoSkillTime[actualMagicName] || 0) > cd) {
-                            player.lastAutoSkillTime[actualMagicName] = now;
-                            if (typeof castAttackSpell === 'function') castAttackSpell(player.target, actualMagicName, player, true);
+
+                // 소켓 서버 동기화
+                if (window.socket && currentUser) {
+                    window.socket.emit('player_magic_action', {
+                        magicName: spellKey,
+                        targetX: player.x,
+                        targetY: player.y,
+                        targetId: player.id || window.socket.id,
+                        casterX: player.x,
+                        casterY: player.y,
+                        casterId: window.socket.id,
+                        map: currentMap
+                    });
+                }
+
+                if (typeof updateUI === 'function') updateUI();
+            }
+        }
+        // ⚔️ [B. 공격 마법 처리]
+        else if (mData.type === 'attack' || mData.dmg) {
+            if (player.target && player.target.hp > 0 && !player.target.isDead) {
+                let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
+                let allowedRange = (mData.range || 120) + (player.target.size || 20);
+
+                if (dist <= allowedRange && player.mp >= mData.mp) {
+                    if (spellKey === '트리플 애로우') cd = 1000;
+                    else if (spellKey === '쇼크 스턴') cd = 5000;
+
+                    if (now - lastCast > cd) {
+                        player.lastAutoSkillTime[spellKey] = now;
+                        if (typeof castAttackSpell === 'function') {
+                            castAttackSpell(player.target, spellKey, player, true);
                         }
                     }
                 }
             }
-        });
-    }
+        }
+    });
 };
