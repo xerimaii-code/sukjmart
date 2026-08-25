@@ -1174,12 +1174,30 @@ function positionTooltip(e, t) { let x = (e.clientX || (e.touches && e.touches[0
 window.hideTooltip = function() { if($('tooltip')) $('tooltip').style.display = 'none'; };
 
 function initHotkeyUI() {
-    const hotkeysContainer = $('hotkeys'); if(!hotkeysContainer) return; let html = '';
-    for(let i = 0; i < 8; i++) {
-        html += `<div class="hotkey-slot" id="hk-${i}" onclick="useHotkey(${i})" ondragover="allowDrop(event)" ondrop="dropHotkey(event, ${i})" onmouseenter="showHotkeyTooltip(event, ${i})" onmouseleave="hideTooltip()"><span class="hk-label">F${i + 5}</span><div class="hk-icon" id="hk-ic-${i}"></div><span class="hk-count" id="hk-cnt-${i}"></span><div class="cooldown-overlay" id="hk-cd-${i}" style="height:0%;"></div></div>`;
-    }
-    hotkeysContainer.innerHTML = html;
+    const hotkeysContainer = $('hotkeys'); if(!hotkeysContainer) return; let html = '';
+    for(let i = 0; i < 8; i++) {
+        // 💡 우클릭 시 단축키 해제 (oncontextmenu) 추가
+        html += `<div class="hotkey-slot" id="hk-${i}" onclick="useHotkey(${i})" ondragover="allowDrop(event)" ondrop="dropHotkey(event, ${i})" onmouseenter="showHotkeyTooltip(event, ${i})" onmouseleave="hideTooltip()" oncontextmenu="clearHotkey(event, ${i})"><span class="hk-label">F${i + 5}</span><div class="hk-icon" id="hk-ic-${i}"></div><span class="hk-count" id="hk-cnt-${i}"></span><div class="cooldown-overlay" id="hk-cd-${i}" style="height:0%;"></div></div>`;
+    }
+    hotkeysContainer.innerHTML = html;
 }
+
+// 💡 우클릭으로 단축키를 완전히 비우는 함수 추가
+window.clearHotkey = function(e, idx) {
+    e.preventDefault();
+    if (hotkeys[idx]) {
+        hotkeys[idx] = null;
+        // 자동사냥으로 등록된(빨간테두리) 내역도 함께 지움
+        if (player && player.activeSpellSlots) {
+            let activeIdx = player.activeSpellSlots.indexOf(idx);
+            if (activeIdx > -1) player.activeSpellSlots.splice(activeIdx, 1);
+        }
+        window.hotkeys = hotkeys;
+        if (typeof playSound === 'function') playSound('click');
+        if (typeof addMessage === 'function') addMessage(`[F${idx+5}] 단축키가 해제되었습니다.`, '#aaa');
+        if (typeof updateUI === 'function') updateUI();
+    }
+};
 
 function renderHotkeys() {
     let now = performance.now();
@@ -3816,7 +3834,6 @@ window.processAutoConsumablesAndBuffs = function() {
             let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
             if (hpPot) useItem(getStackKey(hpPot));
         }
-
         if (player.mp < currentMaxMp * 0.35) { 
             let mpPot = player.inv.find(it => it && it.type === 'potion' && it.name.includes('파란'));
             if (mpPot) useItem(getStackKey(mpPot));
@@ -3839,44 +3856,62 @@ window.processAutoConsumablesAndBuffs = function() {
         };
 
         autoDrinkBuff('초록', ['가속(헤이스트)', '초록물약']);
-        if (player.charClass === 'knight' || player.charClass === 'royal') {
-            autoDrinkBuff('용기', ['용기물약']);
-        }
-        if (player.charClass === 'elf') {
-            autoDrinkBuff('와퍼', ['엘븐와퍼']);
-        }
+        if (player.charClass === 'knight' || player.charClass === 'royal') autoDrinkBuff('용기', ['용기물약']);
+        if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
     }
 
-    // 💡 [핵심 수정] 사냥(ON) 상태가 아닐 경우(사냥 OFF), 여기서 즉시 차단하여 스킬 자동 사용 원천 방지
+    // 💡 2. 자동 사냥(ON)이 아니면 절대 스킬이 자동으로 나가지 않도록 차단!
     if (!player.autoHunt) return;
 
-    // 2. 퀵슬롯 공격 스킬 및 버프/힐 자동 시전 (사냥 ON일 때만 동작)
+    // 3. 퀵슬롯 공격 스킬 및 버프/힐 자동 시전
     hotkeys.forEach((hk, idx) => {
         if (!hk || hk.type !== 'magic') return;
+        
+        // 💡 [핵심 버그 수정] 더블클릭해서 빨간 테두리로 활성화 시킨(activeSpellSlots) 스킬만 나감!
+        if (!player.activeSpellSlots || !player.activeSpellSlots.includes(idx)) return;
         
         let mData = typeof magicDb !== 'undefined' ? magicDb[hk.id] : null;
         if (!mData) return;
 
-        if (player.target && player.target.hp > 0 && !player.target.isDead) {
-            let isAttackSkill = mData.type === 'attack' || mData.dmg || hk.id === '쇼크 스턴';
+        // 🔮 버프/힐 자동 시전 로직
+        if (mData.type === 'buff' || mData.heal) {
+            player.lastAutoSkillTime = player.lastAutoSkillTime || {};
+            let cd = mData.cd || 2000;
+            let needsBuff = false;
+
+            if (mData.heal) {
+                needsBuff = (player.hp < currentMaxHp * 0.7); // 체력 70% 미만 시 힐
+            } else if (mData.buffType) {
+                let b = player.buffs && player.buffs[hk.id];
+                needsBuff = !b || (b.expire - now <= 3000); // 지속시간 3초 전 리필
+            } else {
+                needsBuff = (now - (player.lastAutoSkillTime[hk.id] || 0) > cd);
+            }
+
+            if (needsBuff && player.mp >= mData.mp && (now - (player.lastAutoSkillTime[hk.id] || 0) > cd)) {
+                player.lastAutoSkillTime[hk.id] = now;
+                castBuff(hk.id, player);
+            }
+        } 
+        // ⚔️ 공격 마법 자동 시전 로직
+        else if (player.target && player.target.hp > 0 && !player.target.isDead) {
+            let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
+            let allowedRange = (mData.range || 120) + (player.target.size || 20);
             
-            if (isAttackSkill && player.mp >= mData.mp) {
-                let dist = Math.hypot(player.target.x - player.x, player.target.y - player.y);
-                let allowedRange = (mData.range || 120) + (player.target.size || 20);
+            if (dist <= allowedRange && player.mp >= mData.mp) {
+                player.lastAutoSkillTime = player.lastAutoSkillTime || {};
+                let cd = mData.cd || 1200; 
                 
-                if (dist <= allowedRange) {
-                    player.lastAutoSkillTime = player.lastAutoSkillTime || {};
-                    let cd = mData.cd || 5000;
-                    
-                    if (now - (player.lastAutoSkillTime[hk.id] || 0) > cd) {
-                        player.lastAutoSkillTime[hk.id] = now;
-                        castAttackSpell(player.target, hk.id, player);
-                    }
+                if (now - (player.lastAutoSkillTime[hk.id] || 0) > cd) {
+                    player.lastAutoSkillTime[hk.id] = now;
+                    castAttackSpell(player.target, hk.id, player);
                 }
             }
         }
     });
 };
+
+
 document.addEventListener('DOMContentLoaded', () => {
     const enableMobileWindowDrag = () => {
         document.querySelectorAll('.win-header').forEach(header => {

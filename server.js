@@ -276,11 +276,13 @@ io.on('connection', (socket) => {
    socket.on('player_target', (payload) => {
         let p = players[socket.id];
         if (!p) return;
-        p.targetId = payload.targetId; // null이든 유효한 ID든 그대로 반영
+
+        // 💡 [핵심] 동일한 타겟이면 무시하여 서버 렉/다운 원천 차단
+        if (p.targetId === payload.targetId) return;
+        p.targetId = payload.targetId; 
 
         if (p.partyId && parties[p.partyId]) {
             let party = parties[p.partyId];
-            // 💡 [수정] payload.targetId가 없더라도(null/undefined) 파티원에게 공유하여 점사 타겟을 동시에 해제할 수 있도록 조건 완화
             if (party.leader === socket.id && party.mode === 'focus') {
                 party.members.forEach(member => {
                     if (member.socketId !== socket.id) {
@@ -765,7 +767,8 @@ function processMonsterAI() {
                 maxHp: m.maxHp, 
                 isBoss: m.isBoss, 
                 angle: m.angle, 
-                color: m.color 
+                color: m.color,
+                targetId: m.targetId // 💡 몬스터가 누굴 때리는지 클라이언트로 전송!
             }))
         });
     }

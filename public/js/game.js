@@ -2540,6 +2540,13 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             }, 200);
         }
         else {
+            // 💡 고유 애니메이션이 없는 공격 마법은 기본 보라색 폭발 이펙트 적용
+            let hasOwnEffect = ['파이어볼', '에너지 볼트', '에어 블래스트', '트리플 애로우', '쇼크 스턴', '콜 라이트닝', '라이트닝 스톰', '이럽션', '블리자드', '헤일 스톰', '미티어 스트라이크', '디스인티그레이트', '토네이도', '저지먼트', '뱀파이어릭 터치', '데스 힐', '폴루트 워터', '캔슬레이션', '어스 바인드', '커스 파라다이스', '스트라이커 게일', '선버스트', '아이스 스파이크', '포그 오브 슬리핑'].includes(magicName);
+            
+            if (!hasOwnEffect && !isBgTick && typeof particles !== 'undefined' && (mData.type === 'attack' || mData.dmg)) {
+                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'explosion', size: 90, color: '#c084fc' });
+            }
+
             let delay = (magicName === '미티어 스트라이크' || magicName === '저지먼트') ? 400 : 50;
             setTimeout(() => {
                 if (!target || target.hp <= 0 || target.isDead || target.map !== currentMap) return;
@@ -3296,20 +3303,41 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
                 }
             }
 
-            // [B] 🎯 파티 점사 모드 (파티원일 때: 파티장 타겟 무조건 추적)
+       // [B] 🎯 파티 점사 모드 (생존/반격/카이팅 최우선 루틴)
             if (!skipSearch && amIFollower && isFocusMode) {
+                // 💡 [루틴 1순위] 나를 치는 적이 있는지 가장 먼저 스캔합니다.
+                let attackerMob = entities.find(e => 
+                    e && !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.map === currentMap && e.hp > 0 && !e.isDead &&
+                    (e.targetId === player.socketId || e.target === player) &&
+                    Math.hypot(e.x - player.x, e.y - player.y) <= 400
+                );
+
                 let leaderTargetMob = null;
                 if (leaderEnt && leaderEnt.targetId) {
                     leaderTargetMob = entities.find(e => e && e.id === leaderEnt.targetId && e.hp > 0 && !e.isDead && e.map === currentMap);
                 }
 
-                if (leaderTargetMob) {
+                // 나를 때리는 몹이 있고 그게 파티장의 타겟이 아니라면? -> 즉시 반격 타겟으로 잡음. (원거리면 기존 카이팅 로직으로 자연스럽게 뒷걸음질 침)
+                if (attackerMob && attackerMob.id !== (leaderTargetMob ? leaderTargetMob.id : null)) {
+                    if (!player.target || player.target.id !== attackerMob.id) {
+                        player.target = attackerMob;
+                        player.isMoving = false;
+                        if (typeof addMessage === 'function') {
+                            addMessage(`[생존 우선] 나를 공격하는 ${attackerMob.name} 먼저 반격/카이팅 합니다!`, '#f55');
+                        }
+                    }
+                    skipSearch = true;
+                }
+                // 나를 때리는 적이 없으면 파티장이 점사하는 타겟 같이 때리기
+                else if (leaderTargetMob) {
                     if (!player.target || player.target.id !== leaderTargetMob.id) {
                         player.target = leaderTargetMob;
                         player.isMoving = false;
                     }
                     skipSearch = true;
-                } else if (leaderEnt) {
+                } 
+                // 타겟이 아예 없으면 파티장 뒤로 안전하게 이동
+                else if (leaderEnt) {
                     if (player.target) player.target = null;
                     let distToLeader = Math.hypot(leaderEnt.x - player.x, leaderEnt.y - player.y);
                     if (distToLeader > 90) {
@@ -3322,7 +3350,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
                         player.moveX = undefined;
                         player.moveY = undefined;
                     }
-                    skipSearch = true; // 💡 return; 대신 플래그 활성화
+                    skipSearch = true;
                 }
             }
 
@@ -3641,12 +3669,15 @@ if (window.socket) {
     });
 
  
- // 💡 [완전 통합] 타 플레이어 및 파티원 마법/기술 그래픽 및 텍스트 동기화 리스너
+ // 💡 [완전 통합] 타 플레이어 및 파티원/용병 마법/기술 그래픽 및 텍스트 동기화 리스너
 window.socket.on('sync_player_magic', (data) => {
     if (typeof particles === 'undefined') return;
     
     let mName = data.magicName;
-    let caster = entities.find(e => e.id === data.casterId || e.socketId === data.casterId);
+    if (!mName) return;
+
+    // 💡 시전자 엔티티 탐색 (플레이어 혹은 소환수/용병 모두 대응)
+    let caster = entities.find(e => e.id === data.casterId || e.socketId === data.casterId || e.id === 'merc_' + data.casterId);
     
     let realCasterX = caster ? caster.x : (data.casterX !== undefined ? data.casterX : 2000);
     let realCasterY = caster ? caster.y : (data.casterY !== undefined ? data.casterY : 2000);
@@ -3661,7 +3692,7 @@ window.socket.on('sync_player_magic', (data) => {
         caster.angle = aimAngle;
     }
 
-    // 💡 3단계 이상 상급 마법/기술 시전 시 발밑 실시간 좌표에 마법진 생성
+    // 💡 3단계 이상 상급 마법/기술 시전 시 발밑에 마법진 생성
     let highTier = ['라이트닝 스톰', '선버스트', '블리자드', '미티어 스트라이크', '디스인티그레이트', '헤일 스톰', '토네이도', '저지먼트', '이뮨 투 함', '앱솔루트 배리어', '쇼크 스턴'];
     if (highTier.includes(mName)) {
         particles.push({ 
@@ -3674,20 +3705,35 @@ window.socket.on('sync_player_magic', (data) => {
         });
     }
 
-    // 💡 머리 위 스킬 텍스트를 등급별 강조색으로 분산 출력
-    if (mName) {
-        let isUltimate = ['디스인티그레이트', '저지먼트', '미티어 스트라이크'].includes(mName);
-        let isHigh = ['블리자드', '라이트닝 스톰', '쇼크 스턴', '트리플 애로우', '선버스트'].includes(mName);
-        let isBuff = mName.includes('힐') || mName.includes('가속') || mName.includes('워크');
-        
-        let tier = isUltimate ? 'ultimate' : (isHigh ? 'high' : (isBuff ? 'buff' : 'normal'));
-        addSkillText(realCasterX, realCasterY, `[${mName}]`, tier);
-    }
+    // 💡 머리 위 스킬 텍스트 출력
+    let isUltimate = ['디스인티그레이트', '저지먼트', '미티어 스트라이크'].includes(mName);
+    let isHigh = ['블리자드', '라이트닝 스톰', '쇼크 스턴', '트리플 애로우', '선버스트'].includes(mName);
+    let isBuff = mName.includes('힐') || mName.includes('가속') || mName.includes('워크');
+    let tier = isUltimate ? 'ultimate' : (isHigh ? 'high' : (isBuff ? 'buff' : 'normal'));
+    addSkillText(realCasterX, realCasterY, `[${mName}]`, tier);
 
-    // 마법 전용 이펙트 생성
+    // 💡 마법별 전용 이펙트 및 사운드 즉시 출력
     if (mName === '디스인티그레이트') {
         particles.push({ x: tx, y: ty, angle: aimAngle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
         if (typeof playSound === 'function') playSound('disintegrate');
+    } else if (mName === '미티어 스트라이크') {
+        particles.push({ x: tx, y: ty, life: 1.0, maxLife: 1.0, type: 'meteor', size: 350 });
+        if (typeof playSound === 'function') playSound('spell');
+    } else if (mName === '저지먼트') {
+        particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'judgment', size: 400 });
+        if (typeof playSound === 'function') playSound('spell');
+    } else if (mName === '블리자드' || mName === '헤일 스톰') {
+        particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'blizzard', size: 300 });
+        if (typeof playSound === 'function') playSound('blizzard');
+    } else if (mName === '토네이도' || mName === '에어 블래스트') {
+        particles.push({ x: tx, y: ty, life: 1.0, maxLife: 1.0, type: 'tornado', size: 240 });
+        if (typeof playSound === 'function') playSound('spell');
+    } else if (mName === '선버스트' || mName === '파이어볼' || mName === '이럽션') {
+        particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'explosion', size: 180, color: mName === '파이어볼' ? '#ff4400' : '#ffffaa' });
+        if (typeof playSound === 'function') playSound('fireball');
+    } else if (mName === '라이트닝 스톰' || mName === '콜 라이트닝') {
+        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'lightning', size: 100 });
+        if (typeof playSound === 'function') playSound('lightning');
     } else if (mName === '트리플 애로우') {
         for (let i = 0; i < 3; i++) {
             setTimeout(() => {
@@ -3707,8 +3753,12 @@ window.socket.on('sync_player_magic', (data) => {
     } else if (mName.includes('가속') || mName.includes('윈드 워크') || mName.includes('스톰 샷') || mName.includes('파이어 웨폰')) {
         particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
         if (typeof playSound === 'function') playSound('spell');
+    } else if (mName === '에너지 볼트') {
+        particles.push({ x: realCasterX, y: realCasterY - 15, speed: 16, life: 1.0, maxLife: 1.0, color: '#88aaff', isProj: true, type: 'energy_bolt', target: { x: tx, y: ty } });
+        if (typeof playSound === 'function') playSound('energy_bolt');
     } else {
-        particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'explosion', size: 120, color: '#00ffff' });
+        // 💡 등록되지 않은 기타 마법이나 무기 발동 스킬은 기본 보라색 폭발 이펙트 출력
+        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'explosion', size: 90, color: '#c084fc' });
         if (typeof playSound === 'function') playSound('spell');
     }
 });
