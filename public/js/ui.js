@@ -2,6 +2,14 @@
 // ==========================================
 // [1. 최상단 DOM 헬퍼 & 전역 상태 변수 및 멀티플레이 소켓 준비]
 // ==========================================
+window.getStackKey = function(it) {
+    if (!it) return '';
+    if (['potion', 'scroll', 'book', 'currency', 'etc'].includes(it.type)) {
+        return it.name;
+    }
+    return it.id || (it.name + '_' + (it.enchantValue || 0) + '_' + (it.magicOptions ? it.magicOptions.join(',') : ''));
+};
+
 window.$ = (id) => document.getElementById(id);
 
 // 서버 주도형 멀티플레이를 위한 Socket.io 객체 준비 (추후 server.js와 연동)
@@ -829,23 +837,25 @@ window.renderBuffs = function() {
 };
 
 
-window.applyBuff = function(name, duration, icon, type, val, target = player) { 
-    let now = performance.now(); 
-    let keyName = name.includes('가속') || name.includes('초록') ? '가속(헤이스트)' : name; 
-    target.buffs = target.buffs || {};
-    
-    if(target.buffs[keyName]) { 
-        target.buffs[keyName].expire += duration; 
-        target.buffs[keyName].maxDuration = target.buffs[keyName].expire - now; 
-        addMessage(`[${target.name} - ${keyName}] 지속시간 누적!`, '#5f5'); 
-    } 
-    else { 
-        target.buffs[keyName] = { expire: now + duration, maxDuration: duration, icon: icon, type: type, val: val }; 
-        addMessage(`[${target.name} - ${keyName}] 버프 적용됨`, '#5f5'); 
-    } 
-    updateUI(); 
+window.applyBuff = function(name, duration, icon, type, val, target = player) { 
+    let now = performance.now(); 
+    target.buffs = target.buffs || {};
+    
+    let keyName = name;
+    if (name.includes('가속') || name.includes('초록') || name.includes('윈드') || name.includes('홀리')) keyName = '가속(헤이스트)';
+    else if (name.includes('용기')) keyName = '용기물약';
+    else if (name.includes('와퍼') || name.includes('엘븐')) keyName = '엘븐와퍼';
+    
+    if (target.buffs[keyName]) { 
+        target.buffs[keyName].expire = now + duration;
+        target.buffs[keyName].maxDuration = duration; 
+        if (typeof addMessage === 'function') addMessage(`[${target.name} - ${keyName}] 지속시간 갱신`, '#5f5'); 
+    } else { 
+        target.buffs[keyName] = { expire: now + duration, maxDuration: duration, icon: icon, type: type, val: val }; 
+        if (typeof addMessage === 'function') addMessage(`[${target.name} - ${keyName}] 버프 적용됨`, '#5f5'); 
+    } 
+    if (typeof updateUI === 'function') updateUI(); 
 };
-
 window.handlePlayerDeath = function() {
     if (!player || player.isDead) return;
     
@@ -863,49 +873,43 @@ window.handlePlayerDeath = function() {
     }, 3000);
 };
 
-// ui.js의 updateUI 함수 전체 덮어쓰기
-// ui_4.js - updateUI 함수 전체 덮어쓰기
 function updateUI() {
-    if (player && player.hp <= 0 && !player.isDead && gameStarted) {
-        handlePlayerDeath();
-        return;
-    }
-    
-    // 💡 [핵심 패치 1] 장비 탈착 시 스탯(SP 등) 즉시 최신화 강제 호출
-    recalculateStats();
+    if (player && player.hp <= 0 && !player.isDead && gameStarted) {
+        handlePlayerDeath();
+        return;
+    }
+    
+    recalculateStats();
 
-    let totalDef = player.def; 
-    let totalAtk = player.atk; 
-    let totalMr = player.totalMr || (player.int * 2); 
+    let totalDef = player.def; 
+    let totalAtk = player.atk; 
+    let totalMr = player.totalMr || (player.int * 2); 
 
-    let totalHpBonus = 0; 
-    let totalMpBonus = 0; 
-    let totalHpRegen = 0; 
-    let totalMpRegen = 0; 
-    // 💡 [핵심 패치 2] 기사 패시브(대미지 감소)가 0으로 초기화되지 않도록 연동
-    let totalDmgReduction = player.totalDmgReduction || 0; 
-    
-    for (let k in player.equip) {
-        if(player.equip[k]) {
-            let eq = player.equip[k]; 
-            
-            if(k !== 'weapon') {
-                totalDef += (eq.def || 0) + (eq.enchantValue || 0);
-                if (eq.mr || eq.name.includes('마법') || eq.name.includes('면갑') || eq.name.includes('반지')) {
-                    totalMr += (eq.enchantValue || 0);
-                }
-            }
+    let totalHpBonus = 0; 
+    let totalMpBonus = 0; 
+    let totalHpRegen = 0; 
+    let totalMpRegen = 0; 
+    let totalDmgReduction = player.totalDmgReduction || 0; 
+    
+    for (let k in player.equip) {
+        if(player.equip[k]) {
+            let eq = player.equip[k]; 
+            
+            if(k !== 'weapon') {
+                totalDef += (eq.def || 0) + (eq.enchantValue || 0);
+                if (eq.mr || eq.name.includes('마법') || eq.name.includes('면갑') || eq.name.includes('반지')) {
+                    totalMr += (eq.enchantValue || 0);
+                }
+            }
 
-            if(eq.hpBonus) totalHpBonus += eq.hpBonus; 
-            if(eq.mpBonus) totalMpBonus += eq.mpBonus;
-            if(eq.hpRegen) totalHpRegen += eq.hpRegen; 
-            if(eq.mpRegen) totalMpRegen += eq.mpRegen;
-            
-      if(eq.magicOptions) { 
+            if(eq.hpBonus) totalHpBonus += eq.hpBonus; 
+            if(eq.mpBonus) totalMpBonus += eq.mpBonus;
+            if(eq.hpRegen) totalHpRegen += eq.hpRegen; 
+            if(eq.mpRegen) totalMpRegen += eq.mpRegen;
+            
+            if(eq.magicOptions) { 
                 eq.magicOptions.forEach(opt => { 
                     let val = parseInt(opt.match(/\+(\d+)/)?.[1]) || 0; 
-                    
-                    // 💡 [수정] [생명]과 [마력]의 20배/10배 중복 증폭 코드를 삭제 (이미 eq.hpBonus에 합산됨)
                     if(opt.includes('추가 방어력') || opt.includes('[보호]')) totalDef += val; 
                     if(opt.includes('마법 방어력')) totalMr += val; 
                     if(opt.includes('HP 회복률')) totalHpRegen += val; 
@@ -914,49 +918,52 @@ function updateUI() {
                     if(opt.includes('대미지 감소')) totalDmgReduction += val; 
                 }); 
             }
-        }
-    }
-    
-    if (player.buffs['용기물약']) totalAtk += 3;
-    player.totalHpRegen = totalHpRegen; player.totalMpRegen = totalMpRegen; player.totalDmgReduction = totalDmgReduction;
-    player.totalMr = totalMr; 
-    if (player.buffs['실드']) totalDef += player.buffs['실드'].val;
-    if (player.buffs['어드밴스 스피릿']) { totalHpBonus += player.buffs['어드밴스 스피릿'].val; totalMpBonus += player.buffs['어드밴스 스피릿'].val; }
-    if (player.buffs['이뮨 투 함']) player.totalDmgReduction += player.buffs['이뮨 투 함'].val;
+        }
+    }
+    
+    if (player.buffs['용기물약']) totalAtk += 3;
+    player.totalHpRegen = totalHpRegen; 
+    player.totalMpRegen = totalMpRegen; 
+    player.totalDmgReduction = totalDmgReduction;
+    player.totalMr = totalMr; 
+    if (player.buffs['실드']) totalDef += (player.buffs['실드'].val || 2);
+    if (player.buffs['어드밴스 스피릿']) { totalHpBonus += 50; totalMpBonus += 50; }
+    if (player.buffs['이뮨 투 함']) player.totalDmgReduction += (player.buffs['이뮨 투 함'].val || 10);
 
-    currentMaxHp = player.maxHp + totalHpBonus; currentMaxMp = player.maxMp + totalMpBonus; 
-    if(player.hp > currentMaxHp) player.hp = currentMaxHp; if(player.mp > currentMaxMp) player.mp = currentMaxMp;
+    // 💡 [핵심] window 전역 및 player 객체에 총 최대 HP/MP 직접 동기화하여 루프 멈춤 방지
+    window.currentMaxHp = player.maxHp + totalHpBonus; 
+    window.currentMaxMp = player.maxMp + totalMpBonus; 
+    currentMaxHp = window.currentMaxHp;
+    currentMaxMp = window.currentMaxMp;
 
-    if($('st-lv')) $('st-lv').innerText = player.level; 
-    if($('st-class')) $('st-class').innerText = classData[player.charClass] ? classData[player.charClass].name : '기사'; 
-    if($('st-stats')) $('st-stats').innerText = `S:${player.str} D:${player.dex} I:${player.int}`;
-    if($('st-ac')) {
-        $('st-ac').innerText = `-${totalDef} / ${totalMr}`; 
-    }
-    if($('st-atk')) {
-        $('st-atk').innerText = `${totalAtk} / ${player.sp || 0}`;
-        $('st-atk').style.color = '#aaf'; 
-    }
-    if($('st-adena')) $('st-adena').innerText = player.adena.toLocaleString(); 
-    
-    let hpPercent = Math.max(0, Math.min(100, (player.hp / currentMaxHp) * 100));
-    let mpPercent = Math.max(0, Math.min(100, (player.mp / currentMaxMp) * 100));
-    let expPercentVal = Math.max(0, Math.min(100, (player.exp / player.maxExp) * 100));
+    if(player.hp > currentMaxHp) player.hp = currentMaxHp; 
+    if(player.mp > currentMaxMp) player.mp = currentMaxMp;
 
-    if ($('hp-bar')) $('hp-bar').style.width = hpPercent + '%';
-    if ($('mp-bar')) $('mp-bar').style.width = mpPercent + '%';
-    if ($('exp-bar')) $('exp-bar').style.width = expPercentVal + '%';
+    if($('st-lv')) $('st-lv').innerText = player.level; 
+    if($('st-class')) $('st-class').innerText = classData[player.charClass] ? classData[player.charClass].name : '기사'; 
+    if($('st-stats')) $('st-stats').innerText = `S:${player.str} D:${player.dex} I:${player.int}`;
+    if($('st-ac')) $('st-ac').innerText = `-${totalDef} / ${totalMr}`; 
+    if($('st-atk')) { $('st-atk').innerText = `${totalAtk} / ${player.sp || 0}`; $('st-atk').style.color = '#aaf'; }
+    if($('st-adena')) $('st-adena').innerText = player.adena.toLocaleString(); 
+    
+    let hpPercent = Math.max(0, Math.min(100, (player.hp / currentMaxHp) * 100));
+    let mpPercent = Math.max(0, Math.min(100, (player.mp / currentMaxMp) * 100));
+    let expPercentVal = Math.max(0, Math.min(100, (player.exp / player.maxExp) * 100));
 
-    if ($('hp-text')) $('hp-text').innerText = `${Math.floor(player.hp)} / ${currentMaxHp}`;
-    if ($('mp-text')) $('mp-text').innerText = `${Math.floor(player.mp)} / ${currentMaxMp}`;
-    if ($('exp-text')) $('exp-text').innerText = `${expPercentVal.toFixed(2)}%`;
+    if ($('hp-bar')) $('hp-bar').style.width = hpPercent + '%';
+    if ($('mp-bar')) $('mp-bar').style.width = mpPercent + '%';
+    if ($('exp-bar')) $('exp-bar').style.width = expPercentVal + '%';
 
-    if($('btn-auto')) { $('btn-auto').className = player.autoPotion ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto').innerText = `물약 ${player.autoPotion ? 'ON' : 'OFF'}`; }
-    if($('btn-auto-hunt')) { $('btn-auto-hunt').className = player.autoHunt ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto-hunt').innerText = `사냥 ${player.autoHunt ? 'ON' : 'OFF'}`; }
-    
-    renderHotkeys(); 
-    renderBuffs();
-    if($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
+    if ($('hp-text')) $('hp-text').innerText = `${Math.floor(player.hp)} / ${currentMaxHp}`;
+    if ($('mp-text')) $('mp-text').innerText = `${Math.floor(player.mp)} / ${currentMaxMp}`;
+    if ($('exp-text')) $('exp-text').innerText = `${expPercentVal.toFixed(2)}%`;
+
+    if($('btn-auto')) { $('btn-auto').className = player.autoPotion ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto').innerText = `물약 ${player.autoPotion ? 'ON' : 'OFF'}`; }
+    if($('btn-auto-hunt')) { $('btn-auto-hunt').className = player.autoHunt ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto-hunt').innerText = `사냥 ${player.autoHunt ? 'ON' : 'OFF'}`; }
+    
+    renderHotkeys(); 
+    renderBuffs();
+    if($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
 }
 
 
@@ -1013,24 +1020,6 @@ window.toggleWindow = function(id) {
     } 
 };
 
-let dragEl = null, dragOffsetX = 0, dragOffsetY = 0; 
-window.startDrag = function(e, id) { 
-    dragEl = $(id); 
-    if(!dragEl) return;
-    bringToFront(id);
-    if (dragEl.style.transform && dragEl.style.transform !== 'none') {
-        let rect = dragEl.getBoundingClientRect();
-        dragEl.style.setProperty('transform', 'none', 'important');
-        dragEl.style.left = rect.left + 'px';
-        dragEl.style.top = rect.top + 'px';
-    }
-    let rect = dragEl.getBoundingClientRect(); 
-    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX; 
-    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY; 
-    dragOffsetX = cx - rect.left; dragOffsetY = cy - rect.top; 
-    document.addEventListener('mousemove', onDrag); document.addEventListener('mouseup', stopDrag); 
-    document.addEventListener('touchmove', onDrag, {passive: false}); document.addEventListener('touchend', stopDrag); 
-};
 
 
 window.closeAllWindows = function() { 
@@ -1038,40 +1027,36 @@ window.closeAllWindows = function() { 
     hideTooltip(); 
 };
 window.toggleAutoHunt = function() {
-    playSound('click');
-    if (!player.autoHunt && isInSafeZone(currentMap, player.x, player.y)) {
-        addMessage("안전지대에서는 자동사냥을 켤 수 없습니다.", '#f55');
+    if (typeof playSound === 'function') playSound('click');
+    if (!player.autoHunt && typeof isInSafeZone === 'function' && isInSafeZone(currentMap, player.x, player.y)) {
+        if (typeof addMessage === 'function') addMessage("안전지대에서는 자동사냥을 켤 수 없습니다.", '#f55');
         return;
     }
     
     player.autoHunt = !player.autoHunt;
     
     if (player.autoHunt) {
-        addMessage("자동 사냥 모드가 활성화되었습니다.", '#5f5');
+        if (typeof addMessage === 'function') addMessage("자동 사냥 모드가 활성화되었습니다.", '#5f5');
     } else {
         player.isMoving = false;
         player.moveX = undefined;
         player.moveY = undefined;
-        
-        // 💡 [수정] 자동사냥을 꺼도 등록해둔 빨간테두리(버프 등)는 유지하도록 삭제 방지!
-        // player.activeSpellSlots = []; <-- 이 원흉 코드를 삭제했습니다.
         player.selectedManualSpell = null;
-        
-        addMessage("수동 조작 모드 (자동 마법 설정 유지됨)", '#aaa');
+        if (typeof addMessage === 'function') addMessage("수동 조작 모드로 전환되었습니다.", '#aaa');
     }
-    updateUI();
+    if (typeof updateUI === 'function') updateUI();
 };
 
 window.toggleAutoPotion = function() {
-    playSound('click');
-    player.autoPotion = !player.autoPotion;
-    
-    if (player.autoPotion) {
-        addMessage("자동 물약 복용이 켜졌습니다 (HP 50% 이하 시 복용).", '#5f5');
-    } else {
-        addMessage("자동 물약 복용이 꺼졌습니다.", '#aaa');
-    }
-    updateUI();
+    if (typeof playSound === 'function') playSound('click');
+    player.autoPotion = !player.autoPotion;
+    
+    if (player.autoPotion) {
+        if (typeof addMessage === 'function') addMessage("자동 물약 복용이 켜졌습니다 (HP 70% / MP 20%).", '#5f5');
+    } else {
+        if (typeof addMessage === 'function') addMessage("자동 물약 복용이 꺼졌습니다.", '#aaa');
+    }
+    if (typeof updateUI === 'function') updateUI();
 };
 
 window.respawnPlayer = function() {
@@ -1088,19 +1073,19 @@ window.respawnPlayer = function() {
     player.mp = currentMaxMp;
     player.isDead = false;
     
+    // 💡 [추가] 사망 시 자동사냥과 자동물약 강제 OFF
+    player.autoHunt = false;
+    player.autoPotion = false;
+    player.target = null;
+    player.isMoving = false;
+    
     changeMap(targetMap, targetX, targetY);
-    addMessage("마을 안전지대에서 부활하였습니다.", "#5f5");
+    addMessage("마을 안전지대에서 부활하였습니다. (자동사냥/물약 OFF)", "#f55");
 
-    // 💡 [핵심] 부활 즉시 서버에 살아난 체력과 위치를 전송하여 몬스터 AI 멈춤 현상 해결
     if (window.socket && currentUser) {
         window.socket.emit('player_update', {
-            name: player.name,
-            charClass: player.charClass,
-            x: player.x,
-            y: player.y,
-            hp: player.hp,
-            maxHp: currentMaxHp,
-            map: currentMap,
+            name: player.name, charClass: player.charClass,
+            x: player.x, y: player.y, hp: player.hp, maxHp: currentMaxHp, map: currentMap,
             equip: player.equip
         });
     }
@@ -1332,38 +1317,53 @@ function renderInventory() {
         }
     }
 
-    const typeOrder = {
-        'potion': 1, 'weapon': 3, 'armor': 3, 'helmet': 3, 'shield': 3, 'tshirt': 3,
-        'cloak': 3, 'gloves': 3, 'boots': 3, 'belt': 3, 'ring': 3, 'ring1': 3, 'ring2': 3,
-        'book': 4, 'scroll': 5
+   const typeOrder = {
+        'potion_hp': 1,
+        'potion_mp': 2,
+        'potion_buff': 3,
+        'weapon': 4, 'armor': 4, 'helmet': 4, 'shield': 4, 'tshirt': 4,
+        'cloak': 4, 'gloves': 4, 'boots': 4, 'belt': 4, 'ring': 4, 'ring1': 4, 'ring2': 4,
+        'book': 5, 'scroll': 6, 'etc': 7
     };
 
     displayList.sort((a, b) => {
-        const orderA = typeOrder[a.type] || 99;
-        const orderB = typeOrder[b.type] || 99;
-        if (orderA === 1 && orderB !== 1) return -1;
-        if (orderB === 1 && orderA !== 1) return 1;
+        // 아이템의 세부 타입(카테고리) 판별 함수
+        let getCategoryWeight = (it) => {
+            if (it.type === 'potion') {
+                let name = it.name || '';
+                if (name.includes('주홍') || name.includes('맑은') || name.includes('빨간') || name.includes('고기') || name.includes('체력')) return 1; // 체력 물약
+                if (name.includes('파란') || name.includes('마나')) return 2; // 마나 물약
+                return 3; // 초록, 용기, 와퍼 등 버프 물약
+            }
+            if (['weapon', 'armor', 'helmet', 'shield', 'tshirt', 'cloak', 'gloves', 'boots', 'belt', 'ring', 'ring1', 'ring2'].includes(it.type)) {
+                return 4; // 착용 아이템
+            }
+            if (it.type === 'book') return 5;
+            if (it.type === 'scroll') return 6;
+            return 7; // 기타
+        };
+
+        let weightA = getCategoryWeight(a);
+        let weightB = getCategoryWeight(b);
+
+        if (weightA !== weightB) {
+            return weightA - weightB;
+        }
+
+        // 같은 카테고리 내에서는 장착 중인 아이템 우선 혹은 등급 순 정렬
         if (a.isEquipped && !b.isEquipped) return -1;
         if (!a.isEquipped && b.isEquipped) return 1;
-        if (orderA !== orderB) return orderA - orderB;
+        
         return (b.grade || 0) - (a.grade || 0);
     });
 
-    if ($('inv-title')) {
-        $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
-    }
+    if ($('inv-title')) $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
 
     const counts = new Map();
     displayList.forEach((it) => {
         const key = getStackKey(it);
         if (!counts.has(key)) {
-            counts.set(key, {
-                item: it,
-                count: 0,
-                rawKey: key,
-                isEquipped: it.isEquipped,
-                equipSlot: it.equipSlot
-            });
+            counts.set(key, { item: it, count: 0, rawKey: key, isEquipped: it.isEquipped, equipSlot: it.equipSlot });
         }
         counts.get(key).count += (it.count || 1);
     });
@@ -1371,7 +1371,6 @@ function renderInventory() {
     const invListEl = $('inv-list');
     if (invListEl) {
         invListEl.innerHTML = '';
-
         if (counts.size === 0) {
             invListEl.innerHTML = '<div style="color:#666;text-align:center;padding:10px; grid-column: 1 / -1;">가방이 비었습니다.</div>';
         } else {
@@ -1382,18 +1381,14 @@ function renderInventory() {
                 const itemElement = document.createElement('div');
                 itemElement.className = `inv-slot grade-${c.item.grade || 0}`;
 
-                let clickCount = 0;
                 let clickTimer = null;
+                let clickCount = 0;
 
-                // PC 마우스 호버 툴팁
                 itemElement.addEventListener('mouseenter', (e) => {
-                    if (!isTouchDevice && !window.activeEnchantScrollKey) {
-                        showTooltip(e, dStr, c.isEquipped);
-                    }
+                    if (!isTouchDevice && !window.activeEnchantScrollKey) showTooltip(e, dStr, c.isEquipped);
                 });
                 itemElement.addEventListener('mouseleave', hideTooltip);
 
-                // PC 우클릭 메뉴
                 itemElement.addEventListener('contextmenu', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
@@ -1403,13 +1398,18 @@ function renderInventory() {
                     autoCenterWindow('item-action-modal', true);
                 });
 
-                // 터치 / 클릭 통합
+                // 💡 [핵심 해결] 가방 인벤토리 목록에서 E표시(착용 중)인 아이템을 클릭/더블클릭하면 즉시 장착 해제(unequip) 실행
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
                     hideTooltip();
 
                     if (window.activeEnchantScrollKey) {
-                        if (!c.isEquipped) useItem(c.rawKey);
+                        if (c.isEquipped) {
+                            window.attemptEnchant(window.activeEnchantScrollKey, player.equip[c.equipSlot]);
+                        } else {
+                            let targetIt = player.inv.find(it => getStackKey(it) === c.rawKey);
+                            if (targetIt) window.attemptEnchant(window.activeEnchantScrollKey, targetIt);
+                        }
                         return;
                     }
 
@@ -1417,18 +1417,25 @@ function renderInventory() {
                     if (clickCount === 1) {
                         clickTimer = setTimeout(() => {
                             clickCount = 0;
-                            // 💡 모바일/PC 원터치 시 설정 및 상세 정보 모달 오픈
-                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                            bringToFront('item-action-modal');
-                            autoCenterWindow('item-action-modal', true);
+                            if (c.isEquipped) {
+                                // 👉 장착 중인 아이템이면 클릭 시 바로 해제!
+                                window.unequip(c.equipSlot);
+                            } else {
+                                // 👉 가방 속 아이템이면 사용/장착!
+                                window.useItem(c.rawKey);
+                            }
                         }, 250);
                     } else if (clickCount === 2) {
                         clearTimeout(clickTimer);
                         clickCount = 0;
                         if (c.isEquipped) {
-                            unequip(c.equipSlot);
+                            // 👉 장착 중인 아이템 더블클릭 시 해제!
+                            window.unequip(c.equipSlot);
                         } else {
-                            useItem(c.rawKey);
+                            // 👉 가방 속 아이템 더블클릭 시 상세 관리 모달 오픈
+                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
+                            bringToFront('item-action-modal');
+                            autoCenterWindow('item-action-modal', true);
                         }
                     }
                 });
@@ -1441,7 +1448,7 @@ function renderInventory() {
         }
     }
 
-    // 장착 장비 그리드 렌더링
+
     let eqHTML = '';
     const slots = [
         { k: 'helmet', n: '투구', c: 'ce-helm' }, { k: 'tshirt', n: '티셔츠', c: 'ce-tshirt' },
@@ -1461,16 +1468,61 @@ function renderInventory() {
             const name = it.enchantValue ? `+${it.enchantValue}` : '';
             const enchantBadge = name ? `<span style="position:absolute; top:2px; right:2px; font-size:10px; font-weight:bold; color:#fff;">${name}</span>` : '';
 
-            eqHTML += `<div class="ce-slot ${s.c} grade-${it.grade || 0}" ${dropAttr} onclick="openItemActionModal(event, '${getStackKey(it)}', '${it.name}', 1, '${dStr}'); bringToFront('item-action-modal'); autoCenterWindow('item-action-modal', true); hideTooltip();" onmouseenter="showTooltip(event, '${dStr}', true)" onmouseleave="hideTooltip()">${getItemIcon(it)}${enchantBadge}</div>`;
+            eqHTML += `<div class="ce-slot ${s.c} grade-${it.grade || 0}" ${dropAttr} 
+                onclick="handleEquipSlotClick(event, '${s.k}', '${dStr}')" 
+                onmouseenter="if(!window.activeEnchantScrollKey) showTooltip(event, '${dStr}', true)" 
+                onmouseleave="hideTooltip()">${getItemIcon(it)}${enchantBadge}</div>`;
         } else {
             eqHTML += `<div class="ce-slot ${s.c}" ${dropAttr}><span class="ce-label">${s.n}</span></div>`;
         }
     });
 
-    if ($('equip-grid')) {
-        $('equip-grid').innerHTML = eqHTML;
-    }
+    if ($('equip-grid')) $('equip-grid').innerHTML = eqHTML;
 }
+let equipSlotClickCount = {};
+let equipSlotClickTimer = {};
+
+window.handleEquipSlotClick = function(e, slotKey, dataStr) {
+    e.stopPropagation();
+    hideTooltip();
+
+    if (window.activeEnchantScrollKey) {
+        if (player.equip && player.equip[slotKey]) {
+            window.attemptEnchant(window.activeEnchantScrollKey, player.equip[slotKey]);
+        }
+        return;
+    }
+
+    equipSlotClickCount[slotKey] = (equipSlotClickCount[slotKey] || 0) + 1;
+
+    if (equipSlotClickCount[slotKey] === 1) {
+        equipSlotClickTimer[slotKey] = setTimeout(() => {
+            equipSlotClickCount[slotKey] = 0;
+            let it = player.equip[slotKey];
+            if (it) {
+                openItemActionModal(e, getStackKey(it), it.name, 1, dataStr);
+                bringToFront('item-action-modal');
+                autoCenterWindow('item-action-modal', true);
+            }
+        }, 250);
+    } else if (equipSlotClickCount[slotKey] === 2) {
+        clearTimeout(equipSlotClickTimer[slotKey]);
+        equipSlotClickCount[slotKey] = 0;
+        window.unequip(slotKey);
+    }
+};
+
+window.cancelEnchantMode = function() {
+    window.activeEnchantScrollKey = null;
+    document.body.classList.remove('enchanting-mode');
+    document.body.style.cursor = 'default';
+};
+
+
+
+
+
+
 
 function getMagicLevelTier(mName) {
     let m = magicDb[mName];
@@ -1788,21 +1840,27 @@ window.removeMagicOption = function(stackKey, idx) {
     }
 };
 
-window.assignHotkeyFromModal = function(idx) { 
-    if(!selectedItemForAction) return; 
-    if(selectedItemForAction.isMagic) { 
-        hotkeys[idx] = { type: 'magic', id: selectedItemForAction.itemName }; 
-        addMessage(`[F${idx+5}] 슬롯에 [${selectedItemForAction.itemName}] 등록 완료`, '#5f5'); 
-    } else { 
-        let { itemName, itemType } = selectedItemForAction; 
-        let payload = {type: 'item', id: itemName}; 
-        if(itemType === 'ring' || itemName.includes('반지')) payload.itemType = 'ring'; 
-        hotkeys[idx] = payload; 
-        addMessage(`[F${idx+5}] 슬롯에 [${itemName}] 등록 완료`, '#5f5'); 
-    } 
-    playSound('click'); updateUI(); hideItemActionModal(); window.hotkeys = hotkeys; 
-};
+window.assignHotkeyFromModal = function(idx) { 
+    if(!selectedItemForAction) return; 
+    if(selectedItemForAction.isMagic) { 
+        // 마법 고유 ID 저장
+        let mKey = Object.keys(magicDb).find(k => magicDb[k].name === selectedItemForAction.itemName) || selectedItemForAction.itemName;
+        hotkeys[idx] = { type: 'magic', id: mKey }; 
+        addMessage(`[F${idx+5}] 슬롯에 [${selectedItemForAction.itemName}] 등록 완료`, '#5f5'); 
+    } else { 
+        // 아이템 고유 ID 저장
+        let { itemName, itemType } = selectedItemForAction; 
+        let targetItemTemplate = itemDb.find(i => i.name === itemName);
+        let itemId = targetItemTemplate ? targetItemTemplate.id : itemName;
 
+        hotkeys[idx] = { type: 'item', id: itemId, name: itemName }; 
+        addMessage(`[F${idx+5}] 슬롯에 [${itemName}] 등록 완료`, '#5f5'); 
+    } 
+    playSound('click'); 
+    updateUI(); 
+    hideItemActionModal(); 
+    window.hotkeys = hotkeys; 
+};
 window.execItemAction = function(action) { 
     hideItemActionModal(); 
     if(!selectedItemForAction || selectedItemForAction.isMagic || action === 'cancel') return; 
@@ -1960,35 +2018,55 @@ function getEquipSlotType(it) {
 }
 
 // 2. 장착 해제 및 장착 중인 아이템 인챈트
-window.unequip = function(type) { 
+window.cancelEnchantMode = function() {
+    window.activeEnchantScrollKey = null;
+    document.body.classList.remove('enchanting-mode');
+    document.body.style.cursor = 'default';
+};
+
+window.unequip = function(slotKey) { 
     if (window.activeEnchantScrollKey) { 
-        if (player.equip[type]) { 
-            window.attemptEnchant(window.activeEnchantScrollKey, player.equip[type]); 
+        if (player.equip && player.equip[slotKey]) { 
+            window.attemptEnchant(window.activeEnchantScrollKey, player.equip[slotKey]); 
         } 
         return; 
     }
     
-    if (player.equip[type]) { 
-        playSound('click'); 
-        player.inv.push(player.equip[type]); 
-        player.equip[type] = null; 
-        updateUI(); 
-        hideTooltip(); 
+    if (player.equip && player.equip[slotKey]) { 
+        let unequippedItem = player.equip[slotKey];
+        if (typeof playSound === 'function') playSound('click'); 
+        player.inv.push(unequippedItem); 
+        player.equip[slotKey] = null; 
+        
+        if (Array.isArray(window.hotkeys)) {
+            for (let i = 0; i < window.hotkeys.length; i++) {
+                if (window.hotkeys[i] && window.hotkeys[i].id === unequippedItem.name) {
+                    window.hotkeys[i] = null;
+                }
+            }
+        }
+        if (typeof addMessage === 'function') addMessage(`[${unequippedItem.name}] 장착 해제`, "#aaa");
+        if (typeof updateUI === 'function') updateUI(); 
+        if (typeof hideTooltip === 'function') hideTooltip(); 
+        if (typeof renderInventory === 'function') renderInventory();
     } 
 };
 
+
+
 // 3. 인벤토리 아이템 사용 및 인챈트 트리거
 window.useItem = function(stackKey) {
+    if (!stackKey) return;
     if (window.activeEnchantScrollKey) {
-        let targetIdx = player.inv.findIndex(it => getStackKey(it) === stackKey);
+        let targetIdx = player.inv.findIndex(it => (typeof getStackKey === 'function' ? getStackKey(it) : it.name) === stackKey || it.id === stackKey || it.name === stackKey);
         if (targetIdx > -1) window.attemptEnchant(window.activeEnchantScrollKey, player.inv[targetIdx]);
         return;
     }
 
-    let idx = player.inv.findIndex(it => getStackKey(it) === stackKey); 
+    let idx = player.inv.findIndex(it => (typeof getStackKey === 'function' ? getStackKey(it) : it.name) === stackKey || it.id === stackKey || it.name === stackKey); 
     if (idx === -1) return; 
     let it = player.inv[idx]; 
-    hideTooltip();
+    if (typeof hideTooltip === 'function') hideTooltip();
 
     if (it.type === 'scroll') {
         if (it.name === '무기 마법 주문서' || it.name === '갑옷 마법 주문서' || it.isEnchantScroll || it.name.includes('마법 부여서')) { 
@@ -2047,19 +2125,31 @@ window.useItem = function(stackKey) {
                 addMessage("근처에 테이밍할 대상(도베르만)이 없습니다.", '#aaa'); 
             }
         }
-        else if (it.name.includes('초록 물약')) { playSound('drink'); applyBuff('초록물약', 300000, '🍾', 'speed', 60); } 
+        else if (it.name.includes('초록 물약')) { 
+            playSound('drink'); 
+            applyBuff('초록물약', 300000, '🍾', 'speed', 60); 
+        } 
         else if (it.name.includes('용기')) { 
-            if (player.charClass !== 'knight') { addMessage("기사 클래스 전용 아이템입니다.", '#f55'); return; }
-            playSound('drink'); applyBuff('용기물약', 300000, '🏺', 'atkSpeed', -300); 
+            if (player.charClass !== 'knight' && player.charClass !== 'royal') { 
+                addMessage("기사/군주 전용 아이템입니다.", '#f55'); 
+                return; 
+            }
+            playSound('drink'); 
+            applyBuff('용기물약', 300000, '🏺', 'atkSpeed', -300); 
         } 
         else if (it.name.includes('와퍼')) { 
-            if (player.charClass !== 'elf') { addMessage("요정 클래스 전용 아이템입니다.", '#f55'); return; }
-            playSound('drink'); applyBuff('엘븐와퍼', 300000, '🍃', 'atkSpeed', -300); 
+            if (player.charClass !== 'elf') { 
+                addMessage("요정 전용 아이템입니다.", '#f55'); 
+                return; 
+            }
+            playSound('drink'); 
+            applyBuff('엘븐와퍼', 300000, '🍃', 'atkSpeed', -300); 
         }
         else if (it.name.includes('파란')) { 
             playSound('drink'); 
-            player.mp = Math.min(currentMaxMp, player.mp + 30); 
-            addMessage(`${it.name} 복용`, '#55f'); 
+            let mpHealAmt = 50; // 💡 마나 50 즉시 회복
+            player.mp = Math.min(currentMaxMp, player.mp + mpHealAmt); 
+            addMessage(`${it.name} 복용 (+${mpHealAmt} MP)`, '#55f'); 
         }
         else { 
             // 💡 모든 체력 회복 물약 (주홍, 맑은, 빨간 등) 공통 증폭 처리
@@ -3414,48 +3504,50 @@ window.withdrawMercenary = async function() {
 // ==========================================
 // [창 드래그 및 위치 이동 시스템]
 // ==========================================
+let dragEl = null, dragOffsetX = 0, dragOffsetY = 0;
 
-window.startDrag = function(e, id) { 
-    dragEl = $(id); 
-    if(!dragEl) return;
+window.startDrag = function(e, id) { 
+    dragEl = $(id); 
+    if (!dragEl) return;
 
-    if (typeof bringToFront === 'function') {
-        bringToFront(id); // 클릭/터치 시 맨 앞으로 배치
-    }
+    if (typeof bringToFront === 'function') {
+        bringToFront(id);
+    }
 
-    if (dragEl.style.transform && dragEl.style.transform !== 'none') {
-        let rect = dragEl.getBoundingClientRect();
-        dragEl.style.setProperty('transform', 'none', 'important'); // 고정 해제
-        dragEl.style.left = rect.left + 'px';
-        dragEl.style.top = rect.top + 'px';
-    }
+    if (dragEl.style.transform && dragEl.style.transform !== 'none') {
+        let rect = dragEl.getBoundingClientRect();
+        dragEl.style.setProperty('transform', 'none', 'important');
+        dragEl.style.left = rect.left + 'px';
+        dragEl.style.top = rect.top + 'px';
+    }
 
-    let rect = dragEl.getBoundingClientRect(); 
-    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX; 
-    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY; 
-    dragOffsetX = cx - rect.left; 
-    dragOffsetY = cy - rect.top; 
+    let rect = dragEl.getBoundingClientRect(); 
+    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX; 
+    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY; 
+    dragOffsetX = cx - rect.left; 
+    dragOffsetY = cy - rect.top; 
 
-    document.addEventListener('mousemove', onDrag); 
-    document.addEventListener('mouseup', stopDrag); 
-    document.addEventListener('touchmove', onDrag, {passive: false}); 
-    document.addEventListener('touchend', stopDrag); 
+    document.addEventListener('mousemove', onDrag); 
+    document.addEventListener('mouseup', stopDrag); 
+    document.addEventListener('touchmove', onDrag, {passive: false}); 
+    document.addEventListener('touchend', stopDrag); 
 };
 
 function onDrag(e) {
-    if (!dragEl) return;
-    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
-    dragEl.style.left = (cx - dragOffsetX) + 'px';
-    dragEl.style.top = (cy - dragOffsetY) + 'px';
+    if (!dragEl) return;
+    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+    dragEl.style.left = (cx - dragOffsetX) + 'px';
+    dragEl.style.top = (cy - dragOffsetY) + 'px';
 }
 
 function stopDrag() {
-    dragEl = null;
-    document.removeEventListener('mousemove', onDrag); document.removeEventListener('mouseup', stopDrag);
-    document.removeEventListener('touchmove', onDrag); document.removeEventListener('touchend', stopDrag);
+    dragEl = null;
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', stopDrag);
+    document.removeEventListener('touchmove', onDrag);
+    document.removeEventListener('touchend', stopDrag);
 }
-
 window.autoCenterWindow = function(id, forceCenter = true) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -3843,37 +3935,6 @@ window.hideCharSelect = function() {
 
 // 💡 용병 선택 전용 전역 함수 추가
 
-window.selectMercenary = function(mercId) {
-    let target = entities.find(e => e.id === mercId);
-    if (target) {
-        player.target = target;
-        playSound('click');
-        addMessage(`[용병 지정] ${target.name}`, '#5ff');
-        if (typeof openPetUI === 'function') openPetUI(target);
-    }
-};
-
-
-
-
-document.addEventListener('DOMContentLoaded', () => {
-    const enableMobileWindowDrag = () => {
-        document.querySelectorAll('.win-header').forEach(header => {
-            if (header.dataset.touchDraggable) return;
-            header.dataset.touchDraggable = 'true';
-            
-            header.addEventListener('touchstart', (e) => {
-                let winEl = header.closest('.window');
-                if (winEl && winEl.id && typeof startDrag === 'function') {
-                    startDrag(e, winEl.id);
-                }
-            }, { passive: false });
-        });
-    };
-
-    enableMobileWindowDrag();
-    setInterval(enableMobileWindowDrag, 1000);
-});
 
 
 window.renderMercenaryHUD = function() {
@@ -4031,5 +4092,19 @@ function injectEnchantCursorStyle() {
     document.head.appendChild(style);
 }
 injectEnchantCursorStyle();
+
+
+// 💡 [추가] 전역 터치/클릭 시 잔여 툴팁 및 강화 커서 강제 종료
+window.addEventListener('mousedown', (e) => {
+    if (!e.target.closest('.shop-item-info') && !e.target.closest('.inv-slot') && !e.target.closest('.ce-slot') && !e.target.closest('#tooltip')) {
+        if (typeof hideTooltip === 'function') hideTooltip();
+    }
+    
+    // 빈 공간 클릭 시 강화(십자 커서) 모드 강제 취소
+    if (window.activeEnchantScrollKey && !e.target.closest('.inv-slot') && !e.target.closest('.ce-slot')) {
+        if (typeof cancelEnchantMode === 'function') window.cancelEnchantMode();
+        if (typeof addMessage === 'function') addMessage("주문서 사용이 취소되었습니다.", '#aaa');
+    }
+});
 
 

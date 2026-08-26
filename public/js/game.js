@@ -102,46 +102,7 @@ function isEntityOnScreen(ent, ref = player) {
     return Math.abs(ent.x - ref.x) < (halfW - margin) && 
            Math.abs(ent.y - ref.y) < (halfH - margin);
 }
-// ==========================================
-// 💡 [착용 장비 더블클릭(더블터치) 해제 패치]
-// ==========================================
-let lastUnequipTime = {};
 
-window.unequip = function(type) { 
-    if (window.activeEnchantScrollKey) { 
-        if (player.equip[type]) { 
-            attemptEnchant(window.activeEnchantScrollKey, player.equip[type]); 
-        } 
-        return; 
-    }
-    
-    let now = Date.now();
-    // 0.35초(350ms) 이내에 연속으로 두 번 누르면 해제 실행
-    if (lastUnequipTime[type] && (now - lastUnequipTime[type] < 350)) {
-        if (player.equip[type]) { 
-            let unequippedItem = player.equip[type];
-            if (typeof playSound === 'function') playSound('click'); 
-            player.inv.push(unequippedItem); 
-            player.equip[type] = null; 
-            for (let i = 0; i < window.hotkeys.length; i++) {
-                if (window.hotkeys[i] && window.hotkeys[i].id === unequippedItem.name) {
-                    window.hotkeys[i] = null; // 핫키 데이터 해제
-                }
-            }
-            if (typeof updateUI === 'function') updateUI(); 
-            if (typeof hideTooltip === 'function') hideTooltip(); 
-            if (typeof renderInventory === 'function') renderInventory();
-        } 
-        lastUnequipTime[type] = 0;
-    } else {
-        lastUnequipTime[type] = now;
-        if (player.equip[type]) {
-            if (typeof addMessage === 'function') {
-                addMessage("장비를 해제하려면 연속 두 번 클릭(터치)하세요.", "#aaa");
-            }
-        }
-    }
-};
 
 function checkOrientation() { if(document.getElementById('orientation-warning')) document.getElementById('orientation-warning').style.display = 'none'; }
 window.addEventListener('resize', () => { resize(); checkOrientation(); });
@@ -2139,6 +2100,27 @@ ctx.strokeText(pName, Math.round(player.x), Math.round(player.y - player.size - 
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(-beamWidth * 0.4, -h, beamWidth * 0.8, h);
             }
+         else if (p.type === 'ice_spike') {
+                let r = p.size || 80;
+                let h = 180 * Math.sin(progress * Math.PI);
+                ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff';
+                ctx.fillStyle = `rgba(180, 255, 255, ${1 - progress})`;
+                
+                // 날카로운 얼음 기둥
+                ctx.beginPath();
+                ctx.moveTo(0, -h);
+                ctx.lineTo(-r * 0.3, 0);
+                ctx.lineTo(r * 0.3, 0);
+                ctx.fill();
+                
+                // 흩날리는 얼음 가루
+                ctx.fillStyle = '#ffffff';
+                for(let k = 0; k < 6; k++) {
+                    let px = Math.cos(k * 1.2) * (r * 0.4 * progress);
+                    let py = -h * 0.4 + Math.sin(k) * (r * 0.4 * progress);
+                    ctx.fillRect(px, py, 3, 3);
+                }
+            }
             else if (p.type === 'meteor') {
                 if (progress < 0.4) { 
                     let fallP = progress / 0.4;
@@ -2677,6 +2659,8 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         if (!isBgTick && typeof particles !== 'undefined') {
             if (magicName === '쇼크 스턴') {
                 particles.push({ x: target.x, y: target.y, life: 0.9, maxLife: 0.9, type: 'stun_effect', size: 70 });
+            } else if (magicName === '스톰 블레이드') {
+                particles.push({ x: caster.x, y: caster.y, life: 0.7, maxLife: 0.7, type: 'storm_blade_ring', size: 130 });
             } else if (magicName === '트리플 애로우') {
                 for (let i = 0; i < 3; i++) {
                     setTimeout(() => {
@@ -2696,18 +2680,18 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                 particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'meteor', size: mData.aoe || 350 });
             } else if (magicName === '디스인티그레이트') {
                 particles.push({ x: target.x, y: target.y, angle: caster.angle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
-            } else if (magicName === '토네이도') {
+            } else if (magicName === '토네이도' || magicName === '에어 블래스트') {
                 particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'tornado', size: mData.aoe || 240 });
             } else if (magicName === '저지먼트') {
                 particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'judgment', size: mData.aoe || 400 });
             } else if (magicName === '뱀파이어릭 터치' || magicName === '데스 힐' || magicName === '폴루트 워터') {
                 particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'drain' });
-            } else if (magicName === '캔슬레이션' || magicName === '어스 바인드' || magicName === '커스 파라다이스' || magicName === '스트라이커 게일') {
+            } else if (['캔슬레이션', '어스 바인드', '커스 파라다이스', '스트라이커 게일', '커스 디지즈', '다크니스', '사일런스', '슬로우'].includes(magicName)) {
                 particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'cancellation' });
             } else if (magicName === '선버스트') {
                 particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'explosion', size: 200, color: '#ffffaa' });
             } else if (magicName === '아이스 스파이크') {
-                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'explosion', size: 100, color: '#00ffff' });
+                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'ice_spike', size: 100 });
             } else if (magicName === '포그 오브 슬리핑') {
                 particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'tornado', size: 280 }); 
             }
@@ -3003,16 +2987,17 @@ function update(timestamp) {
 
     // 3. 안전지대 판정 및 UI 표시
     let playerInSafeZone = typeof isInSafeZone === 'function' ? isInSafeZone(currentMap, player.x, player.y) : false;
-    let zoneEl = document.getElementById('zone-indicator');
-    if (playerInSafeZone) {
-        if (zoneEl && zoneEl.innerText !== '[ 안전 지대 ]') { zoneEl.innerText = '[ 안전 지대 ]'; zoneEl.style.color = '#5f5'; }
-        if (player.autoHunt) { 
-            player.autoHunt = false; 
-            player.target = null; 
-            player.isMoving = false; 
-            if (typeof addMessage === 'function') addMessage("[안전지대 진입] 자동사냥이 해제되었습니다.", '#f55'); 
-            if (typeof updateUI === 'function') updateUI(); 
-        }
+let zoneEl = document.getElementById('zone-indicator');
+if (playerInSafeZone) {
+    if (zoneEl && zoneEl.innerText !== '[ 안전 지대 ]') { zoneEl.innerText = '[ 안전 지대 ]'; zoneEl.style.color = '#5f5'; }
+    if (player.autoHunt || player.autoPotion) { 
+        player.autoHunt = false; 
+        player.autoPotion = false; // 💡 안전지대 워프 시 물약/사냥 모두 OFF
+        player.target = null; 
+        player.isMoving = false; 
+        if (typeof addMessage === 'function') addMessage("[안전지대 진입] 자동사냥 및 자동물약이 해제되었습니다.", '#f55'); 
+        if (typeof updateUI === 'function') updateUI(); 
+    }
     } else {
         if (zoneEl && zoneEl.innerText !== '[ 전투 지대 ]') { zoneEl.innerText = '[ 전투 지대 ]'; zoneEl.style.color = '#f55'; }
     }
@@ -4505,6 +4490,9 @@ window.addEventListener('contextmenu', function (e) {
     return false;
 }, { passive: false });
 
+// ==========================================
+// 🧠 [궁극의 고지능 용병 AI 시스템] (원형 카이팅, 마나 관리, 스마트 마법)
+// ==========================================
 window.updateMercenaryAI = function() {
     if (!gameStarted || !player) return;
     const now = performance.now();
@@ -4513,26 +4501,23 @@ window.updateMercenaryAI = function() {
     const dt = Math.min(70, Math.max(1, now - window._lastMercAiTime));
     window._lastMercAiTime = now;
 
-    // 활성 용병 추출
     const activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0 && !ent.isDead);
     if (activeMercs.length === 0) return;
 
     const playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
     const baseSpeed = player.currentSpeed || 180;
-    
     const followSpeed = (baseSpeed + (playerHasHaste ? 100 : 0)) * (dt / 1000);
     const combatApproachSpeed = (baseSpeed * 0.95 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
 
-    // 공통 공격 실행 함수
     const executeMercAttack = (e, chosenSpell) => {
         e.lastAttack = now;
         if (chosenSpell && magicDb?.[chosenSpell] && e.mp >= magicDb[chosenSpell].mp) {
-            // 💡 [핵심 수정 2] 마법사뿐만 아니라 요정/기사 용병도 스킬을 쓸 때 무조건 castAttackSpell을 타도록 통합!
             if (typeof castAttackSpell === 'function') {
                 castAttackSpell(e.target, chosenSpell, e, true);
             }
         } else {
-            if (e.mercType === 'wizard') return; // 마법사는 엠탐 대기
+            // 💡 마법사 용병은 마나가 없어도 절대 지팡이로 맞짱을 뜨지 않고 대기/도주
+            if (e.mercType === 'wizard') return; 
 
             const totalAtk = typeof getEntityTotalAtk === 'function' ? getEntityTotalAtk(e) : (e.atk || 15);
             const isBow = Boolean(e.equip?.weapon?.isBow);
@@ -4609,16 +4594,14 @@ window.updateMercenaryAI = function() {
             }
         });
 
-        if (typeof e.mercHpPotionCount === 'undefined') e.mercHpPotionCount = 10;
-        if (typeof e.mercMpPotionCount === 'undefined') e.mercMpPotionCount = 10;
+        if (typeof e.mercHpPotionCount === 'undefined') e.mercHpPotionCount = 100;
+        if (typeof e.mercMpPotionCount === 'undefined') e.mercMpPotionCount = 50;
 
-        const isBg = typeof isBgTick !== 'undefined' && isBgTick;
-
+        // [물약 보급 자율 복용] HP 60% 미만 주홍물약 / MP 20% 미만 파란물약
         if (e.hp < e.maxHp * 0.60 && e.mercHpPotionCount > 0 && now - (e.lastMercHpPotTime || 0) > 800) {
             e.lastMercHpPotTime = now;
             e.mercHpPotionCount--;
-            const healAmt = Math.floor(e.maxHp * 0.35);
-            e.hp = Math.min(e.maxHp, e.hp + healAmt);
+            e.hp = Math.min(e.maxHp, e.hp + Math.floor(e.maxHp * 0.35));
         }
 
         if (e.mp < e.maxMp * 0.20 && e.mercMpPotionCount > 0 && now - (e.lastMercMpPotTime || 0) > 800) {
@@ -4627,10 +4610,13 @@ window.updateMercenaryAI = function() {
             e.mp = Math.min(e.maxMp, e.mp + 50);
         }
 
-        const raceKey = e.mercType || e.race || 'knight';
+        const raceKey = e.mercType || 'knight';
         if (typeof getSkillsForMercenary === 'function') {
             e.skills = getSkillsForMercenary(raceKey, e.level || 1);
         }
+
+        // [힐러 모드] MP 10% 이하 시 마법 공격을 멈추고 힐 전념
+        let isLowMpMode = (e.mp / e.maxMp) < 0.10;
 
         if (e.mercType === 'wizard' && now - (e.lastHealTime || 0) > 2500) {
             const woundedAllies = [player, ...activeMercs].filter(a => a && a.hp > 0 && !a.isDead && a.hp < a.maxHp * 0.75);
@@ -4639,8 +4625,7 @@ window.updateMercenaryAI = function() {
                 const targetWounded = woundedAllies[0];
                 e.lastHealTime = now;
                 e.mp -= 10;
-                const healAmt = 70 + ((e.level || 1) * 15);
-                targetWounded.hp = Math.min(targetWounded.maxHp || 150, targetWounded.hp + healAmt);
+                targetWounded.hp = Math.min(targetWounded.maxHp || 150, targetWounded.hp + 70 + ((e.level || 1) * 15));
                 if (typeof playSound === 'function') playSound('heal');
                 return;
             }
@@ -4663,56 +4648,53 @@ window.updateMercenaryAI = function() {
         if (e.target && e.target.hp > 0 && !e.target.isDead) {
             const distToEnemy = Math.hypot(e.target.x - e.x, e.target.y - e.y);
             const isRanged = e.mercType === 'wizard' || (e.mercType === 'elf' && e.equip?.weapon?.isBow !== false);
-            const atkRange = isRanged ? 280 : 50;
-            const onScreen = typeof isEntityOnScreen === 'function' ? isEntityOnScreen(e.target) : (distToEnemy < 400);
+            const maxAttackRange = isRanged ? 280 : 55;
 
-            const isLowHp = (e.hp / e.maxHp) < 0.25;
-            const outOfPotions = e.mercHpPotionCount <= 0;
-            const isFleeing = isLowHp && outOfPotions;
-            const isAggroedByEnemy = entities.some(m => m && !m.isSummon && m.hp > 0 && !m.isDead && m.target === e);
+            // [생존 최우선] 체력 25% 이하인데 물약도 없으면 전력 도주
+            const isFleeing = (e.hp / e.maxHp) <= 0.25 && e.mercHpPotionCount <= 0;
 
-            const nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - e.x, en.y - e.y) < 250).length;
-            const chosenSpell = typeof selectOptimalSpell === 'function' ? selectOptimalSpell(e, nearbyCount, e.target) : null;
+            const nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - e.target.x, en.y - e.target.y) < 250).length;
+            const chosenSpell = isLowMpMode && e.mercType === 'wizard' ? null : (typeof selectOptimalSpell === 'function' ? selectOptimalSpell(e, nearbyCount, e.target) : null);
 
-            const isWizardNoMp = (e.mercType === 'wizard' && (!chosenSpell || e.mp < 5));
-            const isKiting = (isRanged && isAggroedByEnemy && distToEnemy < 150 && !isFleeing) || (isWizardNoMp && distToEnemy < 240);
+            const kiteDistance = isRanged ? 220 : 0;
 
-            if (isFleeing || (isWizardNoMp && distToEnemy < 100)) {
+            if (isFleeing) {
                 e.isMoving = true;
                 const fleeAngle = Math.atan2(player.y - e.y, player.x - e.x);
-                const speed = combatApproachSpeed * 1.1;
-                e.x += Math.cos(fleeAngle) * speed + pushX;
-                e.y += Math.sin(fleeAngle) * speed + pushY;
+                e.x += Math.cos(fleeAngle) * combatApproachSpeed * 1.2 + pushX;
+                e.y += Math.sin(fleeAngle) * combatApproachSpeed * 1.2 + pushY;
                 e.angle = fleeAngle;
-            } else if (isKiting) {
+            } 
+            else if (isRanged && distToEnemy < kiteDistance) {
+                // 💡 [완성된 강강술래 원형 오르빗 카이팅]
+                // 플레이어를 중심축으로 삼아 큰 원을 그리며 돌면서 적을 사격합니다.
                 e.isMoving = true;
+                const orbitRadius = 220;
                 e.orbitAngle = (e.orbitAngle || Math.atan2(e.y - player.y, e.x - player.x)) + (0.02 * (dt / 16));
-                const safeRadius = 250;
-                const targetSpotX = player.x + Math.cos(e.orbitAngle) * safeRadius;
-                const targetSpotY = player.y + Math.sin(e.orbitAngle) * safeRadius;
+                
+                const targetSpotX = player.x + Math.cos(e.orbitAngle) * orbitRadius;
+                const targetSpotY = player.y + Math.sin(e.orbitAngle) * orbitRadius;
                 const moveAngle = Math.atan2(targetSpotY - e.y, targetSpotX - e.x);
 
                 const mapLimit = typeof mapSize !== 'undefined' ? mapSize : 2000;
-                e.x = Math.max(60, Math.min(mapLimit - 60, e.x + Math.cos(moveAngle) * combatApproachSpeed + pushX));
-                e.y = Math.max(60, Math.min(mapLimit - 60, e.y + Math.sin(moveAngle) * combatApproachSpeed + pushY));
-                e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
+                e.x = Math.max(60, Math.min(mapLimit - 60, e.x + Math.cos(moveAngle) * combatApproachSpeed * 1.1 + pushX));
+                e.y = Math.max(60, Math.min(mapLimit - 60, e.y + Math.sin(moveAngle) * combatApproachSpeed * 1.1 + pushY));
+                e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x); // 시선은 항상 적 고정
 
-                if (now - (e.lastAttack || 0) >= mercAtkDelay && onScreen && !isWizardNoMp) {
+                if (now - (e.lastAttack || 0) >= mercAtkDelay && distToEnemy <= maxAttackRange) {
                     executeMercAttack(e, chosenSpell);
                 }
-            } else if (isWizardNoMp) {
-                e.isMoving = false;
-                e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
-            } else if (distToEnemy > atkRange || !onScreen) {
+            } 
+            else if (distToEnemy > maxAttackRange) {
                 e.isMoving = true;
                 const moveAngle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
                 e.x += Math.cos(moveAngle) * combatApproachSpeed + pushX;
                 e.y += Math.sin(moveAngle) * combatApproachSpeed + pushY;
                 e.angle = moveAngle;
-            } else {
+            } 
+            else {
                 e.isMoving = false;
                 e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
-
                 if (now - (e.lastAttack || 0) >= mercAtkDelay) {
                     executeMercAttack(e, chosenSpell);
                 }
@@ -4736,6 +4718,42 @@ window.updateMercenaryAI = function() {
     });
 };
 
+// ==========================================
+// 🧠 [스마트 마법 선택 엔진] (단일/광역, 보스 집중)
+// ==========================================
+window.selectOptimalSpell = function(unit, nearbyEnemiesCount, target) {
+    if (!unit.skills || unit.skills.length === 0) return null;
+
+    let availableSkills = unit.skills.map(sName => {
+        return { name: sName, data: magicDb[sName] };
+    }).filter(item => item.data && unit.mp >= item.data.mp);
+
+    if (availableSkills.length === 0) return null;
+
+    let attackSpells = availableSkills.filter(item => item.data.type === 'attack' || item.data.dmg);
+    if (attackSpells.length === 0) return null;
+
+    // 1. 보스 집중 공격: 단일/광역 따지지 않고 가장 센 대미지 마법
+    if (target && target.isBoss) {
+        return attackSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
+    }
+
+    // 2. 3마리 이상 뭉쳐있을 때: 광역 마법(AoE) 우선
+    if (nearbyEnemiesCount >= 3) {
+        let aoeSpells = attackSpells.filter(item => Boolean(item.data.aoe));
+        if (aoeSpells.length > 0) {
+            return aoeSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
+        }
+    }
+
+    // 3. 1~2마리 단일 몹: 단일 마법 우선
+    let singleSpells = attackSpells.filter(item => !item.data.aoe);
+    if (singleSpells.length > 0) {
+        return singleSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
+    }
+
+    return attackSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
+};
 
 function selectOptimalSpell(unit, nearbyEnemiesCount, target) {
     if (!unit.skills || unit.skills.length === 0) return null;
@@ -4818,259 +4836,13 @@ function clearPlayerAggro() {
     player.isMoving = false;
 }
 
-function injectPerfectShopFix() {
-    if (document.getElementById('perfect-shop-fix')) {
-        document.getElementById('perfect-shop-fix').remove();
-    }
-    const style = document.createElement('style');
-    style.id = 'perfect-shop-fix';
-    
-    style.innerHTML = `
-        /* 상점 창 크기 및 레이아웃 */
-        body #win-shop {
-            width: 380px !important;
-            max-width: 95vw !important;
-            height: 420px !important;
-            max-height: 80vh !important;
-            box-sizing: border-box !important;
-            display: none;
-            flex-direction: column !important;
-            overflow: hidden !important;
-        }
-        
-        body #win-shop .win-content {
-            padding: 6px !important;
-            overflow-x: hidden !important;
-            overflow-y: auto !important;
-            box-sizing: border-box !important;
-            flex: 1 1 auto !important;
-            height: calc(100% - 40px) !important;
-        }
-        
-        body #win-shop #shop-list {
-            display: flex !important;
-            flex-direction: column !important;
-            gap: 4px !important;
-            width: 100% !important;
-            box-sizing: border-box !important;
-        }
-
-        /* 1줄 행 디자인 */
-        .shop-row {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            width: 100% !important;
-            height: 38px !important;
-            min-height: 38px !important;
-            padding: 0 8px !important;
-            background: #1a1a24 !important;
-            border: 1px solid #333344 !important;
-            border-radius: 4px !important;
-            box-sizing: border-box !important;
-        }
-
-        .shop-item-info {
-            display: flex !important;
-            flex-direction: row !important;
-            align-items: center !important;
-            gap: 6px !important;
-            flex: 1 1 auto !important;
-            min-width: 0 !important;
-            overflow: hidden !important;
-            cursor: pointer !important;
-        }
-
-        .shop-item-icon {
-            flex-shrink: 0 !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-        }
-
-        .shop-item-name {
-            color: #ffffff !important;
-            font-weight: bold !important;
-            font-size: 11.5px !important;
-            white-space: nowrap !important;
-            overflow: hidden !important;
-            text-overflow: ellipsis !important;
-        }
-
-        .shop-item-count {
-            color: #888888 !important;
-            font-size: 11px !important;
-            flex-shrink: 0 !important;
-        }
-
-        .shop-item-price {
-            color: #ffdd00 !important;
-            font-size: 11px !important;
-            flex-shrink: 0 !important;
-            margin-left: 2px !important;
-        }
-
-        .shop-item-btns {
-            display: flex !important;
-            gap: 4px !important;
-            flex-shrink: 0 !important;
-            margin-left: 6px !important;
-        }
-
-        .btn-shop-action {
-            display: inline-flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            padding: 3px 8px !important;
-            font-size: 11px !important;
-            font-weight: bold !important;
-            height: 24px !important;
-            background: #2a2a38 !important;
-            color: #ffdd00 !important;
-            border: 1px solid #555566 !important;
-            border-radius: 3px !important;
-            cursor: pointer !important;
-            white-space: nowrap !important;
-        }
-        .btn-shop-action:hover {
-            background: #3a3a4e !important;
-            color: #ffffff !important;
-        }
-    `;
-    document.head.appendChild(style);
-}
 
 
 
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', injectPerfectShopFix);
-} else {
-    injectPerfectShopFix();
-}
 
 
 
-// ==========================================
-// 💡 [인벤토리 아이템 더블클릭/더블탭 착용 및 사용 패치]
-// ==========================================
-let lastInvClickTime = {};
 
-window.useInventoryItem = function(index) {
-    let item = player.inv[index];
-    if (!item) return;
-
-    // 💡 인챈트 모드일 때 가방 아이템을 누르면 곧바로 인챈트 시도
-    if (window.activeEnchantScrollKey) {
-        attemptEnchant(window.activeEnchantScrollKey, item);
-        return;
-    }
-
-    let now = Date.now();
-    let key = item.id || index;
-
-    if (lastInvClickTime[key] && (now - lastInvClickTime[key] < 400)) {
-        if (['weapon', 'armor', 'helmet', 'shield', 'cloak', 'gloves', 'boots', 'belt', 'ring', 'tshirt'].includes(item.type)) {
-            let slotType = item.type;
-            if (slotType === 'ring') slotType = player.equip.ring1 ? 'ring2' : 'ring1';
-            
-            let oldEquip = player.equip[slotType];
-            player.equip[slotType] = item;
-            player.inv.splice(index, 1);
-            if (oldEquip) player.inv.push(oldEquip);
-
-            if (typeof playSound === 'function') playSound('click');
-            if (typeof addMessage === 'function') addMessage(`[착용] ${item.name}`, '#5f5');
-        } 
-        else if (item.type === 'scroll') {
-            if (item.enchantType || item.name.includes('주문서') || item.name.includes('마법 부여서')) {
-                window.activeEnchantScrollKey = item.id || item.name;
-                document.body.classList.add('enchanting-mode');
-                document.body.style.cursor = 'crosshair';
-                if (typeof addMessage === 'function') addMessage(`[인챈트] 강화할 장비를 클릭하세요 (${item.name})`, '#fd0');
-            } else if (item.name.includes('귀환')) {
-                player.inv.splice(index, 1);
-                let sz = (maps[currentMap] && maps[currentMap].safeZones && maps[currentMap].safeZones[0]) ? maps[currentMap].safeZones[0] : {x: 2000, y: 2000};
-                player.x = sz.x; player.y = sz.y; player.target = null; player.isMoving = false;
-                if (typeof addMessage === 'function') addMessage("안전지대로 귀환했습니다.", '#5f5');
-            }
-        } 
-        else if (item.type === 'potion') {
-            if (item.count && item.count > 1) item.count--;
-            else player.inv.splice(index, 1);
-            player.hp = Math.min(currentMaxHp, player.hp + (item.heal || 60));
-            if (typeof playSound === 'function') playSound('drink');
-            if (typeof addMessage === 'function') addMessage(`${item.name} 사용`, '#5f5');
-        }
-
-        if (typeof updateUI === 'function') updateUI();
-        if (typeof renderInventory === 'function') renderInventory();
-        lastInvClickTime[key] = 0;
-    } else {
-        lastInvClickTime[key] = now;
-    }
-};
-
-window.attemptEnchant = function(scrollKey, targetItem) {
-    document.body.style.cursor = 'default'; 
-    let scrollIdx = player.inv.findIndex(it => (typeof getStackKey === 'function' && getStackKey(it) === scrollKey) || it.id === scrollKey || it.name === scrollKey); 
-    window.activeEnchantScrollKey = null; 
-    document.body.classList.remove('enchanting-mode');
-
-    if (scrollIdx === -1) { 
-        if (typeof addMessage === 'function') addMessage("주문서를 찾을 수 없습니다.", '#f55'); 
-        return; 
-    }
-    let scrollItem = player.inv[scrollIdx];
-
-    let isWeapon = targetItem.type === 'weapon';
-    let isArmor = ['armor', 'helmet', 'gloves', 'boots', 'cloak', 'shield', 'ring', 'belt', 'tshirt'].includes(targetItem.type);
-    let isFantasy = scrollItem.enchantType === '환상' || scrollItem.name.includes('환상') || scrollItem.name.includes('마법 부여서');
-
-    if (!isWeapon && !isArmor && !isFantasy) { 
-        if (typeof addMessage === 'function') addMessage("이 장비에는 해당 주문서를 사용할 수 없습니다.", '#f55'); 
-        return; 
-    }
-
-    if (scrollItem.name.includes('무기 마법') && !isWeapon) { 
-        if (typeof addMessage === 'function') addMessage("무기에만 바를 수 있습니다.", '#f55'); 
-        return; 
-    }
-    if (scrollItem.name.includes('갑옷 마법') && isWeapon) { 
-        if (typeof addMessage === 'function') addMessage("방어구 및 장신구에만 바를 수 있습니다.", '#f55'); 
-        return; 
-    }
-
-    // 💡 [추가] 속성 환상 주문서를 무기에 바를 때 속성 전이 로직
-    if (isFantasy && isWeapon) {
-        let elem = scrollItem.enchantElement;
-        if (!elem) {
-            let match = scrollItem.name.match(/\[(화령|수령|풍령|지령)\]/);
-            if (match) elem = match[1];
-        }
-
-        if (elem) {
-            targetItem.magicOptions = targetItem.magicOptions || [];
-            // 기존 속성 옵션 제거 후 새로 부여
-            targetItem.magicOptions = targetItem.magicOptions.filter(opt => !opt.includes('속성 대미지'));
-            targetItem.magicOptions.push(`[${elem}] 속성 대미지`);
-            
-            if (typeof addMessage === 'function') {
-                addMessage(`✨ 주문서의 기운이 스며들어 무기에 [${elem}] 속성이 부여되었습니다!`, '#00ffff');
-            }
-        }
-    }
-
-    // 강화 실행
-    if (isFantasy) { 
-        executeEnchant(targetItem, scrollItem, scrollIdx); 
-    } else { 
-        executeNormalEnchant(targetItem, scrollItem, scrollIdx, isWeapon ? 'weapon' : 'armor'); 
-    }
-
-    if (typeof updateUI === 'function') updateUI();
-    if (typeof renderInventory === 'function') renderInventory();
-};
 
 
 // ==========================================
@@ -5167,157 +4939,66 @@ window.getSmartAutoCombatSpell = function(target) {
 
 
 
-// ==========================================
-// 💡 [개선] 다른 플레이어 정보 및 파티 모달 UI (상단 모드 표시 추가)
-// ==========================================
-window.showPartyMenu = function(targetPlayer) {
-    if (!targetPlayer) return;
-    let targetSocketId = targetPlayer.id || targetPlayer.socketId;
-    if (!targetSocketId || (window.socket && targetSocketId === window.socket.id)) return;
-
-    let oldModal = document.getElementById('player-info-modal');
-    if (oldModal) oldModal.remove();
-
-    let className = targetPlayer.charClass === 'knight' ? '기사' : (targetPlayer.charClass === 'elf' ? '요정' : '마법사');
-
-    // 💡 현재 내 파티 상태 및 모드 정밀 판별
-    let myPartyInfo = window.currentPartyData && window.currentPartyData.party;
-    let isFocus = myPartyInfo && myPartyInfo.mode === 'focus';
-
-    let statusText = myPartyInfo ? (isFocus ? '🎯 점사 / 따라가기 모드' : '⚔️ 자유 사냥 모드') : '파티에 속해 있지 않습니다';
-    let toggleBtnText = isFocus ? '🚩 자유 사냥으로 변경' : '🚩 점사 모드로 변경';
-
-    let modal = document.createElement('div');
-    modal.id = 'player-info-modal';
-    modal.style.cssText = 'position:fixed; left:50%; top:45%; transform:translate(-50%, -50%); width:320px; background:#181e29; border:2px solid #334155; border-radius:6px; box-shadow:0 10px 30px rgba(0,0,0,0.9); z-index:999999; display:flex; flex-direction:column; overflow:hidden; font-family:"Malgun Gothic", sans-serif; color:#fff;';
-
-    modal.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; background:#0f172a; padding:8px 12px; border-bottom:1px solid #334155;">
-            <span style="font-weight:bold; font-size:13px; color:#cbd5e1;">파티 및 플레이어 메뉴</span>
-            <span id="btn-modal-x" style="cursor:pointer; color:#94a3b8; font-weight:bold; font-size:14px;">✕</span>
-        </div>
-        <div style="padding:14px; display:flex; flex-direction:column; gap:8px; text-align:center;">
-            <div style="font-size:11.5px; color:#94a3b8; background:#0b0f19; padding:6px; border-radius:4px; border:1px solid #1e293b;">
-                파티 상태: <b style="color:#fd0;">${statusText}</b>
-            </div>
-            <div style="font-size:13px; color:#f1f5f9; margin: 4px 0;">
-                대상: <b>${targetPlayer.name}</b> (${className})
-            </div>
-            <button id="btn-party-invite" style="background:#2563eb; color:#fff; border:none; padding:9px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer;">
-                👥 파티 초대
-            </button>
-            <button id="btn-party-mode" style="background:#b91c1c; color:#fff; border:none; padding:9px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer;">
-                ${toggleBtnText}
-            </button>
-            <button id="btn-party-leave" style="background:#475569; color:#fff; border:none; padding:9px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer;">
-                🚪 파티 탈퇴
-            </button>
-            <button id="btn-modal-close" style="background:#1e293b; color:#cbd5e1; border:none; padding:8px; border-radius:4px; font-weight:bold; font-size:12px; cursor:pointer; margin-top:4px;">
-                닫기
-            </button>
-        </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    document.getElementById('btn-party-invite').onclick = () => {
-        if (window.socket) {
-            window.socket.emit('party_invite', { targetSocketId: targetSocketId, inviterName: player.name });
-            addMessage(`[파티] ${targetPlayer.name}님에게 초대를 보냈습니다.`, '#5cf');
-        }
-        modal.remove();
-    };
-
-    document.getElementById('btn-party-mode').onclick = () => {
-        if (window.socket) window.socket.emit('party_mode_toggle');
-        modal.remove();
-    };
-
-    document.getElementById('btn-party-leave').onclick = () => {
-        if (window.socket) window.socket.emit('party_leave');
-        modal.remove();
-    };
-
-    document.getElementById('btn-modal-x').onclick = () => modal.remove();
-    document.getElementById('btn-modal-close').onclick = () => modal.remove();
-};
 
 
-
-
-// ==========================================
-// 💡 [누락되었던 버프 마법 시전 및 이펙트 처리 함수]
-// ==========================================
 window.castBuff = function(magicName, targetEntity = null) {
-    let mData = magicDb[magicName];
+    let dbRef = typeof magicDb !== 'undefined' ? magicDb : (window.magicDb || {});
+    let mData = dbRef[magicName];
     if (!mData) return;
 
-    let target = targetEntity || player; // 💡 target이 정의되지 않았을 때의 에러 방지 안전 장치
+    let target = targetEntity || player;
+    let pMaxHp = window.currentMaxHp || player.maxHp || 150;
+    let pMaxMp = window.currentMaxMp || player.maxMp || 30;
 
-    let hasLearned = (player.magic && player.magic.includes(magicName)) || 
-                     (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드'].includes(magicName));
+    let isDefaultClassSpell = (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드', '가속', '그레이트 힐', '어드밴스 스피릿', '이뮨 투 함', '앱솔루트 배리어', '마제스티', '홀리 워크'].some(n => magicName.includes(n))) ||
+                              (player.charClass === 'knight' && ['쇼크 스턴', '리덕션 아머', '카운터 바리어', '바운스 어택', '솔리드 캐리지', '블로우 어택'].some(n => magicName.includes(n))) ||
+                              (player.charClass === 'elf' && ['네이쳐스 터치', '윈드 워크', '트리플 애로우', '스톰 샷', '블러드 투 소울', '어스 스킨', '파이어 웨폰', '워터 라이프', '소울 오브 프레임'].some(n => magicName.includes(n)));
+
+    let hasLearned = (player.magic && player.magic.includes(magicName)) || isDefaultClassSpell;
     if (!hasLearned) {
-        return addMessage("배우지 않은 마법입니다. 마법서를 먼저 학습하세요.", '#f55');
+        if (typeof addMessage === 'function') addMessage(`[${magicName}] 습득하지 않은 마법입니다.`, '#f55');
+        return;
     }
     
+    if (magicName !== '블러드 투 소울' && player.mp < (mData.mp || 0)) {
+        return;
+    }        
+    if (magicName !== '블러드 투 소울') {
+        player.mp -= (mData.mp || 0);
+    }
+    if (typeof playSound === 'function') playSound('spell');
+
+    if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프') {
+        let healAmt = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
+        target.hp = Math.min(pMaxHp, target.hp + healAmt);
+        if (typeof addMessage === 'function') addMessage(`[${magicName}] HP ${healAmt} 회복`, '#5f5');
+    } else if (magicName === '블러드 투 소울') {
+        if (player.hp > 40) {
+            player.hp -= 40;
+            player.mp = Math.min(pMaxMp, player.mp + 15);
+            if (typeof addMessage === 'function') addMessage(`[블러드 투 소울] HP 40 소모 ➔ MP 15 회복`, '#55f');
+        }
+    } else {
+        let bType = mData.buffType || 'stat';
+        if (magicName.includes('가속') || magicName.includes('초록') || magicName.includes('워크')) bType = 'speed';
+        else if (magicName.includes('실드') || magicName.includes('아머') || magicName.includes('스킨')) bType = 'def';
+        
+        if (typeof applyBuff === 'function') {
+            applyBuff(magicName, mData.duration || 300000, mData.icon || '✨', bType, mData.val || 0, target);
+        }
+    }
+
     if (window.socket && currentUser) {
         window.socket.emit('player_magic_action', {
             magicName: magicName,
-            targetX: target.x,
-            targetY: target.y,
+            targetX: target.x, targetY: target.y,
             targetId: target.id || window.socket.id,
-            casterX: player.x,
-            casterY: player.y,
+            casterX: player.x, casterY: player.y,
             casterId: window.socket.id,
             map: currentMap
         });
     }
-
-    if (magicName !== '블러드 투 소울' && player.mp < mData.mp) {
-        return addMessage("MP가 부족합니다.", '#f55');
-    }        
-    if (magicName !== '블러드 투 소울') {
-        player.mp -= mData.mp;
-    }
-    playSound('spell');
-
-    if (typeof particles !== 'undefined') {
-        if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
-            particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
-        } else if (magicName.includes('실드') || magicName.includes('어스 스킨')) {
-            particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'classic_shield' });
-        } else if (magicName.includes('가속') || magicName.includes('초록') || magicName === '홀리 워크' || magicName === '윈드 워크') {
-            particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
-        } else if (magicName === '스톰 샷' || magicName === '파이어 웨폰') {
-            particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'haste_tornado', size: 50 });
-        } else {
-            particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'buff_effect' });
-        }
-    }
-
-    if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
-        let healAmt = Math.floor((mData.heal || 40) * (1 + (player.int - 10) * 0.05));
-        target.hp = Math.min(target.maxHp || currentMaxHp, target.hp + healAmt);
-        addMessage(`[${magicName}] HP ${healAmt} 회복`, '#5f5');
-        if (typeof dmgTexts !== 'undefined') {
-            dmgTexts.push({ x: target.x, y: target.y - 40, text: `+${healAmt} ✨`, life: 1.2, color: '#5f5' });
-        }
-    } else if (magicName === '블러드 투 소울') {
-        if (player.hp > 40) {
-            player.hp -= 40;
-            player.mp = Math.min(currentMaxMp, player.mp + 15);
-            addMessage(`[블러드 투 소울] HP를 40 소모하여 MP를 15 회복했습니다.`, '#55f');
-            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+15 MP`, life: 1.2, color: '#55f' });
-        } else {
-            addMessage("체력이 부족하여 블러드 투 소울을 사용할 수 없습니다.", '#f55');
-        }
-    } else if (magicName === '스톰 샷') {
-        applyBuff('스톰 샷', mData.duration || 300000, mData.icon || '🌪️', 'atk', 5, target);
-    } else if (mData.buffType) {
-        applyBuff(magicName, mData.duration || 300000, mData.icon, mData.buffType, mData.val || 0, target);
-    }
-    
-    updateUI();
+    if (typeof updateUI === 'function') updateUI();
 };
 
 // JS: 전체화면 토글 함수
@@ -5363,119 +5044,108 @@ document.addEventListener('fullscreenchange', () => {
 
 window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
-    let now = performance.now();
+    let now = Date.now();
+    let pMaxHp = window.currentMaxHp || player.maxHp || 150;
+    let pMaxMp = window.currentMaxMp || player.maxMp || 30;
 
-    // 1. 자동 물약 복용 (물약 ON 상태일 때)
+    let hkList = window.hotkeys || [];
+
+    // ----------------------------------------------------
+    // 1. [물약 ON] 쿨타임 없이 단축창(F5~F12) 등록 물약 즉시 복용
+    // ----------------------------------------------------
     if (player.autoPotion) {
-        if (player.hp < currentMaxHp * 0.55) { 
-            let hpPot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes('주홍') || it.name.includes('맑은') || it.name.includes('빨간') || it.name.includes('고기')));
-            if (hpPot) window.useItem(getStackKey(hpPot));
-        }
-        if (player.mp < currentMaxMp * 0.35) { 
-            let mpPot = player.inv.find(it => it && it.type === 'potion' && it.name.includes('파란'));
-            if (mpPot) window.useItem(getStackKey(mpPot));
+        // [A] 체력 70% 미만 시 HP 물약 즉시 복용 (쿨타임 제한 없음)
+        if (player.hp < pMaxHp * 0.70) {
+            for (let hk of hkList) {
+                if (!hk) continue;
+                let slotName = typeof hk === 'string' ? hk : (hk.id || hk.name || '');
+                if (/주홍|맑은|빨간|고기|체력|물약/.test(slotName)) {
+                    let pot = player.inv.find(it => it && it.type === 'potion' && (it.heal || it.name.includes(slotName) || slotName.includes(it.name) || /주홍|맑은|빨간/.test(it.name)));
+                    if (pot && typeof window.useItem === 'function') {
+                        window.useItem(typeof getStackKey === 'function' ? getStackKey(pot) : pot.name);
+                        break; // 한 번에 하나씩 즉시 복용 후 루프 탈출
+                    }
+                }
+            }
         }
 
-        const autoDrinkBuff = (potKeyword, buffKeyList) => {
-            let b = null;
-            if (player.buffs) {
-                for (let k of buffKeyList) {
-                    if (player.buffs[k] && player.buffs[k].expire > now) {
-                        b = player.buffs[k];
+        // [B] 마나 20% 미만 시 MP 물약 즉시 복용 (쿨타임 제한 없음)
+        if (player.mp < pMaxMp * 0.20) {
+            for (let hk of hkList) {
+                if (!hk) continue;
+                let slotName = typeof hk === 'string' ? hk : (hk.id || hk.name || '');
+                if (/파란|마나/.test(slotName)) {
+                    let pot = player.inv.find(it => it && it.type === 'potion' && (it.name.includes(slotName) || slotName.includes(it.name) || /파란|마나/.test(it.name)));
+                    if (pot && typeof window.useItem === 'function') {
+                        window.useItem(typeof getStackKey === 'function' ? getStackKey(pot) : pot.name);
                         break;
                     }
                 }
             }
-            // 💡 버프가 없거나 3초 이하로 남았을 때만 작동
-            if (!b || (b.expire - now <= 3000)) {
-                // 🌟 [안전 패치] 최근 10초(10000ms) 이내에 이미 마신 물약이라면 중복 사용(증발) 전격 차단!
-                player.lastBuffDrinkTime = player.lastBuffDrinkTime || {};
-                if (player.lastBuffDrinkTime[potKeyword] && (now - player.lastBuffDrinkTime[potKeyword] < 10000)) {
-                    return;
-                }
+        }
 
-                let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(potKeyword));
-                if (pot) {
-                    player.lastBuffDrinkTime[potKeyword] = now;
-                    window.useItem(getStackKey(pot));
-                }
-            }
-        };
+        // [C] 버프 물약 (초록, 용기, 와퍼)
+        if (player.autoHunt) {
+            const autoDrinkBuff = (keyword, targetBuffKey) => {
+                let slot = hkList.find(hk => hk && (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).includes(keyword));
+                if (!slot) return;
 
-        autoDrinkBuff('초록', ['가속(헤이스트)', '초록물약']);
-        if (player.charClass === 'knight' || player.charClass === 'royal') autoDrinkBuff('용기', ['용기물약']);
-        if (player.charClass === 'elf') autoDrinkBuff('와퍼', ['엘븐와퍼']);
+                let activeBuff = player.buffs && player.buffs[targetBuffKey];
+                if (!activeBuff || (activeBuff.expire - performance.now()) <= 3000) {
+                    let pot = player.inv.find(it => it && it.type === 'potion' && it.name.includes(keyword));
+                    if (pot && typeof window.useItem === 'function') {
+                        window.useItem(typeof getStackKey === 'function' ? getStackKey(pot) : pot.name);
+                    }
+                }
+            };
+            autoDrinkBuff('초록 물약', '가속(헤이스트)');
+            if (player.charClass === 'knight' || player.charClass === 'royal') autoDrinkBuff('용기의 물약', '용기물약');
+            if (player.charClass === 'elf') autoDrinkBuff('엘븐 와퍼', '엘븐와퍼');
+        }
     }
 
-    // 2. 자동사냥 ON 상태 시 단축키 붉은 테두리 버프 자동 시전
+    // ----------------------------------------------------
+    // 2. [자동사냥 ON] 버프 마법 자동 시전
+    // ----------------------------------------------------
     if (!player.autoHunt) return;
-
     let activeSlots = player.activeSpellSlots || [];
     if (activeSlots.length === 0) return;
 
-    let hkList = window.hotkeys || (typeof hotkeys !== 'undefined' ? hotkeys : []);
-    if (!player.lastAutoSkillTime) player.lastAutoSkillTime = {};
+    let dbRef = (typeof magicDb !== 'undefined') ? magicDb : {};
+    player.lastAutoSkillTime = player.lastAutoSkillTime || {};
 
-    activeSlots.forEach(slotNum => {
-        let sIdx = Number(slotNum);
-        let hk = hkList[sIdx];
-        if (!hk) return;
+    for (let slotNum of activeSlots) {
+        let hk = hkList[Number(slotNum)];
+        if (!hk) continue;
 
-        let spellName = (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).trim();
-        if (!spellName) return;
+        let rawName = typeof hk === 'string' ? hk : (hk.id || hk.name || '');
+        let cleanName = rawName.replace(/마법서|기술서|정령의 수정|\s+|\(|\)/g, '').trim();
+        
+        let spellKey = Object.keys(dbRef).find(k => {
+            let dbClean = k.replace(/\s+/g, '');
+            return dbClean === cleanName || cleanName.includes(dbClean) || dbClean.includes(cleanName);
+        });
 
-        let cleanName = spellName.replace(/마법서|기술서|정령의 수정|\(|\)/g, '').trim();
-        let isBuff = ['실드', '윈드 워크', '홀리 워크', '가속', '힐', '블러드 투 소울', '어스 스킨', '스톰 샷'].some(n => cleanName.includes(n));
+        if (!spellKey) continue;
+        let mData = dbRef[spellKey];
+        if (!mData) continue;
 
-        if (isBuff) {
-            let lastCast = player.lastAutoSkillTime[cleanName] || 0;
-            let cd = 1200;
-            let needsCast = false;
+        let lastCast = player.lastAutoSkillTime[spellKey] || 0;
+        let isBuffOrHeal = (mData.type === 'buff') || Boolean(mData.heal) || 
+                           ['실드', '윈드 워크', '홀리 워크', '가속', '힐', '그레이트 힐', '블러드 투 소울', '어스 스킨', '스톰 샷', '이뮨 투 함', '어드밴스 스피릿', '리덕션 아머', '카운터 바리어', '바운스 어택', '솔리드 캐리지', '블로우 어택', '파이어 웨폰', '워터 라이프', '마제스티'].some(n => spellKey.includes(n));
 
-            if (cleanName.includes('소울')) {
-                needsCast = (player.mp < currentMaxMp * 0.7) && (player.hp > currentMaxHp * 0.5);
-                cd = 1500;
-            } else if (cleanName.includes('힐')) {
-                needsCast = (player.hp < currentMaxHp * 0.75);
-                cd = 1000;
-            } else if (cleanName.includes('실드')) {
-                let currentBuff = player.buffs ? player.buffs['실드'] : null;
-                needsCast = !currentBuff || (currentBuff.expire - now <= 3000);
-            } else if (cleanName.includes('윈드') || cleanName.includes('홀리') || cleanName.includes('가속')) {
-                let currentBuff = player.buffs ? (player.buffs['가속(헤이스트)'] || player.buffs['윈드 워크'] || player.buffs['홀리 워크']) : null;
-                needsCast = !currentBuff || (currentBuff.expire - now <= 3000);
-            }
+        if (isBuffOrHeal) {
+            let checkKey = spellKey.includes('가속') || spellKey.includes('초록') || spellKey.includes('윈드') || spellKey.includes('홀리') ? '가속(헤이스트)' : (spellKey.includes('용기') ? '용기물약' : (spellKey.includes('와퍼') ? '엘븐와퍼' : spellKey));
+            let currentBuff = player.buffs ? player.buffs[checkKey] : null;
+            let needsCast = !currentBuff || ((currentBuff.expire - performance.now()) <= 4000);
 
-            if (needsCast && player.mp >= 8 && (now - lastCast > cd)) {
-                player.lastAutoSkillTime[cleanName] = now;
-                player.mp -= (cleanName.includes('소울') ? 0 : 8);
-
-                if (typeof playSound === 'function') playSound('spell');
-
-                if (typeof particles !== 'undefined') {
-                    if (cleanName.includes('힐')) {
-                        particles.push({ x: player.x, y: player.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
-                    } else if (cleanName.includes('실드')) {
-                        particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'classic_shield' });
-                    } else {
-                        particles.push({ x: player.x, y: player.y, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
-                    }
+            if (needsCast && (spellKey === '블러드 투 소울' || player.mp >= (mData.mp || 0)) && (now - lastCast > 600 || lastCast > now)) {
+                player.lastAutoSkillTime[spellKey] = now;
+                if (typeof window.castBuff === 'function') {
+                    window.castBuff(spellKey, player);
                 }
-
-                if (cleanName.includes('힐')) {
-                    let healAmt = Math.floor(40 * (1 + ((player.int || 10) - 10) * 0.05));
-                    player.hp = Math.min(currentMaxHp, player.hp + healAmt);
-                } else if (cleanName.includes('실드')) {
-                    if (typeof applyBuff === 'function') applyBuff('실드', 300000, '🛡️', 'ac', 2, player);
-                } else if (cleanName.includes('윈드') || cleanName.includes('홀리') || cleanName.includes('가속')) {
-                    if (typeof applyBuff === 'function') applyBuff('가속(헤이스트)', 300000, '💨', 'speed', 60, player);
-                } else if (cleanName.includes('소울')) {
-                    player.hp -= 40;
-                    player.mp = Math.min(currentMaxMp, player.mp + 15);
-                }
-
-                if (typeof updateUI === 'function') updateUI();
+                break;
             }
         }
-    });
+    }
 };
