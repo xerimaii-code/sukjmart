@@ -940,7 +940,11 @@ function updateUI() {
     if(player.mp > currentMaxMp) player.mp = currentMaxMp;
 
     if($('st-lv')) $('st-lv').innerText = player.level; 
-    if($('st-class')) $('st-class').innerText = classData[player.charClass] ? classData[player.charClass].name : '기사'; 
+    if($('st-class')) {
+    let cName = classData[player.charClass] ? classData[player.charClass].name : '기사';
+    // 💡 클래스명 자체에 깔끔한 클릭 가능 테두리와 초미니 [?] 뱃지 부여
+    $('st-class').innerHTML = `<span style="cursor:pointer; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.15); color:#fff; display:inline-flex; align-items:center; gap:2px;" onclick="window.showClassPassiveInfo()">${cName}<span style="color:#38bdf8; font-size:9px; font-weight:bold;">?</span></span>`;
+}
     if($('st-stats')) $('st-stats').innerText = `S:${player.str} D:${player.dex} I:${player.int}`;
     if($('st-ac')) $('st-ac').innerText = `-${totalDef} / ${totalMr}`; 
     if($('st-atk')) { $('st-atk').innerText = `${totalAtk} / ${player.sp || 0}`; $('st-atk').style.color = '#aaf'; }
@@ -1317,43 +1321,23 @@ function renderInventory() {
         }
     }
 
-   const typeOrder = {
-        'potion_hp': 1,
-        'potion_mp': 2,
-        'potion_buff': 3,
-        'weapon': 4, 'armor': 4, 'helmet': 4, 'shield': 4, 'tshirt': 4,
-        'cloak': 4, 'gloves': 4, 'boots': 4, 'belt': 4, 'ring': 4, 'ring1': 4, 'ring2': 4,
-        'book': 5, 'scroll': 6, 'etc': 7
-    };
-
     displayList.sort((a, b) => {
-        // 아이템의 세부 타입(카테고리) 판별 함수
         let getCategoryWeight = (it) => {
             if (it.type === 'potion') {
                 let name = it.name || '';
-                if (name.includes('주홍') || name.includes('맑은') || name.includes('빨간') || name.includes('고기') || name.includes('체력')) return 1; // 체력 물약
-                if (name.includes('파란') || name.includes('마나')) return 2; // 마나 물약
-                return 3; // 초록, 용기, 와퍼 등 버프 물약
+                if (name.includes('주홍') || name.includes('맑은') || name.includes('빨간') || name.includes('고기') || name.includes('체력')) return 1;
+                if (name.includes('파란') || name.includes('마나')) return 2;
+                return 3;
             }
-            if (['weapon', 'armor', 'helmet', 'shield', 'tshirt', 'cloak', 'gloves', 'boots', 'belt', 'ring', 'ring1', 'ring2'].includes(it.type)) {
-                return 4; // 착용 아이템
-            }
+            if (['weapon', 'armor', 'helmet', 'shield', 'tshirt', 'cloak', 'gloves', 'boots', 'belt', 'ring', 'ring1', 'ring2'].includes(it.type)) return 4;
             if (it.type === 'book') return 5;
             if (it.type === 'scroll') return 6;
-            return 7; // 기타
+            return 7;
         };
-
-        let weightA = getCategoryWeight(a);
-        let weightB = getCategoryWeight(b);
-
-        if (weightA !== weightB) {
-            return weightA - weightB;
-        }
-
-        // 같은 카테고리 내에서는 장착 중인 아이템 우선 혹은 등급 순 정렬
+        let weightA = getCategoryWeight(a), weightB = getCategoryWeight(b);
+        if (weightA !== weightB) return weightA - weightB;
         if (a.isEquipped && !b.isEquipped) return -1;
         if (!a.isEquipped && b.isEquipped) return 1;
-        
         return (b.grade || 0) - (a.grade || 0);
     });
 
@@ -1398,7 +1382,7 @@ function renderInventory() {
                     autoCenterWindow('item-action-modal', true);
                 });
 
-                // 💡 [핵심 해결] 가방 인벤토리 목록에서 E표시(착용 중)인 아이템을 클릭/더블클릭하면 즉시 장착 해제(unequip) 실행
+                // 💡 [수정] 1클릭: 상세창 / 2클릭(더블클릭): 즉시 장착/해제/사용
                 itemElement.addEventListener('click', (e) => {
                     e.stopPropagation();
                     hideTooltip();
@@ -1417,25 +1401,19 @@ function renderInventory() {
                     if (clickCount === 1) {
                         clickTimer = setTimeout(() => {
                             clickCount = 0;
-                            if (c.isEquipped) {
-                                // 👉 장착 중인 아이템이면 클릭 시 바로 해제!
-                                window.unequip(c.equipSlot);
-                            } else {
-                                // 👉 가방 속 아이템이면 사용/장착!
-                                window.useItem(c.rawKey);
-                            }
+                            // 1번 클릭: 상세 설명 모달창 오픈
+                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
+                            bringToFront('item-action-modal');
+                            autoCenterWindow('item-action-modal', true);
                         }, 250);
                     } else if (clickCount === 2) {
                         clearTimeout(clickTimer);
                         clickCount = 0;
+                        // 2번 더블클릭: 즉시 장착 또는 장착 해제
                         if (c.isEquipped) {
-                            // 👉 장착 중인 아이템 더블클릭 시 해제!
                             window.unequip(c.equipSlot);
                         } else {
-                            // 👉 가방 속 아이템 더블클릭 시 상세 관리 모달 오픈
-                            openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                            bringToFront('item-action-modal');
-                            autoCenterWindow('item-action-modal', true);
+                            window.useItem(c.rawKey);
                         }
                     }
                 });
@@ -1447,38 +1425,11 @@ function renderInventory() {
             });
         }
     }
-
-
-    let eqHTML = '';
-    const slots = [
-        { k: 'helmet', n: '투구', c: 'ce-helm' }, { k: 'tshirt', n: '티셔츠', c: 'ce-tshirt' },
-        { k: 'armor', n: '갑옷', c: 'ce-armor' }, { k: 'cloak', n: '망토', c: 'ce-cloak' },
-        { k: 'weapon', n: '무기', c: 'ce-weapon' }, { k: 'shield', n: '방패', c: 'ce-shield' },
-        { k: 'belt', n: '벨트', c: 'ce-belt' }, { k: 'gloves', n: '장갑', c: 'ce-gloves' },
-        { k: 'boots', n: '신발', c: 'ce-boots' }, { k: 'ring1', n: '반지1', c: 'ce-ring1' },
-        { k: 'ring2', n: '반지2', c: 'ce-ring2' }
-    ];
-
-    slots.forEach(s => {
-        const it = player.equip[s.k];
-        const dropAttr = `ondragover="allowDrop(event)" ondrop="dropEquipment(event, '${s.k}')"`;
-
-        if (it) {
-            const dStr = encodeURIComponent(JSON.stringify(it)).replace(/'/g, "%27");
-            const name = it.enchantValue ? `+${it.enchantValue}` : '';
-            const enchantBadge = name ? `<span style="position:absolute; top:2px; right:2px; font-size:10px; font-weight:bold; color:#fff;">${name}</span>` : '';
-
-            eqHTML += `<div class="ce-slot ${s.c} grade-${it.grade || 0}" ${dropAttr} 
-                onclick="handleEquipSlotClick(event, '${s.k}', '${dStr}')" 
-                onmouseenter="if(!window.activeEnchantScrollKey) showTooltip(event, '${dStr}', true)" 
-                onmouseleave="hideTooltip()">${getItemIcon(it)}${enchantBadge}</div>`;
-        } else {
-            eqHTML += `<div class="ce-slot ${s.c}" ${dropAttr}><span class="ce-label">${s.n}</span></div>`;
-        }
-    });
-
-    if ($('equip-grid')) $('equip-grid').innerHTML = eqHTML;
 }
+
+
+
+
 let equipSlotClickCount = {};
 let equipSlotClickTimer = {};
 
@@ -1511,7 +1462,6 @@ window.handleEquipSlotClick = function(e, slotKey, dataStr) {
         window.unequip(slotKey);
     }
 };
-
 window.cancelEnchantMode = function() {
     window.activeEnchantScrollKey = null;
     document.body.classList.remove('enchanting-mode');
@@ -1861,77 +1811,104 @@ window.assignHotkeyFromModal = function(idx) {
     hideItemActionModal(); 
     window.hotkeys = hotkeys; 
 };
-window.execItemAction = function(action) { 
-    hideItemActionModal(); 
-    if(!selectedItemForAction || selectedItemForAction.isMagic || action === 'cancel') return; 
-    let { stackKey, itemName, count } = selectedItemForAction; 
-    if(action === 'use') { useItem(stackKey); } 
-    else if(action === 'drop' || action === 'delete') { 
-        if(count > 1) { showPrompt(`몇 개를 ${action==='drop'?'버리':'삭제하'}시겠습니까?\n(최대 ${count}개)`, count, count, (qty) => { handleItemRemoval(stackKey, qty, action); }); } 
-        else { handleItemRemoval(stackKey, 1, action); } 
-    } else if(action === 'purge') { 
-        showConfirm("마법 속성을 모두 초기화(삭제) 하시겠습니까?", () => { 
-            let idx = player.inv.findIndex(it => getStackKey(it) === stackKey); 
-            if(idx > -1) { player.inv[idx].magicOptions = []; addMessage(`${player.inv[idx].name}의 속성이 완전히 초기화되었습니다.`, '#aaf'); playSound('spell'); updateUI(); } 
-        }); 
-    } 
+window.execItemAction = function(action) { 
+    hideItemActionModal(); 
+    if (!selectedItemForAction || selectedItemForAction.isMagic || action === 'cancel') return; 
+    
+    let { stackKey, itemName, count } = selectedItemForAction; 
+    
+    if (action === 'use') { 
+        window.useItem(stackKey); 
+    } 
+    else if (action === 'drop' || action === 'delete') { 
+        let totalCount = count || 1;
+        let actionWord = action === 'drop' ? '버리' : '삭제하';
+        
+        if (totalCount > 1) { 
+            showPrompt(`${itemName} 몇 개를 ${actionWord}시겠습니까?\n(보유: ${totalCount}개)`, totalCount, totalCount, (qty) => { 
+                handleItemRemoval(stackKey, qty, action); 
+            }); 
+        } else { 
+            handleItemRemoval(stackKey, 1, action); 
+        } 
+    } 
+    else if (action === 'purge') { 
+        showConfirm("마법 속성을 모두 초기화(삭제) 하시겠습니까?", () => { 
+            let target = player.inv.find(it => getStackKey(it) === stackKey); 
+            if (target) { 
+                target.magicOptions = []; 
+                addMessage(`${target.name}의 속성이 완전히 초기화되었습니다.`, '#aaf'); 
+                playSound('spell'); 
+                updateUI(); 
+            } 
+        }); 
+    } 
 };
 
 function handleItemRemoval(stackKey, qty, action) { 
-    let remainingToRemove = qty; 
-    let lastItem = null;
-    for(let i = player.inv.length - 1; i >= 0; i--) { 
-        if(getStackKey(player.inv[i]) === stackKey) { 
-            lastItem = player.inv[i];
-            if (lastItem.count && lastItem.count > remainingToRemove) { 
-                lastItem.count -= remainingToRemove; 
+    let remainingToRemove = parseInt(qty) || 1; 
+    let removedItemTemplate = null;
+    let actualRemovedCount = 0;
+
+    // 인벤토리 뒤에서부터 검색하여 수량 차감 및 제거
+    for (let i = player.inv.length - 1; i >= 0; i--) { 
+        let it = player.inv[i];
+        if (getStackKey(it) === stackKey || it.id === stackKey || it.name === stackKey) { 
+            if (!removedItemTemplate) {
+                removedItemTemplate = JSON.parse(JSON.stringify(it));
+            }
+            
+            let stackCount = it.count || 1;
+            
+            if (stackCount > remainingToRemove) { 
+                it.count -= remainingToRemove; 
+                actualRemovedCount += remainingToRemove;
                 remainingToRemove = 0; 
                 break; 
-            } 
-            else if (lastItem.count) { 
-                remainingToRemove -= lastItem.count; 
+            } else { 
+                actualRemovedCount += stackCount;
+                remainingToRemove -= stackCount; 
                 player.inv.splice(i, 1); 
-            } 
-            else { 
-                player.inv.splice(i, 1); 
-                remainingToRemove--; 
             }
-            if(remainingToRemove <= 0) break; 
+
+            if (remainingToRemove <= 0) break; 
         } 
     } 
 
-    if(qty > remainingToRemove && lastItem) { 
-        let actualRemoved = qty - remainingToRemove;
-        if(action === 'drop') { 
-            let dropX = Math.max(50, Math.min(mapSize - 50, player.x + (Math.random()*120 - 60)));
-            let dropY = Math.max(50, Math.min(mapSize - 50, player.y + (Math.random()*120 - 60)));
+    if (actualRemovedCount > 0 && removedItemTemplate) { 
+        if (action === 'drop') { 
+            let dropX = Math.max(100, Math.min(mapSize - 100, player.x + (Math.random() * 80 - 40)));
+            let dropY = Math.max(100, Math.min(mapSize - 100, player.y + (Math.random() * 80 - 40)));
             
-            let droppedItemData = { 
-                ...lastItem, 
-                id: (lastItem.id || 'item') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
-                count: actualRemoved, 
+            let droppedFloorItem = { 
+                ...removedItemTemplate, 
+                id: (removedItemTemplate.name || 'item') + '_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                count: actualRemovedCount, 
                 x: dropX, 
                 y: dropY, 
                 map: currentMap, 
                 spawnTime: Date.now(), 
+                droppedTime: Date.now(), // 내가 방금 버린 시간 기록 (즉시 재루팅 방지)
                 dropperId: window.socket ? window.socket.id : 'me' 
             };
 
-            items.push(droppedItemData);
+            items.push(droppedFloorItem);
 
+            // 다른 유저에게 바닥 아이템 생성 브로드캐스트 전송
             if (window.socket && currentUser) {
-                window.socket.emit('player_drop_item', droppedItemData);
+                window.socket.emit('player_drop_item', droppedFloorItem);
             }
 
-            addMessage(`${lastItem.name} ${actualRemoved}개를 땅에 버렸습니다.`, '#aaa'); 
+            addMessage(`[버리기] ${removedItemTemplate.name} ${actualRemovedCount}개를 바닥에 버렸습니다.`, '#aaa'); 
         } else { 
-            addMessage(`${lastItem.name} ${actualRemoved}개를 영구적으로 파괴했습니다.`, '#f55'); 
+            addMessage(`[파괴] ${removedItemTemplate.name} ${actualRemovedCount}개를 삭제했습니다.`, '#f55'); 
         } 
-        playSound('click'); 
+
+        if (typeof playSound === 'function') playSound('click'); 
         updateUI(); 
+        if (typeof renderInventory === 'function') renderInventory();
     } 
 }
-
 let itemClickTimer = null;
 window.handleItemClick = function(e, stackKey, itemName, count, dataStr) {
     if (itemClickTimer) {
@@ -2386,47 +2363,56 @@ window.setShopTab = function(tab) { playSound('click'); if($('tab-buy')) { $('ta
 
 function renderShopList(npcId, tab) {
     if(!npcId) return; 
-    let html = ''; 
+    let listEl = $('shop-list');
+    if(!listEl) return;
+
     let baseType = npcId.split('_')[0]; 
-    let wares = shopWares[baseType] || [];
+    let wares = (typeof shopWares !== 'undefined' && shopWares[baseType]) ? shopWares[baseType] : [];
+    let html = ''; 
 
     if(tab === 'buy') { 
         wares.forEach(w => { 
             let dStr = encodeURIComponent(JSON.stringify(w)).replace(/'/g, "%27"); 
-            let iconHtml = getItemIcon(w); 
-            let sPrice = w.dispPrice || w.price; 
+            let iconHtml = typeof getItemIcon === 'function' ? getItemIcon(w) : '📦'; 
+            let sPrice = w.dispPrice || w.price || 0; 
             
-            // [수정 5 & 6] 배운 스킬 확인 및 색상 지정
+            // 배운 마법 여부 검사
             let isLearned = false;
-            if (w.type === 'book' && player.magic && player.magic.includes(w.magicName)) {
+            let mName = w.magicName || w.name.replace(/.*\(|\).*/g, '').trim();
+            if (w.type === 'book' && player.magic && (player.magic.includes(mName) || player.magic.includes(w.name))) {
                 isLearned = true;
             }
             
-            let nameColor = w.type === 'book' ? getBookColor(w.name) : '#ffffff';
+            let nameColor = w.type === 'book' ? (typeof getBookColor === 'function' ? getBookColor(w.name) : '#60a5fa') : '#ffffff';
             let sName = w.dispName || w.name;
-            let learnedTag = isLearned ? `<span style="color:#f55; font-size:10px; margin-left:4px;">[습득완료]</span>` : '';
-            let opacity = isLearned ? '0.5' : '1.0';
+            
+            // 💡 [✓] 체크 뱃지
+            let learnedBadge = isLearned 
+                ? `<span style="display:inline-flex; align-items:center; justify-content:center; width:16px; height:16px; font-size:11px; font-weight:bold; color:#fff; background:#16a34a; border:1px solid #4ade80; border-radius:3px; margin-left:4px; flex-shrink:0;">✓</span>` 
+                : '';
 
             html += `
-            <div class="shop-row" style="opacity: ${opacity};">
-                <div class="shop-item-info" onclick="showTooltip(event, '${dStr}', false)">
-                    <span class="shop-item-icon">${iconHtml}</span>
-                    <span class="shop-item-name" style="color: ${nameColor} !important;">${sName}${learnedTag}</span>
-                    <span class="shop-item-price">(${sPrice.toLocaleString()} A)</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#181824; border:1px solid #333345; border-radius:4px; padding:6px 8px; margin-bottom:4px; box-sizing:border-box;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0; flex:1; cursor:pointer;" onclick="showTooltip(event, '${dStr}', false)">
+                    <span style="font-size:16px; flex-shrink:0;">${iconHtml}</span>
+                    <span style="font-weight:bold; font-size:12px; color:${nameColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${sName}
+                    </span>
+                    ${learnedBadge}
+                    <span style="color:#facc15; font-size:11px; flex-shrink:0; margin-left:4px;">
+                        (${sPrice.toLocaleString()} A)
+                    </span>
                 </div>
-                <div class="shop-item-btns">
-                    <button type="button" class="btn-shop-action" onclick="buyItemFast('${baseType}', '${w.name}')">구매</button>
-                    <button type="button" class="btn-shop-action" onclick="buyItemPrompt('${baseType}', '${w.name}')">수량</button>
+                <div style="display:flex; gap:3px; flex-shrink:0; margin-left:6px;">
+                    <button type="button" class="confirm-btn bg-dark-green" style="padding:3px 7px; font-size:11px; height:24px; min-height:24px;" onclick="buyItemFast('${baseType}', '${w.name}')">구매</button>
+                    <button type="button" class="confirm-btn bg-gray" style="padding:3px 7px; font-size:11px; height:24px; min-height:24px;" onclick="buyItemPrompt('${baseType}', '${w.name}')">수량</button>
                 </div>
             </div>`; 
         });
-
-
-
     } else { 
         let counts = {}; 
         player.inv.forEach(it => { 
-            let key = getStackKey(it); 
+            let key = typeof getStackKey === 'function' ? getStackKey(it) : it.name; 
             if(!counts[key]) counts[key] = {item: it, count:0, rawKey: key}; 
             counts[key].count += (it.count || 1); 
         }); 
@@ -2435,24 +2421,28 @@ function renderShopList(npcId, tab) {
             let c = counts[k]; 
             let sellPrice = Math.floor((c.item.price || 50) * 0.3); 
             let dStr = encodeURIComponent(JSON.stringify(c.item)).replace(/'/g, "%27"); 
-            let iconHtml = getItemIcon(c.item); 
+            let iconHtml = typeof getItemIcon === 'function' ? getItemIcon(c.item) : '📦'; 
             
             html += `
-            <div class="shop-row">
-                <div class="shop-item-info" oncontextmenu="showTooltip(event, '${dStr}', false); return false;" onmouseenter="if(window.innerWidth >= 768) showTooltip(event, '${dStr}', false)" onmouseleave="hideTooltip()">
-                    <span class="shop-item-icon">${iconHtml}</span>
-                    <span class="shop-item-name">${c.item.name}</span>
-                    <span class="shop-item-count">(${c.count}개)</span>
-                    <span class="shop-item-price">+${sellPrice.toLocaleString()}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; background:#181824; border:1px solid #333345; border-radius:4px; padding:6px 8px; margin-bottom:4px; box-sizing:border-box;">
+                <div style="display:flex; align-items:center; gap:6px; min-width:0; flex:1; cursor:pointer;" onclick="showTooltip(event, '${dStr}', false)">
+                    <span style="font-size:16px; flex-shrink:0;">${iconHtml}</span>
+                    <span style="font-weight:bold; font-size:12px; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${c.item.name}
+                    </span>
+                    <span style="color:#aaa; font-size:11px; flex-shrink:0;">(${c.count}개)</span>
+                    <span style="color:#4ade80; font-size:11px; flex-shrink:0; margin-left:4px;">+${sellPrice.toLocaleString()} A</span>
                 </div>
-                <div class="shop-item-btns">
-                    <button type="button" class="btn-shop-action" onclick="sellItemGroup('${c.rawKey}', ${sellPrice}, ${c.count}, '${c.item.name}')">판매</button>
+                <div style="display:flex; gap:3px; flex-shrink:0; margin-left:6px;">
+                    <button type="button" class="confirm-btn bg-dark-red" style="padding:3px 8px; font-size:11px; height:24px; min-height:24px; color:#f88;" onclick="sellItemGroup('${c.rawKey}', ${sellPrice}, ${c.count}, '${c.item.name}')">판매</button>
                 </div>
             </div>`; 
         } 
     }
-    if($('shop-list')) $('shop-list').innerHTML = html;
+    listEl.innerHTML = html || '<div style="color:#666;text-align:center;padding:15px;font-size:12px;">목록이 비어있습니다.</div>';
 }
+
+
 window.buyItemFast = function(baseType, itemName) { let w = shopWares[baseType].find(i => i.name === itemName); if(!w) return; let cost = w.dispPrice || w.price; let qty = w.bundleQty || 1; executeBuy(w, cost, qty, 1); };
 window.buyItemPrompt = function(baseType, itemName) { let w = shopWares[baseType].find(i => i.name === itemName); if(!w) return; let cost = w.dispPrice || w.price; let qty = w.bundleQty || 1; showPrompt(`${w.dispName || w.name} 구매 묶음/수량을 입력하세요.\n(1묶음당 ${cost} 아데나)`, 1, 999, (bundleCount) => { executeBuy(w, cost, qty, bundleCount); }); };
 
@@ -3998,44 +3988,64 @@ function injectMobileBottomFix() {
     const style = document.createElement('style');
     style.id = 'mobile-bottom-fix';
     
-    // 💡 미디어 쿼리로 모바일(768px 이하)에서만 UI를 덮어쓰도록 엄격히 분리
     style.innerHTML = `
+        /* PC 버전: 원래 사이즈 유지 (미니맵 침범 방지) */
+        #map-name {
+            font-size: 18px !important;
+            font-weight: bold !important;
+            letter-spacing: 0px !important;
+            text-shadow: 1px 1px 2px #000, -1px -1px 2px #000 !important;
+            max-width: calc(100vw - 180px) !important;
+            white-space: nowrap !important;
+            overflow: hidden !important;
+            text-overflow: ellipsis !important;
+            display: inline-block !important;
+        }
+
+        #zone-indicator {
+            font-size: 15px !important;
+            font-weight: bold !important;
+        }
+
         @media (max-width: 768px) {
-            /* 하단 바 여백 완벽 제거 및 바닥 밀착 */
+            /* 📱 모바일 버전: 화면 가리지 않게 크기 살짝 축소 */
+            #map-name {
+                font-size: 13.5px !important;
+                max-width: calc(100vw - 120px) !important;
+            }
+            #zone-indicator {
+                font-size: 10.5px !important;
+            }
+
+            /* 하단 바 및 레이아웃 */
             #ui-bottom-bar {
                 position: absolute !important;
                 bottom: 0 !important;
                 margin: 0 !important;
             }
-
-            /* 버프 아이콘을 화면 정중앙 & 하단 체력바 바로 위로 배치 */
             #buff-list {
                 position: absolute !important;
                 top: auto !important;
-                bottom: 130px !important; /* 모바일 하단바(125px) 바로 위 */
-                left: 50% !important;     /* 화면 가로 중앙 */
-                transform: translateX(-50%) !important; 
+                bottom: 130px !important;
+                left: 50% !important;
+                transform: translateX(-50%) !important;
                 display: flex !important;
-                justify-content: center !important; 
+                justify-content: center !important;
                 flex-wrap: wrap !important;
                 width: 100% !important;
-                pointer-events: none !important; 
+                pointer-events: none !important;
             }
-            
             #buff-list .buff-wrap {
                 pointer-events: auto !important;
-                width: 24px !important;  /* 모바일용 버프 크기 축소 */
-                height: 24px !important; /* 모바일용 버프 크기 축소 */
+                width: 24px !important;
+                height: 24px !important;
                 margin-right: 2px !important;
             }
-
             #buff-list .buff-wrap div {
                 width: 20px !important;
                 height: 20px !important;
                 font-size: 12px !important;
             }
-            
-            /* 왼쪽 스탯창 글씨 간격 바짝 붙이기 */
             #ui-left {
                 padding: 2px 2px !important;
                 justify-content: space-evenly !important;
@@ -4044,9 +4054,7 @@ function injectMobileBottomFix() {
                 line-height: 1.1 !important;
                 margin: 0 !important;
             }
-            
-            /* HP/MP 바 두껍게 조절 */
-          #ui-bars { padding: 3px 5px !important; gap: 2px !important; }
+            #ui-bars { padding: 3px 5px !important; gap: 2px !important; }
             .bar-wrap { height: 13px !important; } 
             .bar-text { 
                 font-size: 8.5px !important; 
@@ -4054,7 +4062,6 @@ function injectMobileBottomFix() {
                 font-weight: bold !important;
                 text-shadow: 1px 1px 1px #000, -1px -1px 1px #000 !important;
             }            
-            /* 채팅창 불필요한 여백 제거 */
             #chat-messages {
                 max-height: 35px !important; 
                 padding: 1px 3px !important;
@@ -4067,7 +4074,25 @@ function injectMobileBottomFix() {
         }
     `;
     document.head.appendChild(style);
+
+    // 💡 함수 내부로 이동됨 (안전하게 Body에 부착)
+    if (!document.getElementById('dim-overlay')) {
+        const dim = document.createElement('div');
+        dim.id = 'dim-overlay';
+        dim.style.cssText = `
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 1.2s ease;
+            z-index: 999998;
+        `;
+        document.body.appendChild(dim);
+    }
 }
+
+// 💡 함수 실행
 injectMobileBottomFix();
 
 // ==========================================
@@ -4107,4 +4132,144 @@ window.addEventListener('mousedown', (e) => {
     }
 });
 
+// ==========================================
+// 👑 [파티 관리 & 자유/점사 모드 전환 통합 메뉴]
+// ==========================================
+window.showPartyMenu = function(targetPlayer) {
+    if (!targetPlayer) return;
+    
+    let partyData = window.currentPartyData?.party;
+    let mySockId = window.socket?.id;
+    let targetSockId = targetPlayer.socketId || targetPlayer.id;
 
+    let amIInParty = Boolean(partyData && partyData.members.some(m => m.socketId === mySockId));
+    let amIPartyLeader = Boolean(partyData && partyData.leader === mySockId);
+    let isTargetInMyParty = Boolean(partyData && partyData.members.some(m => m.socketId === targetSockId));
+
+    let btns = [];
+
+    // 1. 이미 같은 파티원인 경우
+    if (amIInParty && isTargetInMyParty) {
+        let currentMode = partyData.mode || 'free';
+        let isFocus = currentMode === 'focus';
+
+        // 💡 [수정] 파티장이 아니어도 파티원 누구나 자유/점사 모드 전환 가능
+        btns.push({
+            text: isFocus ? '⚔️ [자유 사냥 모드]로 전환' : '🎯 [파티 점사 모드]로 전환',
+            color: isFocus ? '#1e3a8a' : '#991b1b',
+            callback: () => {
+                if (window.socket) {
+                    let nextMode = isFocus ? 'free' : 'focus';
+                    window.socket.emit('party_set_mode', { mode: nextMode });
+                    if (typeof addMessage === 'function') {
+                        addMessage(`[파티] 파티 전투 모드를 [${nextMode === 'focus' ? '점사' : '자유'}] 모드로 변경했습니다.`, '#fd0');
+                    }
+                }
+            }
+        });
+
+        // 파티장 전용 관리 메뉴 (위임 및 추방)
+        if (amIPartyLeader && targetSockId !== mySockId) {
+            btns.push({
+                text: `👑 [${targetPlayer.name}]에게 파티장 위임`,
+                color: '#7c3aed',
+                callback: () => {
+                    if (window.socket) {
+                        window.socket.emit('party_change_leader', { newLeaderSocketId: targetSockId });
+                    }
+                }
+            });
+
+            btns.push({
+                text: `🚫 [${targetPlayer.name}] 파티 추방`,
+                color: '#991b1b',
+                callback: () => {
+                    if (window.socket) {
+                        window.socket.emit('party_kick', { targetSocketId: targetSockId });
+                    }
+                }
+            });
+        }
+
+        // 파티 탈퇴 (공통)
+        btns.push({
+            text: '🚪 파티 탈퇴하기',
+            color: '#475569',
+            callback: () => {
+                if (window.socket) {
+                    window.socket.emit('party_leave');
+                    if (typeof addMessage === 'function') addMessage('[파티] 파티에서 탈퇴했습니다.', '#aaa');
+                }
+            }
+        });
+    }
+    // 2. 파티원이 아닌 외부 플레이어인 경우
+    else {
+        btns.push({
+            text: `👥 [${targetPlayer.name}] 파티 초대`,
+            color: '#1d4ed8',
+            callback: () => {
+                if (window.socket) {
+                    window.socket.emit('party_invite', {
+                        targetSocketId: targetSockId,
+                        targetName: targetPlayer.name
+                    });
+                    if (typeof addMessage === 'function') addMessage(`[파티] ${targetPlayer.name}님에게 초대를 보냈습니다.`, '#5cf');
+                }
+            }
+        });
+    }
+
+    btns.push({ text: '닫기', color: '#333', callback: () => {} });
+
+    let statusText = (amIInParty && isTargetInMyParty) 
+        ? `\n파티 상태: ${partyData.mode === 'focus' ? '🎯 점사 모드' : '⚔️ 자유 모드'}` 
+        : '';
+
+    showCustomPrompt(`[플레이어 / 파티 메뉴]\n이름: ${targetPlayer.name}\n클래스: ${targetPlayer.charClass || '기사'}${statusText}`, btns);
+};
+
+
+
+// ==========================================
+// 💡 [클래스별 고유 패시브 설명 팝업 함수]
+// ==========================================
+window.showClassPassiveInfo = function() {
+    let pClass = player.charClass || 'knight';
+    let title = '';
+    let body = '';
+
+    if (pClass === 'knight' || pClass === 'royal') {
+        title = "⚔️ 기사 고유 패시브 스킬";
+        body = `
+        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
+            <b style="color:#38bdf8;">[돌진 (Rush)]</b><br>
+            사거리(55~350px) 밖의 적에게 순식간에 파고들어 틈을 좁힙니다. (쿨타임 2초)<br><br>
+            <b style="color:#ef4444;">[광폭화 & 클리브 (Fury & Cleave)]</b><br>
+            강한 피격을 받거나 다수의 적에게 포위당하면 3.5초간 분노하여 공격력이 2배로 폭발하고, 주변 95px 내 적을 함께 베며 입힌 총 피해량의 25%를 즉시 HP로 흡혈합니다.
+        </div>`;
+    } else if (pClass === 'elf') {
+        title = "🏹 요정 고유 패시브 스킬";
+        body = `
+        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
+            <b style="color:#4ade80;">[에코 오브 실프 (Echo of Sylph)]</b><br>
+            기본 사격 시 25% 확률로 정령의 바람이 실려 130% 마법 피해를 입히고 MP 5를 즉시 회복합니다.<br><br>
+            <b style="color:#facc15;">[피어싱 애로우 (Piercing Arrow)]</b><br>
+            4회 타격 누적 시 대상 주변 120px 적들을 관통하는 화살을 폭발시켜 광역 대미지를 입히고 2초간 이동속도를 둔화시킵니다.<br><br>
+            <b style="color:#38bdf8;">[스마트 카이팅]</b><br>
+            적이 150px 이내로 접근하면 자동으로 거리를 벌리며 무빙샷을 가합니다.
+        </div>`;
+    } else if (pClass === 'wizard') {
+        title = "🔮 마법사 고유 패시브 스킬";
+        body = `
+        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
+            <b style="color:#c084fc;">[스마트 마력 순환]</b><br>
+            적군 수(3마리 이상 광역/1~2마리 단일) 및 보스 여부에 따라 가장 강력하고 효율적인 마법을 자동 선별하여 난사합니다.<br><br>
+            <b style="color:#38bdf8;">[원형 오르빗 카이팅]</b><br>
+            적이 접근하면 안전거리를 유지하며 거리를 벌려 공격합니다.
+        </div>`;
+    }
+
+    showCustomPrompt(body, [{ text: '확인', color: '#166534', callback: () => {} }]);
+    if ($('confirm-win-title')) $('confirm-win-title').innerText = title;
+};

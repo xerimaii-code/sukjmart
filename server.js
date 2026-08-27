@@ -530,6 +530,26 @@ io.on('connection', (socket) => {
         });
     });
 
+socket.on('party_set_mode', (payload) => {
+    let p = players[socket.id];
+    if (!p || !p.partyId || !parties[p.partyId]) return;
+    let party = parties[p.partyId];
+
+    // 클라이언트가 요청한 모드('free' 또는 'focus')로 변경
+    party.mode = payload.mode || (party.mode === 'focus' ? 'normal' : 'focus');
+    let modeLabel = party.mode === 'focus' ? '점사 ++ 따라가기' : '자유 사냥';
+
+    party.members.forEach(member => {
+        io.to(member.socketId).emit('party_update', { party });
+        io.to(member.socketId).emit('system_message', { 
+            message: `[파티 모드 변경] 모드가 [ ${modeLabel} ]로 전환되었습니다.`, 
+            color: '#fd0' 
+        });
+    });
+});
+
+
+
     socket.on('party_mode_toggle', () => {
         let p = players[socket.id];
         if (!p || !p.partyId || !parties[p.partyId]) return;
