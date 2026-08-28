@@ -53,14 +53,26 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // 3. 30초 동안 조작이 없을 시 화면을 약간 어둡게 (배터리 절전 모드)
+// 3. 30초 동안 조작이 없을 시 화면 절전 모드 (모바일 전용 / PC 암전 완전 제외)
+// 3. 30초 동안 조작이 없을 시 화면 절전 모드 (모바일 전용 / PC 암전 완전 제외)
 setInterval(() => {
+    let isMobile = window.innerWidth <= 768 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    
+    if (!isMobile) {
+        if (isDimmed) {
+            isDimmed = false;
+            let dimOverlay = document.getElementById('dim-overlay');
+            if (dimOverlay) dimOverlay.style.opacity = '0';
+        }
+        return;
+    }
+
     if (gameStarted && !isDimmed && (performance.now() - lastUserActionTime > 30000)) {
         isDimmed = true;
         let dimOverlay = document.getElementById('dim-overlay');
-        if (dimOverlay) dimOverlay.style.opacity = '0.55'; // 은은한 55% 암전
+        if (dimOverlay) dimOverlay.style.opacity = '0.55';
     }
 }, 1000);
-
 
 
 
@@ -1928,6 +1940,63 @@ entities.forEach(e => {
         }
     });
     
+
+if (player && Date.now() < (player.furyUntil || 0)) {
+        ctx.save();
+        ctx.translate(player.x, player.y + 10);
+        ctx.scale(1, 0.45);
+        
+        let pulse = Math.sin(timestamp / 70) * 5;
+        ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+        ctx.lineWidth = 3.5;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 1.6 + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 1.9 + pulse * 1.2, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+
+// 🏹 요정 광폭화(실프의 폭풍) 에메랄드 바람 오라 렌더링
+    if (player && player.charClass === 'elf' && Date.now() < (player.elfFuryUntil || 0)) {
+        ctx.save();
+        ctx.translate(player.x, player.y + 10);
+        ctx.scale(1, 0.45);
+        
+        let pulse = Math.sin(timestamp / 60) * 6;
+        ctx.strokeStyle = 'rgba(52, 211, 153, 0.95)';
+        ctx.lineWidth = 3.5;
+        ctx.shadowBlur = 18;
+        ctx.shadowColor = '#10b981';
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 1.7 + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.strokeStyle = 'rgba(110, 231, 183, 0.6)';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 2.0 + pulse * 1.3, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
+        ctx.beginPath();
+        ctx.arc(0, 0, (player.size || 20) * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
   drawEntity(ctx, player, timestamp); 
   if(gameOptions.showNames) { 
         let pName = player.alignment > 10000 ? `[정의] ${player.name}` : (player.alignment < -10000 ? `[악인] ${player.name}` : player.name);
@@ -2738,10 +2807,14 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                 map: currentMap
             });
         }
-        
+     let mainStat = (caster.charClass === 'elf') ? (player.dex || 18) : (player.int || 10);
         let weaponSp = (caster.equip && caster.equip.weapon && caster.equip.weapon.sp) ? caster.equip.weapon.sp : 0;
-        let casterSp = (caster === player) ? ((player.sp || 0) + weaponSp + Math.floor(((player.int || 10) - 10) / 2)) : Math.floor((caster.level || 1) / 5);
-        let scale = 1 + (casterSp * 0.15) + Math.max(0, ((player.int || 10) - 12) * 0.05); 
+        
+        let casterSp = (caster === player) 
+            ? ((player.sp || 0) + weaponSp + Math.floor((mainStat - 10) / 2)) 
+            : Math.floor((caster.level || 1) / 5);
+            
+        let scale = 1 + (casterSp * 0.15) + Math.max(0, (mainStat - 12) * 0.05); 
         let finalDmg = Math.floor((mData.dmg || 15) * scale);
 
         if (caster === player && window.playerComboCount >= 3) {
@@ -2813,12 +2886,62 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                 particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'tornado', size: mData.aoe || 180 });
             }
         }
+        // 💡 [교체 적용] 일반 트리플 애로우 및 실프의 폭풍(광역 관통 + 흡혈) 통합 처리
         else if (magicName === '트리플 애로우') {
-            setTimeout(() => {
-                if (!target || target.hp <= 0 || target.isDead || target.map !== currentMap) return;
-                damageEntity(target, finalDmg, caster, 'physical', '트리플 애로우');
-                if (typeof updateUI === 'function') updateUI();
-            }, 200);
+            let now = Date.now();
+            let isCoolingDown = now < (caster.elfFuryCooldownUntil || 0);
+
+            // 💡 [추가] 트리플 애로우 쏠 때마다 스택 3개 한 번에 획득
+            if (caster === player && !(now < (caster.elfFuryUntil || 0)) && !isCoolingDown) {
+                caster.elfHitCount = (caster.elfHitCount || 0) + 3; 
+                if (caster.elfHitCount >= 5) {
+                    caster.elfHitCount = 0;
+                    caster.elfFuryUntil = now + 4000;
+                    caster.elfFuryCooldownUntil = now + 6000;
+                    if (typeof dmgTexts !== 'undefined') {
+                        dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 25});
+                    }
+                }
+            }
+
+            let isFury = (caster.charClass === 'elf' && Date.now() < (caster.elfFuryUntil || 0));
+
+            for (let i = 0; i < 3; i++) {
+                setTimeout(() => {
+                    if (target && target.hp > 0 && target.map === currentMap) {
+                        if (isFury) {
+                            // 🏹 실프의 폭풍 활성화 시: 200px 광역 폭발 사격
+                            let splashTargets = entities.filter(e => e && e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200);
+                            let subDmg = Math.floor((finalDmg / 3) * 1.4);
+                            let totalTripleFuryDmg = 0;
+                            
+                            splashTargets.forEach(st => {
+                                if (!isBgTick && typeof particles !== 'undefined') {
+                                    particles.push({ x: caster.x, y: caster.y, speed: 28, life: 1.0, maxLife: 1.0, color: '#34d399', isProj: true, isArrow: true, homing: true, type: 'arrow', target: st, dmg: subDmg, attacker: caster, rollHit: true });
+                                }
+                                totalTripleFuryDmg += subDmg;
+                                damageEntity(st, subDmg, caster, 'physical', '트리플 애로우');
+                            });
+
+                            // 피 2%, MP 5% 즉시 흡수
+                            if (caster === player) {
+                                let hpHeal = Math.max(1, Math.floor(totalTripleFuryDmg * 0.02));
+                                let mpGain = Math.max(1, Math.floor(totalTripleFuryDmg * 0.05));
+                                player.hp = Math.min(window.currentMaxHp || player.maxHp, player.hp + hpHeal);
+                                player.mp = Math.min(window.currentMaxMp || player.maxMp, player.mp + mpGain);
+                            }
+                        } else {
+                            // 🏹 일반 트리플 애로우: 단일 타격
+                            if (!isBgTick && typeof particles !== 'undefined') {
+                                particles.push({ x: caster.x, y: caster.y, speed: 22, life: 1.0, maxLife: 1.0, color: '#ffffff', isProj: true, isArrow: true, homing: true, type: 'arrow', target: target, dmg: Math.floor(finalDmg / 3), attacker: caster, rollHit: true });
+                            }
+                            damageEntity(target, Math.floor(finalDmg / 3), caster, 'physical', '트리플 애로우');
+                        }
+                        if (typeof playSound === 'function') playSound('bow');
+                        if (typeof updateUI === 'function') updateUI();
+                    }
+                }, i * 90);
+            }
         }
         else {
             // 💡 고유 애니메이션이 없는 공격 마법은 기본 보라색 폭발 이펙트 적용
@@ -3444,80 +3567,148 @@ if (target && typeof target.y === 'number' && target.hp > 0 && !target.isDead) {
             player.lastAttack = timestamp;
             player.angle = Math.atan2(target.y - player.y, target.x - player.x);
             let baseAtk = player.atk;
-
-            // ⚔️ 기사 타격 (광폭화 2배 + 95px 클리브 + 25% 흡혈)
+// ⚔️ 기사 타격 (쇼크 스턴 자동 우선 시전 + 광폭화 클리브)
             if (player.charClass === 'knight' || player.charClass === 'royal') {
-                let isFury = performance.now() < (player.furyUntil || 0);
-                let finalDamage = isFury ? Math.floor(baseAtk * 2.0) : baseAtk;
+                let now = Date.now();
+                let chosenKnightSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
 
-                if (typeof playSound === 'function') playSound('swing');
-                damageEntity(target, finalDamage, player, 'physical');
+                if (chosenKnightSpell && typeof castAttackSpell === 'function') {
+                    castAttackSpell(target, chosenKnightSpell, player);
+                } else {
+                    let isFury = now < (player.furyUntil || 0);
+                    let finalDamage = isFury ? Math.floor(baseAtk * 2.0) : baseAtk;
+
+                    if (typeof playSound === 'function') playSound('swing');
+                    damageEntity(target, finalDamage, player, 'physical');
+
+                    if (isFury) {
+                        let splashTargets = entities.filter(e => 
+                            e && e.map === currentMap && !e.isPlayer && !e.isSummon && 
+                            e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 95
+                        );
+                        let totalCleaveDmg = 0;
+
+                        splashTargets.forEach(st => {
+                            if (st.id !== target.id) {
+                                let sDmg = Math.floor(finalDamage * 0.6);
+                                totalCleaveDmg += sDmg;
+                                damageEntity(st, sDmg, player, 'physical');
+                            }
+                        });
+
+                        let healAmount = Math.floor((finalDamage + totalCleaveDmg) * 0.25);
+                        player.hp = Math.min(currentMaxHp, player.hp + healAmount);
+
+                        if (typeof dmgTexts !== 'undefined' && healAmount > 0) {
+                            dmgTexts.push({ 
+                                x: player.x + (Math.random() * 16 - 8), 
+                                y: player.y - 30, 
+                                text: `+${healAmount} 흡혈`, 
+                                life: 0.9, 
+                                color: '#e879f9',
+                                fontSize: 13
+                            });
+                        }
+
+                        if (!player.furyCleavedThisCycle) {
+                            player.furyCleavedThisCycle = true;
+                            triggerPassiveBroadcast('광폭화 클리브', target.x, target.y, target.id, 'ultimate');
+                        }
+                    } else {
+                        player.furyCleavedThisCycle = false;
+                    }
+                }
+            }
+          
+
+
+ // 🏹 요정 타격 (평타 5타 적중 시 4초간 실프의 폭풍 발동)
+            else if (player.charClass === 'elf') {
+                let now = Date.now();
+                let isCoolingDown = now < (player.elfFuryCooldownUntil || 0);
+                
+                // 💡 [핵심 추가] 평타 스택 누적 및 광폭화 텍스트 팝업 (기사와 동일한 20px)
+                if (!(now < (player.elfFuryUntil || 0)) && !isCoolingDown) {
+                    player.elfHitCount = (player.elfHitCount || 0) + 1;
+                    if (player.elfHitCount >= 5) {
+                        player.elfHitCount = 0;
+                        player.elfFuryUntil = now + 4000;
+                        player.elfFuryCooldownUntil = now + 6000;
+                        player.elfFuryTextShown = false;
+                        if (typeof dmgTexts !== 'undefined') {
+                            dmgTexts.push({ x: player.x, y: player.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 20 });
+                        }
+                    }
+                }
+
+                let isFury = now < (player.elfFuryUntil || 0);
+                if (typeof playSound === 'function') playSound('bow');
 
                 if (isFury) {
                     let splashTargets = entities.filter(e => 
                         e && e.map === currentMap && !e.isPlayer && !e.isSummon && 
-                        e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 95
+                        e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200
                     );
-                    let totalCleaveDmg = 0;
+                    
+                    let furyAtk = Math.floor(baseAtk * 1.4);
+                    let totalFuryDamage = 0;
 
                     splashTargets.forEach(st => {
-                        if (st.id !== target.id) {
-                            let sDmg = Math.floor(finalDamage * 0.6);
-                            totalCleaveDmg += sDmg;
-                            damageEntity(st, sDmg, player, 'physical');
+                        damageEntity(st, furyAtk, player, 'physical', '실프의 폭풍');
+                        totalFuryDamage += furyAtk;
+
+                        if (!isBgTick && typeof particles !== 'undefined') {
+                            particles.push({ 
+                                x: player.x, y: player.y, speed: 28, life: 1.0, maxLife: 1.0, 
+                                color: '#34d399', isProj: true, isArrow: true, homing: true, 
+                                type: 'arrow', target: st, dmg: furyAtk, attacker: player, rollHit: true 
+                            });
                         }
                     });
 
-                    let healAmount = Math.floor((finalDamage + totalCleaveDmg) * 0.25);
-                    player.hp = Math.min(currentMaxHp, player.hp + healAmount);
+                    let hpHeal = Math.max(1, Math.floor(totalFuryDamage * 0.02));
+                    let mpGain = Math.max(1, Math.floor(totalFuryDamage * 0.05));
 
-                    if (!isBgTick && typeof particles !== 'undefined') {
-                        particles.push({ x: player.x, y: player.y, life: 0.5, maxLife: 0.5, type: 'classic_heal' });
-                    }
-                    triggerPassiveBroadcast('광폭화 클리브', target.x, target.y, target.id, 'ultimate');
-                }
-            }
-            // 🏹 요정 타격 (에코 오브 실프 25% / 4타 피어싱 애로우 & 슬로우)
-            else if (player.charClass === 'elf') {
-                player.elfHitCount = (player.elfHitCount || 0) + 1;
-                if (typeof playSound === 'function') playSound('bow');
+                    player.hp = Math.min(currentMaxHp, player.hp + hpHeal);
+                    player.mp = Math.min(currentMaxMp, player.mp + mpGain);
 
-                let isEcho = Math.random() < 0.25;
-                if (isEcho) {
-                    let trueDmg = Math.floor(baseAtk * 1.3);
-                    player.mp = Math.min(currentMaxMp, player.mp + 5);
-                    damageEntity(target, trueDmg, player, 'magic', '에코 오브 실프');
-                    triggerPassiveBroadcast('에코 오브 실프', target.x, target.y, target.id, 'normal');
-                } else {
-                    if (!isBgTick && typeof particles !== 'undefined') {
-                        particles.push({ 
-                            x: player.x, y: player.y, speed: 24, life: 1.5, maxLife: 1.5, 
-                            color: '#ffffff', isProj: true, isArrow: true, homing: true, 
-                            type: 'arrow', target: target, dmg: baseAtk, attacker: player, rollHit: true 
+                    if (typeof dmgTexts !== 'undefined') {
+                        dmgTexts.push({ 
+                            x: player.x + (Math.random() * 16 - 8), 
+                            y: player.y - 35, 
+                            text: `+${hpHeal} HP / +${mpGain} MP`, 
+                            life: 0.9, 
+                            color: '#6ee7b7',
+                            fontSize: 13
                         });
                     }
-                }
 
-                if (player.elfHitCount >= 4) {
-                    player.elfHitCount = 0;
-                    let piercedTargets = entities.filter(e => 
-                        e && e.map === currentMap && !e.isPlayer && !e.isSummon && 
-                        e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 120
-                    );
-                    let totalPiercedDmg = 0;
-
-                    piercedTargets.forEach(pt => {
-                        let pDmg = Math.floor(baseAtk * 0.5);
-                        totalPiercedDmg += pDmg;
-                        pt.slowUntil = performance.now() + 2000;
-                        damageEntity(pt, pDmg, player, 'magic', '피어싱 애로우');
-                    });
-
-                    let mpDrain = Math.max(1, Math.floor(totalPiercedDmg * 0.05));
-                    player.mp = Math.min(currentMaxMp, player.mp + mpDrain);
-                    triggerPassiveBroadcast('피어싱 애로우', target.x, target.y, target.id, 'high');
+                    if (!player.elfFuryTextShown) {
+                        player.elfFuryTextShown = true;
+                        triggerPassiveBroadcast('실프의 폭풍', target.x, target.y, target.id, 'ultimate');
+                    }
+                } else {
+                    player.elfFuryTextShown = false;
+                    let isEcho = Math.random() < 0.25;
+                    if (isEcho) {
+                        let trueDmg = Math.floor(baseAtk * 1.3);
+                        player.mp = Math.min(currentMaxMp, player.mp + 4);
+                        damageEntity(target, trueDmg, player, 'magic', '에코 오브 실프');
+                        triggerPassiveBroadcast('에코 오브 실프', target.x, target.y, target.id, 'normal');
+                    } else {
+                        if (!isBgTick && typeof particles !== 'undefined') {
+                            particles.push({ 
+                                x: player.x, y: player.y, speed: 24, life: 1.5, maxLife: 1.5, 
+                                color: '#ffffff', isProj: true, isArrow: true, homing: true, 
+                                type: 'arrow', target: target, dmg: baseAtk, attacker: player, rollHit: true 
+                            });
+                        }
+                    }
                 }
             }
+
+
+
             // 🔮 마법사 마법 공격
             else if (isWizard) {
                 let chosenSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
@@ -4277,29 +4468,45 @@ window.socket.on('monster_hit', (data) => {
         player.hitTime = performance.now();
 
         if (player.charClass === 'knight' && !player.isDead) {
-            let now = performance.now();
-            if (now > (player.furyUntil || 0)) {
-                player.recentAttackers = player.recentAttackers || new Set();
-                if (data.attackerMonsterId) player.recentAttackers.add(data.attackerMonsterId);
-                
-                let isBigHit = rawDamage >= (player.hp * 0.30); // 30% 이상 큰 피격
-                let isCrowded = player.recentAttackers.size >= 3; // 3마리 이상 다굴
+            let now = Date.now();
+
+            let isCoolingDown = now < (player.furyCooldownUntil || 0);
+            let isAlreadyFury = now < (player.furyUntil || 0);
+
+            if (!isAlreadyFury && !isCoolingDown) {
+                player.recentHitDetails = player.recentHitDetails || [];
+                let attackerId = data.attackerMonsterId || ('unknown_' + Math.random());
+                player.recentHitDetails.push({ time: now, id: attackerId });
+                player.recentHitDetails = player.recentHitDetails.filter(h => now - h.time <= 2000);
+
+                let pMaxHp = window.currentMaxHp || player.maxHp || 1000;
+                let isBigHit = rawDamage >= (pMaxHp * 0.25);
+
+                let uniqueAttackers = new Set(player.recentHitDetails.map(h => h.id));
+                let isCrowded = (player.recentHitDetails.length >= 4) && (uniqueAttackers.size >= 3);
 
                 if (isBigHit || isCrowded) {
-                    player.recentAttackers.clear();
-                    player.furyUntil = now + 3500; // 3.5초간 광폭화 유지
+                    player.recentHitDetails = [];
+                    player.furyUntil = now + 4000;
+                    player.furyCooldownUntil = now + 6000;
+                    player.furyCleavedThisCycle = false;
 
-                    if (typeof particles !== 'undefined') {
-                        particles.push({ x: player.x, y: player.y, life: 0.8, maxLife: 0.8, type: 'explosion', size: 70, color: '#ff2200' });
-                    }
                     if (typeof dmgTexts !== 'undefined') {
-                        let reason = isBigHit ? "치명상 극복!" : "분노!";
-                        dmgTexts.push({ x: player.x, y: player.y - 45, text: `🔥 ${reason} 광폭화 2배!`, life: 1.5, color: '#ff3300' });
+                        dmgTexts.push({ 
+                            x: player.x, 
+                            y: player.y - 50, 
+                            text: "🔥 BERSERK FURY! (광폭화)", 
+                            life: 1.5, 
+                            color: '#fbbf24',
+                            fontSize: 20 
+                        });
                     }
                     if (typeof playSound === 'function') playSound('spell');
                 }
             }
         }
+
+
 
         if (gameOptions.showDamage && typeof dmgTexts !== 'undefined') {
             dmgTexts.push({ x: player.x, y: player.y - 20, text: rawDamage, life: 1.2, color: '#f55' });
@@ -4328,6 +4535,7 @@ window.socket.on('monster_hit', (data) => {
         }
         if (typeof updateUI === 'function') updateUI();
     });
+
 
     window.socket.on('monster_attack_action', (data) => {
         let mob = entities.find(e => e.id === data.monsterId);
@@ -5198,7 +5406,7 @@ window.castBuff = function(magicName, targetEntity = null) {
     }
     if (typeof playSound === 'function') playSound('spell');
 
-    if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프') {
+    if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
         let healAmt = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
         target.hp = Math.min(pMaxHp, target.hp + healAmt);
         if (typeof addMessage === 'function') addMessage(`[${magicName}] HP ${healAmt} 회복`, '#5f5');
