@@ -267,19 +267,23 @@ io.on('connection', (socket) => {
     });
 
   socket.on('player_magic_action', (payload) => {
-        let p = players[socket.id];
-        let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
-        
-        socket.to(mapId).emit('sync_player_magic', {
-            casterId: payload.casterId || socket.id, 
-            magicName: payload.magicName, 
-            targetX: payload.targetX,
-            targetY: payload.targetY,
-            targetId: payload.targetId,
-            casterX: payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000),
-            casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000)
-        });
+    let p = players[socket.id];
+    let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
+    
+    // 💡 socket.to 대신 io.to를 사용하여 시전자를 포함해 맵 안의 모든 유저에게 마법 동기화 전송
+    io.to(mapId).emit('sync_player_magic', {
+        casterId: payload.casterId || socket.id, 
+        magicName: payload.magicName, 
+        tier: payload.tier,
+        fontSize: payload.fontSize,
+        targetX: payload.targetX,
+        targetY: payload.targetY,
+        targetId: payload.targetId,
+        casterX: payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000),
+        casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000)
     });
+});
+
     socket.on('player_attack_action', (payload) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : 'talking_island';
@@ -776,17 +780,19 @@ function processMonsterAI() {
                             }, cfg.delay * 1000);
 
                         } else {
-                            let dmg = Math.max(1, (mob.atk || 15) - Math.floor((target.def || 0) / 3));
-                            target.hp = Math.max(0, target.hp - dmg);
-                            if (ownerSocketId) {
-                                io.to(ownerSocketId).emit('take_damage', { 
-                                    damage: dmg, 
-                                    hitType: 'physical', 
-                                    hpRemaining: target.hp,
-                                    targetId: target.id || target.socketId 
-                                });
-                            }
-                            io.to(mapId).emit('monster_attack_action', { monsterId: mob.id, hitType: 'physical', targetX: target.x, targetY: target.y });
+                            let targetDef = target.def || 0;
+let dmg = Math.max(1, (mob.atk || 15) - Math.floor(targetDef * 0.5));
+
+target.hp = Math.max(0, target.hp - dmg);
+if (ownerSocketId) {
+    io.to(ownerSocketId).emit('take_damage', { 
+        damage: dmg, 
+        hitType: 'physical', 
+        hpRemaining: target.hp,
+        targetId: target.id || target.socketId 
+    });
+}
+io.to(mapId).emit('monster_attack_action', { monsterId: mob.id, hitType: 'physical', targetX: target.x, targetY: target.y });
                         }
                     }
                 }
@@ -867,19 +873,86 @@ setInterval(() => {
     let now = Date.now();
     for (let mapId in mapsState) {
         let state = mapsState[mapId];
-        if (!state || !state.monsters) continue;
+        if (!state) continue;
 
-        state.monsters = state.monsters.filter(m => {
-            if (m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000)) {
-                return false; 
-            }
-            return true;
-        });
+        // 1. 시체가 된 지 3초 지난 몬스터 삭제
+        if (state.monsters) {
+            state.monsters = state.monsters.filter(m => {
+                return !(m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000));
+            });
+        }
+        
+        // 2. 생성된 지 60초 지난 바닥 아이템 완전 삭제
+        if (state.items) {
+            state.items = state.items.filter(item => {
+                return (now - item.spawnTime) < 60000;
+            });
+        }
+
+        // 3. 보스 부활 및 배열 초기화
+        if (state.deadBosses) {
+            state.deadBosses = state.deadBosses.filter(db => {
+                if (now - db.deadTime > 300000) { 
+                    let bt = data.templates.bosses[db.baseBossId];
+                    if (bt) {
+                        state.monsters.push({
+                            ...bt, 
+                            id: 'boss_' + db.baseBossId + '_' + Date.now(),
+                            baseBossId: db.baseBossId, spawnX: db.spawnX, spawnY: db.spawnY, 
+                            maxHp: bt.hp, hp: bt.hp, x: db.spawnX, y: db.spawnY, map: mapId,
+                            isBoss: true, targetId: null, lastAttackTime: 0
+                        });
+                    }
+                    return false; 
+                }
+                return true;
+            });
+        }
     }
 }, 10000); 
 
 setInterval(processMonsterSpawning, 1000);
-setInterval(processMonsterAI, 100);
+setInterval(processMonsterAI, 40);
+
+// =======================================================
+// 💡 [추가] 매주 일요일 새벽 4시 서버 자동 재부팅 (KST 기준)
+// =======================================================
+let isWarningSent = false;
+let isRebootTriggered = false;
+
+setInterval(() => {
+    const now = new Date();
+    // HostDare 서버의 국가를 무시하고 한국 시간(KST)으로 강제 고정
+    const kstTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 60 * 60 * 1000));
+
+    // 매주 일요일(0), 새벽 3시 59분 0초 (1분 전 경고 및 강제 저장 신호)
+    if (kstTime.getDay() === 0 && kstTime.getHours() === 3 && kstTime.getMinutes() === 59) {
+        if (!isWarningSent) {
+            isWarningSent = true;
+            io.emit('system_message', { 
+                message: '⚠️ [서버 공지] 1분 뒤 정기 점검을 위해 서버가 재부팅됩니다. 데이터가 안전하게 자동 저장됩니다!', 
+                color: '#ff2200' 
+            });
+            io.emit('force_client_save'); 
+            console.log("[서버] 1분 후 자동 재부팅됩니다. (강제 저장 신호 발송 완료)");
+        }
+    }
+
+    // 매주 일요일(0), 새벽 4시 0분 0초 (리부팅 실행)
+    if (kstTime.getDay() === 0 && kstTime.getHours() === 4 && kstTime.getMinutes() === 0) {
+        if (!isRebootTriggered) {
+            isRebootTriggered = true;
+            console.log("[서버] 정기 자동 재부팅을 실행합니다.");
+            process.exit(0); // 프로세스를 완전히 종료시켜 PM2가 재시작하도록 유도
+        }
+    }
+    
+    // 새벽 5시 플래그 초기화
+    if (kstTime.getHours() === 5) {
+        isWarningSent = false;
+        isRebootTriggered = false;
+    }
+}, 1000);
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`[✔] 서버 가동 완료: http://localhost:${PORT}`));

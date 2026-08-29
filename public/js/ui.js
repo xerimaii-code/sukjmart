@@ -507,66 +507,66 @@ let audioCtx = null;
 function initAudio() { if(!audioCtx) { const AudioContext = window.AudioContext || window.webkitAudioContext; if(AudioContext) audioCtx = new AudioContext(); } }
 
 function playSound(type, targetEntity = null) {
-    try {
-        if(!audioCtx || gameOptions.volume <= 0) return;
-        const now = audioCtx.currentTime; 
-        let vol = gameOptions.volume; 
+    try {
+        // 💡 [수정] 게임이 시작되지 않았거나(로그아웃 상태) 볼륨이 0이면 소리 재생 차단
+        if (!gameStarted || !audioCtx || gameOptions.volume <= 0) return;
+        const now = audioCtx.currentTime; 
+        let vol = gameOptions.volume; 
 
-        const createNoise = (duration) => {
-            let bufferSize = audioCtx.sampleRate * duration;
-            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            let data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-            let noise = audioCtx.createBufferSource(); noise.buffer = buffer; return noise;
-        };
+        const createNoise = (duration) => {
+            let bufferSize = audioCtx.sampleRate * duration;
+            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            let data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+            let noise = audioCtx.createBufferSource(); noise.buffer = buffer; return noise;
+        };
 
-        if (type === 'swing') {
-            let dur = 0.08 + Math.random() * 0.02; let noise = createNoise(dur);
-            let filter = audioCtx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.setValueAtTime(1500 + Math.random()*500, now); filter.frequency.exponentialRampToValueAtTime(300, now + dur);
-            let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(vol * 3.5, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.01, now + dur);
-            noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(now);
-        } else if (type === 'monster_hit') {
-            if (!targetEntity) return;
-            let name = targetEntity.name || ''; let p = 0.8 + Math.random() * 0.3; let hitVol = vol * 4.0; 
-            let osc1 = audioCtx.createOscillator(); let osc1Gain = audioCtx.createGain();
-            osc1.type = 'triangle'; osc1.frequency.setValueAtTime(150 * p, now); osc1.frequency.exponentialRampToValueAtTime(40 * p, now + 0.1);
-            osc1Gain.gain.setValueAtTime(hitVol, now); osc1Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc1.connect(osc1Gain).connect(audioCtx.destination);
-            let noise = createNoise(0.2); let filter = audioCtx.createBiquadFilter(); let noiseGain = audioCtx.createGain();
-            if (name.includes('해골') || targetEntity.isUndead) { filter.type = 'highpass'; filter.frequency.value = 2500 * p; noiseGain.gain.setValueAtTime(hitVol * 1.5, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); } 
-            else if (name.includes('버그베어') || name.includes('오우거') || name.includes('골렘')) { filter.type = 'lowpass'; filter.frequency.value = 800 * p; osc1.type = 'sine'; osc1.frequency.setValueAtTime(100 * p, now); noiseGain.gain.setValueAtTime(hitVol * 2.0, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); } 
-            else { filter.type = 'bandpass'; filter.frequency.value = 1200 * p; filter.Q.value = 1.0; noiseGain.gain.setValueAtTime(hitVol * 1.2, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); }
-            noise.connect(filter).connect(noiseGain).connect(audioCtx.destination); osc1.start(now); osc1.stop(now + 0.2); noise.start(now);
-        } else if (type === 'magic_hit') {
-            let p = 0.8 + Math.random() * 0.4; let osc = audioCtx.createOscillator(); let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); let masterGain = audioCtx.createGain();
-            masterGain.connect(audioCtx.destination); osc.connect(masterGain); noise.connect(filter).connect(masterGain);
-            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1500 * p, now); osc.frequency.exponentialRampToValueAtTime(100 * p, now + 0.1);
-            filter.type = 'bandpass'; filter.frequency.value = 3000 * p; filter.Q.value = 2.0; masterGain.gain.setValueAtTime(vol * 3.5, now); masterGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now); osc.stop(now + 0.15); noise.start(now);
-        } else if (type === 'player_hit') { 
-            let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 350; 
-            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); noise.connect(filter).connect(gain); noise.start(now);
-        } else {
-            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
-            if (type === 'fireball') { let noise = createNoise(0.5); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
-            else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
-            else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
-            else if (type === 'spell' || type === 'drink') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+(type==='drink'?0.15:0.3)); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
-            else if (type === 'click' || type==='buy') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
-            else if (type === 'bow') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(800,now); osc.frequency.exponentialRampToValueAtTime(200,now+0.1); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.15); osc.start(now); osc.stop(now+0.15); }
-else if (type === 'disintegrate') { 
+        if (type === 'swing') {
+            let dur = 0.08 + Math.random() * 0.02; let noise = createNoise(dur);
+            let filter = audioCtx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.setValueAtTime(1500 + Math.random()*500, now); filter.frequency.exponentialRampToValueAtTime(300, now + dur);
+            let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(vol * 3.5, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.01, now + dur);
+            noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(now);
+        } else if (type === 'monster_hit') {
+            if (!targetEntity) return;
+            let name = targetEntity.name || ''; let p = 0.8 + Math.random() * 0.3; let hitVol = vol * 4.0; 
+            let osc1 = audioCtx.createOscillator(); let osc1Gain = audioCtx.createGain();
+            osc1.type = 'triangle'; osc1.frequency.setValueAtTime(150 * p, now); osc1.frequency.exponentialRampToValueAtTime(40 * p, now + 0.1);
+            osc1Gain.gain.setValueAtTime(hitVol, now); osc1Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc1.connect(osc1Gain).connect(audioCtx.destination);
+            let noise = createNoise(0.2); let filter = audioCtx.createBiquadFilter(); let noiseGain = audioCtx.createGain();
+            if (name.includes('해골') || targetEntity.isUndead) { filter.type = 'highpass'; filter.frequency.value = 2500 * p; noiseGain.gain.setValueAtTime(hitVol * 1.5, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); } 
+            else if (name.includes('버그베어') || name.includes('오우거') || name.includes('골렘')) { filter.type = 'lowpass'; filter.frequency.value = 800 * p; osc1.type = 'sine'; osc1.frequency.setValueAtTime(100 * p, now); noiseGain.gain.setValueAtTime(hitVol * 2.0, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); } 
+            else { filter.type = 'bandpass'; filter.frequency.value = 1200 * p; filter.Q.value = 1.0; noiseGain.gain.setValueAtTime(hitVol * 1.2, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); }
+            noise.connect(filter).connect(noiseGain).connect(audioCtx.destination); osc1.start(now); osc1.stop(now + 0.2); noise.start(now);
+        } else if (type === 'magic_hit') {
+            let p = 0.8 + Math.random() * 0.4; let osc = audioCtx.createOscillator(); let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); let masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination); osc.connect(masterGain); noise.connect(filter).connect(masterGain);
+            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1500 * p, now); osc.frequency.exponentialRampToValueAtTime(100 * p, now + 0.1);
+            filter.type = 'bandpass'; filter.frequency.value = 3000 * p; filter.Q.value = 2.0; masterGain.gain.setValueAtTime(vol * 3.5, now); masterGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.start(now); osc.stop(now + 0.15); noise.start(now);
+        } else if (type === 'player_hit') { 
+            let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 350; 
+            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); noise.connect(filter).connect(gain); noise.start(now);
+        } else {
+            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
+            if (type === 'fireball') { let noise = createNoise(0.5); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
+            else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
+            else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
+            else if (type === 'spell' || type === 'drink') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+(type==='drink'?0.15:0.3)); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
+            else if (type === 'click' || type==='buy') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
+            else if (type === 'bow') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(800,now); osc.frequency.exponentialRampToValueAtTime(200,now+0.1); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.15); osc.start(now); osc.stop(now+0.15); }
+            else if (type === 'disintegrate') { 
                 const osc = audioCtx.createOscillator(); 
                 osc.connect(gain); 
-                osc.type = 'sine'; // 맑은 종/징 소리를 위한 사인파
+                osc.type = 'sine';
                 osc.frequency.setValueAtTime(2200, now); 
                 osc.frequency.exponentialRampToValueAtTime(300, now + 1.2); 
                 gain.gain.setValueAtTime(vol * 5.0, now); 
                 gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2); 
                 osc.start(now); osc.stop(now + 1.2); 
-            
-        }
-}
-    } catch(e){}
+            }
+        }
+    } catch(e){}
 }
 
 window.updateOptions = function() { 
@@ -716,7 +716,6 @@ function recalculateStats() {
 
     let cData = localClassData[player.charClass] || localClassData['knight'];
     
-    // 기본 직업별 성장 스탯
     player.str = cData.str + Math.floor(lv / 4); 
     player.dex = cData.dex + Math.floor(lv / 4); 
     player.int = cData.int + Math.floor(lv / 4);
@@ -739,7 +738,6 @@ function recalculateStats() {
             if (eq.speed) bonusSpeed += eq.speed;
             if (eq.potionEffect) totalPotionEffect += eq.potionEffect;
 
-            // 💡 [핵심] 전설/초월 무기 및 방어구의 magicOptions 내 수치 실시간 가산
             if (eq.magicOptions && Array.isArray(eq.magicOptions)) {
                 eq.magicOptions.forEach(opt => {
                     let match = opt.match(/\+(\d+)/);
@@ -777,15 +775,15 @@ function recalculateStats() {
     let wpAtk = wp ? (wp.atk || 0) + (wp.enchantValue || 0) : 0;
     let enchantBonus = wp ? Math.floor((wp.enchantValue || 0) * 2.0) : 0;
     
+    // 💡 [요정 클래스 계산식 완벽 밸런싱] 요정의 원거리 기본 계수를 3.8로 대폭 상향
     if (wp && wp.isBow) {
-        player.atk = Math.max(1, Math.floor((player.dex - 10) * 2.5)) + Math.floor(lv / 4) + wpAtk + enchantBonus + rangedBonus;
+        player.atk = Math.max(1, Math.floor((player.dex - 10) * 3.8)) + Math.floor(lv / 3) + wpAtk + enchantBonus + rangedBonus;
     } else {
-        player.atk = Math.max(1, Math.floor((player.str - 10) * 3.2)) + Math.floor(lv / 3) + wpAtk + enchantBonus + meleeBonus;
+        player.atk = Math.max(1, Math.floor((player.str - 10) * 3.5)) + Math.floor(lv / 3) + wpAtk + enchantBonus + meleeBonus;
     }
 
     player.def = Math.max(0, Math.floor((player.dex - 10) / 2)) + totalDef; 
 }
-
 
 
 let currentMaxHp = 150; let currentMaxMp = 30;
@@ -1311,43 +1309,65 @@ window.switchInvTab = function(tabName) {
 };
 
 function renderInventory() {
-    const displayList = [];
-    player.inv.forEach((it, idx) => {
-        displayList.push({ ...it, isEquipped: false, originalIndex: idx });
-    });
-    for (let k in player.equip) {
-        if (player.equip[k]) {
-            displayList.push({ ...player.equip[k], isEquipped: true, equipSlot: k });
+    if ($('inv-title')) $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
+
+    // 💡 [장비창 렌더링 완벽 독립] 인벤토리 리스트와 섞이지 않도록 단독 3열 그리드 UI 적용
+    if (window.currentInvTab === 'equip') {
+        const equipTabEl = $('inv-tab-equip');
+        if (!equipTabEl) return;
+        
+        let equipHtml = `<div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; padding:12px; width:100%; box-sizing:border-box; align-content:start;">`;
+        const slotNames = { helmet:'투구', tshirt:'티셔츠', armor:'갑옷', cloak:'망토', weapon:'무기', shield:'방패', gloves:'장갑', boots:'부츠', belt:'벨트', ring1:'반지(좌)', ring2:'반지(우)' };
+        
+        for (let slotKey in slotNames) {
+            let it = player.equip[slotKey];
+            let slotTitle = slotNames[slotKey];
+            
+            if (it) {
+                let dStr = encodeURIComponent(JSON.stringify(it)).replace(/'/g, "%27");
+                equipHtml += `
+                <div class="inv-slot grade-${it.grade || 0}" style="border: 2px solid #5cf; position: relative; display:flex; justify-content:center; align-items:center; aspect-ratio:1;" 
+                     onclick="window.handleEquipSlotClick(event, '${slotKey}', '${dStr}')" 
+                     onmouseenter="showTooltip(event, '${dStr}', true)" onmouseleave="hideTooltip()"
+                     oncontextmenu="event.preventDefault(); window.unequip('${slotKey}');">
+                    <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:#111; font-size:10px; color:#aaa; padding:1px 4px; border-radius:3px; white-space:nowrap; z-index:2;">${slotTitle}</div>
+                    <div class="e-mark" style="background:#1d4ed8; z-index:2;">E</div>
+                    <div class="inv-icon" style="font-size:24px;">${getItemIcon(it)}</div>
+                </div>`;
+            } else {
+                equipHtml += `
+                <div style="background:#1a1a24; border:1px dashed #445; border-radius:4px; aspect-ratio:1; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#555; position:relative;">
+                    <div style="position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:#111; font-size:10px; color:#555; padding:1px 4px; border-radius:3px; white-space:nowrap;">${slotTitle}</div>
+                    <div style="font-size:18px;">+</div>
+                </div>`;
+            }
         }
+        equipHtml += `</div>`;
+        equipTabEl.innerHTML = equipHtml;
+        return; // 가방 렌더링 중지
     }
+
+    // 일반 가방(bag) 탭 렌더링
+    const displayList = player.inv.map((it, idx) => ({ ...it, isEquipped: false, originalIndex: idx }));
 
     displayList.sort((a, b) => {
         let getCategoryWeight = (it) => {
-            if (it.type === 'potion') {
-                let name = it.name || '';
-                if (name.includes('주홍') || name.includes('맑은') || name.includes('빨간') || name.includes('고기') || name.includes('체력')) return 1;
-                if (name.includes('파란') || name.includes('마나')) return 2;
-                return 3;
-            }
-            if (['weapon', 'armor', 'helmet', 'shield', 'tshirt', 'cloak', 'gloves', 'boots', 'belt', 'ring', 'ring1', 'ring2'].includes(it.type)) return 4;
-            if (it.type === 'book') return 5;
-            if (it.type === 'scroll') return 6;
-            return 7;
+            if (it.type === 'potion') return 1;
+            if (['weapon', 'armor', 'helmet', 'shield', 'tshirt', 'cloak', 'gloves', 'boots', 'belt', 'ring'].includes(it.type)) return 2;
+            if (it.type === 'book') return 3;
+            if (it.type === 'scroll') return 4;
+            return 5;
         };
         let weightA = getCategoryWeight(a), weightB = getCategoryWeight(b);
         if (weightA !== weightB) return weightA - weightB;
-        if (a.isEquipped && !b.isEquipped) return -1;
-        if (!a.isEquipped && b.isEquipped) return 1;
         return (b.grade || 0) - (a.grade || 0);
     });
-
-    if ($('inv-title')) $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
 
     const counts = new Map();
     displayList.forEach((it) => {
         const key = getStackKey(it);
         if (!counts.has(key)) {
-            counts.set(key, { item: it, count: 0, rawKey: key, isEquipped: it.isEquipped, equipSlot: it.equipSlot });
+            counts.set(key, { item: it, count: 0, rawKey: key, isEquipped: false });
         }
         counts.get(key).count += (it.count || 1);
     });
@@ -1365,69 +1385,40 @@ function renderInventory() {
                 const itemElement = document.createElement('div');
                 itemElement.className = `inv-slot grade-${c.item.grade || 0}`;
 
-                let clickTimer = null;
-                let clickCount = 0;
+                let clickTimer = null; let clickCount = 0;
 
-                itemElement.addEventListener('mouseenter', (e) => {
-                    if (!isTouchDevice && !window.activeEnchantScrollKey) showTooltip(e, dStr, c.isEquipped);
-                });
+                itemElement.addEventListener('mouseenter', (e) => { if (!isTouchDevice && !window.activeEnchantScrollKey) showTooltip(e, dStr, false); });
                 itemElement.addEventListener('mouseleave', hideTooltip);
-
                 itemElement.addEventListener('contextmenu', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    hideTooltip();
+                    e.preventDefault(); e.stopPropagation(); hideTooltip();
                     openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                    bringToFront('item-action-modal');
-                    autoCenterWindow('item-action-modal', true);
                 });
 
-                // 💡 [수정] 1클릭: 상세창 / 2클릭(더블클릭): 즉시 장착/해제/사용
                 itemElement.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    hideTooltip();
-
+                    e.stopPropagation(); hideTooltip();
                     if (window.activeEnchantScrollKey) {
-                        if (c.isEquipped) {
-                            window.attemptEnchant(window.activeEnchantScrollKey, player.equip[c.equipSlot]);
-                        } else {
-                            let targetIt = player.inv.find(it => getStackKey(it) === c.rawKey);
-                            if (targetIt) window.attemptEnchant(window.activeEnchantScrollKey, targetIt);
-                        }
+                        let targetIt = player.inv.find(it => getStackKey(it) === c.rawKey);
+                        if (targetIt) window.attemptEnchant(window.activeEnchantScrollKey, targetIt);
                         return;
                     }
-
                     clickCount++;
                     if (clickCount === 1) {
                         clickTimer = setTimeout(() => {
                             clickCount = 0;
-                            // 1번 클릭: 상세 설명 모달창 오픈
                             openItemActionModal(e, c.rawKey, c.item.name, c.count, dStr);
-                            bringToFront('item-action-modal');
-                            autoCenterWindow('item-action-modal', true);
                         }, 250);
                     } else if (clickCount === 2) {
-                        clearTimeout(clickTimer);
-                        clickCount = 0;
-                        // 2번 더블클릭: 즉시 장착 또는 장착 해제
-                        if (c.isEquipped) {
-                            window.unequip(c.equipSlot);
-                        } else {
-                            window.useItem(c.rawKey);
-                        }
+                        clearTimeout(clickTimer); clickCount = 0; window.useItem(c.rawKey);
                     }
                 });
 
-                const eMarkHtml = c.isEquipped ? `<div class="e-mark">E</div>` : '';
                 const qtyHtml = c.count > 1 ? `<span class="inv-qty">${c.count}</span>` : '';
-                itemElement.innerHTML = `${eMarkHtml}<div class="inv-icon">${getItemIcon(c.item)}</div>${qtyHtml}`;
+                itemElement.innerHTML = `<div class="inv-icon">${getItemIcon(c.item)}</div>${qtyHtml}`;
                 invListEl.appendChild(itemElement);
             });
         }
     }
 }
-
-
 
 
 let equipSlotClickCount = {};
@@ -3494,14 +3485,17 @@ window.withdrawMercenary = async function() {
 // ==========================================
 // [창 드래그 및 위치 이동 시스템]
 // ==========================================
+// 💡 [모바일 창 드래그 완벽 패치] 터치 시 화면이 내려가는 현상 방지
 let dragEl = null, dragOffsetX = 0, dragOffsetY = 0;
 
 window.startDrag = function(e, id) { 
-    dragEl = $(id); 
+    dragEl = document.getElementById(id); 
     if (!dragEl) return;
+    if (typeof bringToFront === 'function') bringToFront(id);
 
-    if (typeof bringToFront === 'function') {
-        bringToFront(id);
+    // 모바일 터치 드래그 시 배경 스크롤 차단
+    if (e.type.includes('touch')) {
+        document.body.style.overflow = 'hidden'; 
     }
 
     if (dragEl.style.transform && dragEl.style.transform !== 'none') {
@@ -3517,7 +3511,7 @@ window.startDrag = function(e, id) {
     dragOffsetX = cx - rect.left; 
     dragOffsetY = cy - rect.top; 
 
-    document.addEventListener('mousemove', onDrag); 
+    document.addEventListener('mousemove', onDrag, {passive: false}); 
     document.addEventListener('mouseup', stopDrag); 
     document.addEventListener('touchmove', onDrag, {passive: false}); 
     document.addEventListener('touchend', stopDrag); 
@@ -3525,6 +3519,7 @@ window.startDrag = function(e, id) {
 
 function onDrag(e) {
     if (!dragEl) return;
+    if (e.type.includes('touch')) e.preventDefault(); // 스크롤 원천 차단
     let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
     let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
     dragEl.style.left = (cx - dragOffsetX) + 'px';
@@ -3533,11 +3528,13 @@ function onDrag(e) {
 
 function stopDrag() {
     dragEl = null;
+    document.body.style.overflow = ''; // 스크롤 복구
     document.removeEventListener('mousemove', onDrag);
     document.removeEventListener('mouseup', stopDrag);
     document.removeEventListener('touchmove', onDrag);
     document.removeEventListener('touchend', stopDrag);
 }
+
 window.autoCenterWindow = function(id, forceCenter = true) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -4232,43 +4229,113 @@ window.showPartyMenu = function(targetPlayer) {
 
 
 // ==========================================
-// 💡 [클래스별 고유 패시브 설명 팝업 함수]
+// 💡 [클래스별 패시브 & 뉴비 완벽 가이드 통합 팝업 (최종 완성판)]
 // ==========================================
 window.showClassPassiveInfo = function() {
     let pClass = player.charClass || 'knight';
     let title = '';
-    let body = '';
+    let classSpecificHtml = '';
 
     if (pClass === 'knight' || pClass === 'royal') {
-        title = "⚔️ 기사 고유 패시브 스킬";
-        body = `
-        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
-            <b style="color:#38bdf8;">[돌진 (Rush)]</b><br>
-            사거리(55~350px) 밖의 적에게 순식간에 파고들어 틈을 좁힙니다. (쿨타임 2초)<br><br>
-            <b style="color:#ef4444;">[광폭화 & 클리브 (Fury & Cleave)]</b><br>
-            강한 피격을 받거나 다수의 적에게 포위당하면 3.5초간 분노하여 공격력이 2배로 폭발하고, 주변 95px 내 적을 함께 베며 입힌 총 피해량의 25%를 즉시 HP로 흡혈합니다.
-        </div>`;
+        title = "⚔️ 기사/군주 클래스 완벽 가이드 & 패시브";
+        classSpecificHtml = `
+            <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:8px;">
+                <b style="color:#38bdf8; font-size:14px;">[고유 패시브 1] 돌진 (Rush)</b><br>
+                • 대상과의 거리가 사거리(55~350px) 밖에 있으면 쿨타임(2초)마다 적의 코앞으로 순식간에 파고들어 즉시 전투를 시작합니다.
+            </div>
+            <div style="background:rgba(239,68,68,0.1); border-left:3px solid #ef4444; padding:8px; margin-bottom:12px;">
+                <b style="color:#ef4444; font-size:14px;">[고유 패시브 2] 광폭화 & 클리브 (Fury & Cleave)</b><br>
+                • 강한 대미지를 입거나 다수의 적(4명 이상)에게 포위당하면 3.5초간 광폭화 상태에 돌입합니다.<br>
+                • 광폭화 중에는 <b>공격력이 2배로 폭발</b>하며, 평타 공격 시 주변 95px 내 적들을 함께 베어버리는 광역 참격(클리브)이 발동합니다.<br>
+                • 이때 적에게 입힌 총 피해량의 25%가 <b>즉시 체력(HP)으로 흡혈</b>되어 위기를 극복합니다.
+            </div>`;
     } else if (pClass === 'elf') {
-        title = "🏹 요정 고유 패시브 스킬";
-        body = `
-        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
-            <b style="color:#4ade80;">[에코 오브 실프 (Echo of Sylph)]</b><br>
-            기본 사격 시 25% 확률로 정령의 바람이 실려 130% 마법 피해를 입히고 MP 5를 즉시 회복합니다.<br><br>
-            <b style="color:#facc15;">[피어싱 애로우 (Piercing Arrow)]</b><br>
-            4회 타격 누적 시 대상 주변 120px 적들을 관통하는 화살을 폭발시켜 광역 대미지를 입히고 2초간 이동속도를 둔화시킵니다.<br><br>
-            <b style="color:#38bdf8;">[스마트 카이팅]</b><br>
-            적이 150px 이내로 접근하면 자동으로 거리를 벌리며 무빙샷을 가합니다.
-        </div>`;
+        title = "🏹 요정 클래스 완벽 가이드 & 패시브";
+        classSpecificHtml = `
+            <div style="background:rgba(74,222,128,0.1); border-left:3px solid #4ade80; padding:8px; margin-bottom:8px;">
+                <b style="color:#4ade80; font-size:14px;">[고유 패시브 1] 에코 오브 실프 (Echo of Sylph)</b><br>
+                • 평타 사격 시 25% 확률로 정령의 바람이 실려 추가 마법 피해를 입히고 MP를 4~5 즉시 회복합니다.
+            </div>
+            <div style="background:rgba(250,204,21,0.1); border-left:3px solid #facc15; padding:8px; margin-bottom:8px;">
+                <b style="color:#facc15; font-size:14px;">[고유 패시브 2] 실프의 폭풍 (Sylph Tempest)</b><br>
+                • 평타 타격이 5회 누적되면 4초간 에메랄드 바람 오라와 함께 광폭화 상태가 됩니다.<br>
+                • 주변 200px 적들에게 광역 화살 세례를 퍼붓고 대미지의 일부를 HP/MP로 흡수합니다.
+            </div>
+            <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:12px;">
+                <b style="color:#38bdf8; font-size:14px;">[전투 AI] 스마트 카이팅</b><br>
+                • 적이 150px 이내로 너무 가까이 접근하면 자동으로 뒤로 물러나며 원거리 무빙샷을 구사합니다.
+            </div>`;
     } else if (pClass === 'wizard') {
-        title = "🔮 마법사 고유 패시브 스킬";
-        body = `
-        <div style="text-align:left; font-size:12px; line-height:1.6; color:#ddd;">
-            <b style="color:#c084fc;">[스마트 마력 순환]</b><br>
-            적군 수(3마리 이상 광역/1~2마리 단일) 및 보스 여부에 따라 가장 강력하고 효율적인 마법을 자동 선별하여 난사합니다.<br><br>
-            <b style="color:#38bdf8;">[원형 오르빗 카이팅]</b><br>
-            적이 접근하면 안전거리를 유지하며 거리를 벌려 공격합니다.
-        </div>`;
+        title = "🔮 마법사 클래스 완벽 가이드 & 패시브";
+        classSpecificHtml = `
+            <div style="background:rgba(192,132,252,0.1); border-left:3px solid #c084fc; padding:8px; margin-bottom:8px;">
+                <b style="color:#c084fc; font-size:14px;">[고유 패시브 1] 스마트 마력 순환</b><br>
+                • 적의 수(3마리 이상 광역/단일)와 보스 여부에 따라 가방/슬롯에 등록된 마법 중 가장 효율적이고 강력한 마법을 자동으로 선별하여 난사합니다.
+            </div>
+            <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:12px;">
+                <b style="color:#38bdf8; font-size:14px;">[전투 AI] 원형 오르빗 카이팅</b><br>
+                • 적이 접근하면 안전 거리를 유지하며 플레이어를 중심축으로 원을 그리며 회전하며 마법을 퍼붓습니다.
+            </div>`;
     }
+
+    let body = `
+    <div style="text-align:left; font-size:13.5px; line-height:1.6; color:#ddd; max-height:60vh; height:500px; overflow-y:auto; padding-right:8px; box-sizing:border-box;">
+        
+        <!-- 파트 1: 클래스별 고유 스킬 -->
+        <div style="font-size:14px; font-weight:bold; color:#fd0; margin-bottom:6px; border-bottom:1px solid #444; padding-bottom:3px;">
+            1. 내 캐릭터 종족(클래스) 특성 및 패시브 스킬
+        </div>
+        ${classSpecificHtml}
+
+        <!-- 파트 2: 처음 접하는 뉴비를 위한 인터페이스 설명 -->
+        <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
+            2. 화면 인터페이스(UI) 구조 및 모바일/PC 조작법
+        </div>
+        <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px; margin-bottom:8px;">
+            • <b>상단 HP / MP / EXP 바:</b> 생명력, 마력, 경험치를 실시간으로 표시합니다[cite: 6]. HP가 0이 되면 사망하며 3초 후 안전지대 마을에서 부활합니다[cite: 6, 7].<br>
+            • <b>미니맵 (minimap):</b> 현재 캐릭터의 위치, 주변 지형, 안전지대(초록색 원), 포탈 및 주요 NPC 위치를 보여줍니다[cite: 3, 6].<br>
+            • <b>이동 및 타겟팅 조작:</b><br>
+              - <b>PC:</b> 마우스 좌클릭으로 이동 및 빈 땅 클릭, 몬스터를 클릭하면 타겟 고정 및 자동/수동 전투가 시작됩니다[cite: 2].<br>
+              - <b>모바일:</b> 화면을 터치하여 이동하고, 몬스터나 NPC를 직접 터치하여 상호작용 및 전투를 진행합니다[cite: 2].<br>
+            • <b>하단 토글 버튼 (물약 / 사냥):</b><br>
+              - <b>물약 ON:</b> 설정한 조건(체력 70% / 마나 20% 미만)에 맞춰 가방 속 회복 물약을 자동으로 마십니다[cite: 5].<br>
+              - <b>사냥 ON:</b> 주변 몬스터를 자동 탐색해 사냥하고 바닥에 떨어진 아이템을 등급 필터에 맞춰 자동 줍기(루팅)합니다[cite: 5, 6].<br>
+            • <b>퀵슬롯 (F5 ~ F12):</b> 인벤토리 아이템이나 마법책 스킬을 끌어다 등록합니다[cite: 6, 8].<br>
+              - <b>마법 더블클릭:</b> 자동사냥(빨간 테두리) 전용으로 지정되어 사냥 시 자동으로 난사됩니다[cite: 6, 8].<br>
+              - <b>마법 단일클릭:</b> 수동 타겟팅 모드가 켜져 원하는 적을 직접 지정해 공격할 수 있습니다[cite: 6, 8].
+        </div>
+
+        <!-- 파트 3: 상세한 게임 진행 방식 및 성장 가이드 -->
+        <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
+            3. 상세한 게임 진행 방식 및 초보자 성장 가이드
+        </div>
+        <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px; margin-bottom:8px;">
+            • <b>1단계 (마을 장비 및 소모품 정비):</b> 게임 시작 후 마을(말하는 섬, 은기사 마을 등)에 있는 '판도라(잡화상인)'에게 들러 주홍 물약과 초록 물약, 용기의 물약(기사 전용), 엘븐 와퍼(요정 전용)를 넉넉히 구매하세요[cite: 1, 3, 6].<br>
+            • <b>2단계 (초반 사냥터 레벨업):</b> 안전지대 마을 밖 초원 지역(Lv.1~15)에서 몬스터를 잡으며 아데나와 경험치를 모읍니다[cite: 1, 3]. 경험치가 가득 차면 자동으로 레벨업하며 캐릭터의 능력치가 상승합니다[cite: 2].<br>
+            • <b>3단계 (마법 및 기술 학습):</b> 상인(게라드)에게 마법서, 정령의 수정, 기술서를 구매하거나 사냥을 통해 획득한 뒤 인벤토리에서 더블클릭하면 새로운 전투 스킬을 배울 수 있습니다[cite: 1, 3, 6].<br>
+            • <b>4단계 (장비 강화):</b> '데이젤' 상인에게서 '무기/갑옷 마법 주문서'를 구매한 뒤 인벤토리에서 사용하여 강화할 장비를 클릭해 스펙을 대폭 높이세요 (무기 +6, 방어구 +4까지 안전 강화)[cite: 1, 3, 6].
+        </div>
+
+        <!-- 파트 4: 핵심 콘텐츠 - 용병, 펫, 창고 시스템 완벽 활용법 -->
+        <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
+            4. 핵심 콘텐츠 - 용병, 펫, 창고 시스템 활용 가이드 (초보 필수)
+        </div>
+        <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px;">
+            • <b>⚔️ 용병 시스템 (최대 3명 동행):</b><br>
+              - 마을의 <b>'용병 단장'</b> NPC를 클릭하면 아데나를 지불하고 최대 3명까지 기사, 요정, 마법사 용병을 고용하여 함께 동행할 수 있습니다[cite: 3, 8].<br>
+              - 용병은 전투를 자율 보조하며, 마법사 용병은 체력이 부족할 때 아군에게 '그레이트 힐'을 시전해 줍니다[cite: 5, 8].<br>
+              - 가방 속 장비나 물약을 용병에게 드래그 앤 드롭하여 장착시키거나 물약(주홍/파란 물약)을 보급해 줄 수 있습니다[cite: 6, 8].<br>
+              - 마을의 '용병 단장'을 통해 현재 동행 중인 용병을 창고에 안전하게 맡겼다가 다른 캐릭터로 찾아 쓸 수 있습니다[cite: 8].<br><br>
+            • <b>🐾 펫 테이밍 및 관리 (도베르만 길들이기):</b><br>
+              - 잡화상인에게서 <b>'고기'</b> 아이템을 구매한 뒤, 사냥터의 '도베르만' 몬스터 근처에서 사용하면 일정 확률로 길들여 내 펫(소환수)으로 삼을 수 있습니다[cite: 1, 3, 6].<br>
+              - 소환된 펫을 클릭하면 전용 펫 정보 창이 열려 공격/방어 태세를 설정하거나 아이템을 줄 수 있습니다[cite: 3, 6, 8].<br>
+              - 마을의 <b>'펫 관리인'</b> NPC를 통해 키우던 펫을 안전하게 창고에 맡기거나 다른 캐릭터로 찾아 쓸 수 있습니다[cite: 3, 8].<br><br>
+            • <b>📦 계정 공용 창고 시스템:</b><br>
+              - 마을의 <b>'창고지기'</b> NPC를 통해 아데나와 아이템(최대 100칸)을 안전하게 보관할 수 있습니다[cite: 3, 8].<br>
+              - 이 창고는 계정 내 다른 캐릭터들과 아이템 및 아데나가 완벽하게 공유되므로 부캐릭터 육성 시 매우 유용합니다[cite: 8].
+        </div>
+
+    </div>`;
 
     showCustomPrompt(body, [{ text: '확인', color: '#166534', callback: () => {} }]);
     if ($('confirm-win-title')) $('confirm-win-title').innerText = title;

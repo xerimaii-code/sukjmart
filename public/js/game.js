@@ -3,9 +3,8 @@ let wakeLockVideo = null;
 let lastUserActionTime = performance.now();
 let isDimmed = false;
 
-// 1. 화면 꺼짐 방지 함수 (표준 WakeLock + 무음 비디오 듀얼 구동)
+// 1. 화면 꺼짐 및 잠금 완벽 방지 (안드로이드 WakeLock + 아이폰 무음 비디오 루프)
 async function requestWakeLock() {
-    // 1) 모바일 표준 Screen WakeLock
     if ('wakeLock' in navigator) {
         try {
             if (!wakeLock || wakeLock.released) {
@@ -15,23 +14,20 @@ async function requestWakeLock() {
         } catch (err) {}
     }
 
-    // 2) HTTP/사파리/구형 기기용 무음 비디오 백그라운드 재생 (꺼짐 원천 차단)
+    // 아이폰(iOS Safari) 등 WakeLock 미지원 기기를 위한 백그라운드 무음 비디오 강제 재생
     if (!wakeLockVideo) {
         wakeLockVideo = document.createElement('video');
         wakeLockVideo.setAttribute('loop', '');
         wakeLockVideo.setAttribute('muted', '');
         wakeLockVideo.setAttribute('playsinline', '');
+        // 1픽셀짜리 투명 비디오 데이터
         wakeLockVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAH0MDk3//wAAAAAAAAAAAAAAABAAAAB/wD/G21vb3YAAABsbXZoZAAAAADawT7M2sE+zAAAAAACSAAAACQAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAADV0cmFrAAAAXHRraGQAAAAD2sE+zNrBPswAAAABAAAAAAAkAAAAAAAAAAAAAAAAAAEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAIAAAAAIAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAAAJAAAAAACAAAAAABybWRpYQAAACBtZGhkAAAAANrBPszawT7MAAAAIAAAACQAAAAAAAAAAAAAAAB1aGRscgAAAAAAAAAAdmlkZQAAAAAAAAAAAAAAAAAAAAAAO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAABNzdGJsAAAAb3N0c2QAAAAAAAAAAQAAAF9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAgACAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAxYXZjQwH0AAr/4QAYZ/QwKqKysxIBAgEBAwAQAAMB6gBvwBEAAAMAEAAAAwPI8SgAAAAIcHThAigAAABMc3R0cwAAAAAAAAABAAAAAQAAAAIAAAAoc3RzYwAAAAAAAAABAAAAFHN0Y28AAAAAAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAAAAQAAAAEAAAAUc3RjbwAAAAAAAAABAAAAMg==';
         wakeLockVideo.style.display = 'none';
         document.body.appendChild(wakeLockVideo);
     }
-    
-    if (wakeLockVideo && wakeLockVideo.paused) {
-        wakeLockVideo.play().catch(() => {});
-    }
+    if (wakeLockVideo.paused) wakeLockVideo.play().catch(() => {});
 }
 
-// 2. 유저 조작 감지 및 절전 해제 (터치/클릭/키입력 시)
 function resetIdleTimer() {
     lastUserActionTime = performance.now();
     if (isDimmed) {
@@ -42,23 +38,25 @@ function resetIdleTimer() {
     requestWakeLock();
 }
 
-['touchstart', 'touchmove', 'touchend', 'click', 'mousedown', 'keydown'].forEach(evt => {
+['touchstart', 'touchmove', 'click', 'keydown'].forEach(evt => {
     window.addEventListener(evt, resetIdleTimer, { passive: true });
 });
 
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-        resetIdleTimer();
-    }
+    if (document.visibilityState === 'visible') resetIdleTimer();
 });
 
-// 3. 30초 동안 조작이 없을 시 화면을 약간 어둡게 (배터리 절전 모드)
-// 3. 30초 동안 조작이 없을 시 화면 절전 모드 (모바일 전용 / PC 암전 완전 제외)
-// 3. 30초 동안 조작이 없을 시 화면 절전 모드 (모바일 전용 / PC 암전 완전 제외)
+// 2. 조작 없을 시 배터리 절약을 위한 화면 '암전' 기능 (꺼지진 않음)
 setInterval(() => {
-    let isMobile = window.innerWidth <= 768 || ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    // 💡 [수정] 단순 창 크기가 아닌 실제 모바일 기기(OS)인지 정확히 판별
+    let isRealMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    let isTouchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     
-    if (!isMobile) {
+    // 모바일 OS이거나, 터치스크린이면서 창이 작을 때만 모바일로 인정
+    let isMobile = isRealMobileOS || (window.innerWidth <= 768 && isTouchScreen);
+
+    // 💡 PC 환경이거나(창을 아무리 작게 줄여도 제외됨), 모바일인데 충전기를 꽂고 있다면 밝게 유지
+    if (!isMobile || isCharging) {
         if (isDimmed) {
             isDimmed = false;
             let dimOverlay = document.getElementById('dim-overlay');
@@ -67,10 +65,11 @@ setInterval(() => {
         return;
     }
 
-    if (gameStarted && !isDimmed && (performance.now() - lastUserActionTime > 30000)) {
+    // 실제 모바일 기기이면서 충전선이 뽑혀 있을 때만 45초 후 화면 어둡게 처리
+    if (gameStarted && !isDimmed && (performance.now() - lastUserActionTime > 45000)) {
         isDimmed = true;
         let dimOverlay = document.getElementById('dim-overlay');
-        if (dimOverlay) dimOverlay.style.opacity = '0.55';
+        if (dimOverlay) dimOverlay.style.opacity = '0.65';
     }
 }, 1000);
 
@@ -79,54 +78,63 @@ setInterval(() => {
 
 
 
-function addSkillText(x, y, text, tier = 'normal') {
+
+function addSkillText(x, y, text, tier = 'normal', customFontSize = null) {
     if (typeof dmgTexts === 'undefined') return;
     
-    // 💡 텍스트가 여러 개 겹칠 때 자연스럽게 분산 (y 오프셋 랜덤 부여)
-    let offsetX = (Math.random() - 0.5) * 24;
-    let offsetY = (Math.random() - 0.5) * 14;
+    let offsetX = (Math.random() - 0.5) * 20;
+    let offsetY = (Math.random() - 0.5) * 10;
     
     let color = '#ffffff';
-    let size = 15;
+    let size = customFontSize || 15;
     
     if (tier === 'ultimate') {
-        color = '#ff0055'; // 신화/궁극기
-        size = 18;
+        color = '#fbbf24';
+        if (!customFontSize) size = 20;
     } else if (tier === 'high') {
-        color = '#ffea00'; // 상급 마법/쇼크스턴
-        size = 16;
+        color = '#ffea00';
+        if (!customFontSize) size = 16;
     } else if (tier === 'buff') {
-        color = '#38bdf8'; // 버프/회복
-        size = 13;
+        color = '#38bdf8';
+        if (!customFontSize) size = 13;
+    } else if (tier === 'elf') {
+        color = '#34d399';
+        if (!customFontSize) size = 20;
     } else {
-        color = '#c084fc'; // 일반 마법/정령 마법
-        size = 14;
+        color = '#c084fc';
+        if (!customFontSize) size = 14;
     }
 
     dmgTexts.push({
         x: x + offsetX,
         y: y - 50 + offsetY,
         text: text,
-        life: 1.1,
+        life: 1.5,
         color: color,
         fontSize: size
     });
 }
 
-// 1. 패시브 헬퍼 (caster 유동 할당)
-function triggerPassiveBroadcast(skillName, targetX, targetY, targetId = null, tier = 'high', caster = null) {
+function triggerPassiveBroadcast(skillName, targetX, targetY, targetId = null, tier = 'high', caster = null, customFontSize = null) {
     let c = caster || player;
     if (typeof addSkillText === 'function') {
-        addSkillText(c.x, c.y, `[${skillName}]`, tier);
+        addSkillText(c.x, c.y, skillName, tier, customFontSize);
     }
     if (window.socket && currentUser) {
         window.socket.emit('player_magic_action', {
-            magicName: skillName, targetX: targetX, targetY: targetY, targetId: targetId,
-            casterX: c.x, casterY: c.y, casterId: c.id || window.socket.id, map: currentMap
+            magicName: skillName,
+            tier: tier,
+            fontSize: customFontSize,
+            targetX: targetX,
+            targetY: targetY,
+            targetId: targetId,
+            casterX: c.x,
+            casterY: c.y,
+            casterId: c.id || window.socket.id,
+            map: currentMap
         });
     }
 }
-
 
 // ==========================================
 // [1. 뷰포트, 캔버스 & 초고화질 맵 그래픽 텍스처]
@@ -1863,6 +1871,45 @@ particles.forEach(p => {
     });
     // 💡 마법진 코드 삽입 끝
 
+// 💡 [오라 일괄 렌더링] 본인 + 파티원 + 타 플레이어 + 용병 전체 광폭화/실프 오라 렌더링
+    let allAuraUnits = [player, ...entities.filter(e => e && (e.isPlayer || e.isMercenary || e.isOtherMerc || e.isSummon))];
+    
+    allAuraUnits.forEach(unit => {
+        if (!unit || unit.hp <= 0 || unit.isDead) return;
+
+        // 1. 기사/광폭화 황금빛 버서커 오라
+        if (Date.now() < (unit.furyUntil || 0)) {
+            ctx.save();
+            ctx.translate(unit.x, unit.y + 10);
+            ctx.scale(1, 0.45);
+            let pulse = Math.sin(timestamp / 70) * 5;
+            ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
+            ctx.lineWidth = 3.5;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(0, 0, (unit.size || 20) * 1.6 + pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // 2. 요정/실프의 폭풍 에메랄드 바람 오라
+        if ((unit.charClass === 'elf' || unit.mercType === 'elf') && Date.now() < (unit.elfFuryUntil || 0)) {
+            ctx.save();
+            ctx.translate(unit.x, unit.y + 10);
+            ctx.scale(1, 0.45);
+            let pulse = Math.sin(timestamp / 60) * 6;
+            ctx.strokeStyle = 'rgba(52, 211, 153, 0.95)';
+            ctx.lineWidth = 3.5;
+            ctx.shadowBlur = 18;
+            ctx.shadowColor = '#10b981';
+            ctx.beginPath();
+            ctx.arc(0, 0, (unit.size || 20) * 1.7 + pulse, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+        }
+    });
+
 
 entities.forEach(e => {
         if (!e || typeof e.x !== 'number' || typeof e.y !== 'number') return;
@@ -2680,9 +2727,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             if (window.socket && currentUser) {
                 window.socket.emit('player_summon_monster', { level: caster.level || 1 });
             }
-            if (!isBgTick && typeof particles !== 'undefined') {
-                particles.push({ x: caster.x, y: caster.y, life: 1.0, maxLife: 1.0, type: 'summon_effect' });
-            }
             if (typeof playSound === 'function') playSound('spell');
             if (typeof addMessage === 'function') addMessage("✨ 소환수를 소환합니다!", '#5ff');
             if (typeof updateUI === 'function') updateUI();
@@ -2692,7 +2736,7 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return;
     }
 
-   let isHealSpell = mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프';
+    let isHealSpell = mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프';
     if (isHealSpell) {
         if (caster.mp >= mData.mp) {
             caster.mp -= mData.mp;
@@ -2701,14 +2745,12 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             
             actualTarget.hp = Math.min(actualTarget.maxHp || (actualTarget === player ? currentMaxHp : 100), actualTarget.hp + healAmt);
             
-            // 💡 [버그 수정] 힐 마법 브로드캐스터 누락 복구
             if (window.socket && currentUser) {
                 window.socket.emit('player_magic_action', {
                     magicName: magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id,
                     casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap
                 });
             }
-            if (!isBgTick && typeof particles !== 'undefined') particles.push({ x: actualTarget.x, y: actualTarget.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
             if (typeof playSound === 'function') playSound('heal');
             if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: actualTarget.x, y: actualTarget.y - 30, text: `+${healAmt} 힐!`, life: 1.2, color: '#5f5' });
             if (typeof updateUI === 'function') updateUI();
@@ -2724,14 +2766,12 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             caster.mp -= mData.mp;
             let actualTarget = target || caster;
             
-            // 💡 [버그 수정] 버프 마법 브로드캐스터 누락 복구
             if (window.socket && currentUser) {
                 window.socket.emit('player_magic_action', {
                     magicName: magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id,
                     casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap
                 });
             }
-            if (!isBgTick && typeof particles !== 'undefined') particles.push({ x: actualTarget.x, y: actualTarget.y, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
             if (typeof applyBuff === 'function') applyBuff(magicName, mData.duration || 300000, mData.icon || '💨', mData.buffType || 'speed', mData.val || 60, actualTarget);
             if (typeof playSound === 'function') playSound('spell');
             if (typeof updateUI === 'function') updateUI();
@@ -2741,9 +2781,10 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         }
         return;
     }
+
     let isAttackMagic = mData.type === 'attack' || mData.dmg;
     if (isAttackMagic) {
-        if (isInSafeZone(currentMap, caster.x, caster.y) || (target && isInSafeZone(currentMap, target.x, target.y))) { 
+        if (typeof isInSafeZone === 'function' && (isInSafeZone(currentMap, caster.x, caster.y) || (target && isInSafeZone(currentMap, target.x, target.y)))) { 
             if (caster === player && typeof addMessage === 'function') addMessage("안전지대에서는 공격 마법을 사용할 수 없습니다.", '#f55'); 
             return; 
         }
@@ -2756,28 +2797,18 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
 
     if (!target || typeof target.x === 'undefined' || typeof target.y === 'undefined') return;
 
-   let spellBaseRange = mData.range || 280;
+    let spellBaseRange = mData.range || 280;
     let allowedRange = spellBaseRange + (target.size || 20) + 40; 
     let dist = Math.hypot(target.x - caster.x, target.y - caster.y);
 
     if (dist > allowedRange) { 
-        if (caster === player) {
-            // 거리가 멀면 타겟 방향으로 계속 접근
-            player.isMoving = true;
-        }
+        if (caster === player) player.isMoving = true;
         return; 
     }
     
     if (caster.mp >= mData.mp) {
         caster.mp -= mData.mp; 
         if (caster === player) lastSpellCastTime = performance.now();
-
-        let highTierSpells = ['라이트닝 스톰', '선버스트', '블리자드', '미티어 스트라이크', '디스인티그레이트', '헤일 스톰', '토네이도', '저지먼트', '이뮨 투 함', '앱솔루트 배리어'];
-        if (highTierSpells.includes(magicName) || mData.mp >= 10) {
-            if (!isBgTick && typeof particles !== 'undefined') {
-                particles.push({ x: caster.x, y: caster.y, life: 0.9, maxLife: 0.9, type: 'magic_circle', size: 75 });
-            }
-        }
 
         if (caster === player) {
             if (magicName === '에너지 볼트') playSound('energy_bolt');
@@ -2794,26 +2825,16 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         if (caster === player) caster.target = target; 
         caster.angle = Math.atan2(target.y - caster.y, target.x - caster.x);
 
-        // 💡 [결정적 수정] 플레이어 본인뿐만 아니라 '용병'이 마법을 쏠 때도 서버로 전송하도록 조건 완화!
         if ((caster === player || caster.owner === player) && window.socket && currentUser) {
             window.socket.emit('player_magic_action', {
-                magicName: magicName,
-                targetX: target ? target.x : caster.x,
-                targetY: target ? target.y : caster.y,
-                targetId: target ? target.id : null,
-                casterX: caster.x,  // 시전자의 실제 X 좌표
-                casterY: caster.y,  // 시전자의 실제 Y 좌표
-                casterId: caster.id || window.socket.id,
-                map: currentMap
+                magicName: magicName, targetX: target ? target.x : caster.x, targetY: target ? target.y : caster.y, targetId: target ? target.id : null,
+                casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap
             });
         }
-     let mainStat = (caster.charClass === 'elf') ? (player.dex || 18) : (player.int || 10);
+
+        let mainStat = (caster.charClass === 'elf') ? (player.dex || 18) : (player.int || 10);
         let weaponSp = (caster.equip && caster.equip.weapon && caster.equip.weapon.sp) ? caster.equip.weapon.sp : 0;
-        
-        let casterSp = (caster === player) 
-            ? ((player.sp || 0) + weaponSp + Math.floor((mainStat - 10) / 2)) 
-            : Math.floor((caster.level || 1) / 5);
-            
+        let casterSp = (caster === player) ? ((player.sp || 0) + weaponSp + Math.floor((mainStat - 10) / 2)) : Math.floor((caster.level || 1) / 5);
         let scale = 1 + (casterSp * 0.15) + Math.max(0, (mainStat - 12) * 0.05); 
         let finalDmg = Math.floor((mData.dmg || 15) * scale);
 
@@ -2824,83 +2845,20 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                 dmgTexts.push({ x: target.x, y: target.y - 40, text: "COMBO ATTACK! 1.5x", life: 1.2, color: '#ff00ff' });
             }
         }
-        
-        if (!isBgTick && typeof particles !== 'undefined') {
-            if (magicName === '쇼크 스턴') {
-                particles.push({ x: target.x, y: target.y, life: 0.9, maxLife: 0.9, type: 'stun_effect', size: 70 });
-            } else if (magicName === '스톰 블레이드') {
-                particles.push({ x: caster.x, y: caster.y, life: 0.7, maxLife: 0.7, type: 'storm_blade_ring', size: 130 });
-            } else if (magicName === '트리플 애로우') {
-                for (let i = 0; i < 3; i++) {
-                    setTimeout(() => {
-                        if (target && target.hp > 0) {
-                            particles.push({ x: caster.x, y: caster.y, speed: 22, life: 1.0, maxLife: 1.0, color: '#ffffff', isProj: true, isArrow: true, homing: true, type: 'arrow', target: target, dmg: Math.floor(finalDmg / 3), attacker: caster, rollHit: true });
-                            if (typeof playSound === 'function') playSound('bow');
-                        }
-                    }, i * 90);
-                }
-            } else if (magicName === '콜 라이트닝' || magicName === '라이트닝 스톰') {
-                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'lightning', size: mData.aoe || 100 });
-            } else if (magicName === '이럽션') {
-                particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'eruption' });
-            } else if (magicName === '블리자드' || magicName === '헤일 스톰') {
-                particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'blizzard', size: mData.aoe || 300 });
-            } else if (magicName === '미티어 스트라이크') {
-                particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'meteor', size: mData.aoe || 350 });
-            } else if (magicName === '디스인티그레이트') {
-                particles.push({ x: target.x, y: target.y, angle: caster.angle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
-            } else if (magicName === '토네이도' || magicName === '에어 블래스트') {
-                particles.push({ x: target.x, y: target.y, life: 1.0, maxLife: 1.0, type: 'tornado', size: mData.aoe || 240 });
-            } else if (magicName === '저지먼트') {
-                particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'judgment', size: mData.aoe || 400 });
-            } else if (magicName === '뱀파이어릭 터치' || magicName === '데스 힐' || magicName === '폴루트 워터') {
-                particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'drain' });
-            } else if (['캔슬레이션', '어스 바인드', '커스 파라다이스', '스트라이커 게일', '커스 디지즈', '다크니스', '사일런스', '슬로우'].includes(magicName)) {
-                particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'cancellation' });
-            } else if (magicName === '선버스트') {
-                particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'explosion', size: 200, color: '#ffffaa' });
-            } else if (magicName === '아이스 스파이크') {
-                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'ice_spike', size: 100 });
-            } else if (magicName === '포그 오브 슬리핑') {
-                particles.push({ x: target.x, y: target.y, life: 1.2, maxLife: 1.2, type: 'tornado', size: 280 }); 
-            }
-        }
 
-        if (magicName === '파이어볼') {
-            let hasTarget = (target && target.hp > 0 && !target.isDead);
-            let targetX = hasTarget ? target.x : caster.x + Math.cos(caster.angle || 0) * 200;
-            let targetY = hasTarget ? target.y : caster.y + Math.sin(caster.angle || 0) * 200;
-            if (typeof createFireballExplosionEffect === 'function') createFireballExplosionEffect(targetX, targetY, mData.aoe || 150);
-            if (typeof damageEntity === 'function') {
-                let targetsToDamage = entities.filter(e => e && e.map === currentMap && !e.isSummon && !e.isPlayer && e.hp > 0 && !e.isDead && Math.hypot(e.x - targetX, e.y - targetY) <= (mData.aoe || 150));
-                targetsToDamage.forEach(t => damageEntity(t, finalDmg, caster, 'magic', '파이어볼'));
-            }
-        }
-        else if (magicName === '에너지 볼트') {
-            if (!isBgTick && typeof particles !== 'undefined') {
-                particles.push({ x: caster.x, y: caster.y - 20, speed: 16, life: 3.0, maxLife: 3.0, color: '#88aaff', isProj: true, homing: true, type: 'energy_bolt', target: target, dmg: finalDmg, attacker: caster });
-            }
-        } 
-        else if (magicName === '에어 블래스트') {
-            if (!isBgTick && typeof particles !== 'undefined') {
-                particles.push({ x: target.x, y: target.y, life: 0.8, maxLife: 0.8, type: 'tornado', size: mData.aoe || 180 });
-            }
-        }
-        // 💡 [교체 적용] 일반 트리플 애로우 및 실프의 폭풍(광역 관통 + 흡혈) 통합 처리
-        else if (magicName === '트리플 애로우') {
+        // 💡 이곳에 있던 수백 줄의 파티클 코드가 완벽히 삭제되어 엔진 꼬임을 방지합니다.
+
+        if (magicName === '트리플 애로우') {
             let now = Date.now();
             let isCoolingDown = now < (caster.elfFuryCooldownUntil || 0);
 
-            // 💡 [추가] 트리플 애로우 쏠 때마다 스택 3개 한 번에 획득
             if (caster === player && !(now < (caster.elfFuryUntil || 0)) && !isCoolingDown) {
                 caster.elfHitCount = (caster.elfHitCount || 0) + 3; 
                 if (caster.elfHitCount >= 5) {
                     caster.elfHitCount = 0;
                     caster.elfFuryUntil = now + 4000;
                     caster.elfFuryCooldownUntil = now + 6000;
-                    if (typeof dmgTexts !== 'undefined') {
-                        dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 25});
-                    }
+                    if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 25});
                 }
             }
 
@@ -2910,20 +2868,15 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                 setTimeout(() => {
                     if (target && target.hp > 0 && target.map === currentMap) {
                         if (isFury) {
-                            // 🏹 실프의 폭풍 활성화 시: 200px 광역 폭발 사격
                             let splashTargets = entities.filter(e => e && e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200);
                             let subDmg = Math.floor((finalDmg / 3) * 1.4);
                             let totalTripleFuryDmg = 0;
                             
                             splashTargets.forEach(st => {
-                                if (!isBgTick && typeof particles !== 'undefined') {
-                                    particles.push({ x: caster.x, y: caster.y, speed: 28, life: 1.0, maxLife: 1.0, color: '#34d399', isProj: true, isArrow: true, homing: true, type: 'arrow', target: st, dmg: subDmg, attacker: caster, rollHit: true });
-                                }
                                 totalTripleFuryDmg += subDmg;
                                 damageEntity(st, subDmg, caster, 'physical', '트리플 애로우');
                             });
 
-                            // 피 2%, MP 5% 즉시 흡수
                             if (caster === player) {
                                 let hpHeal = Math.max(1, Math.floor(totalTripleFuryDmg * 0.02));
                                 let mpGain = Math.max(1, Math.floor(totalTripleFuryDmg * 0.05));
@@ -2931,10 +2884,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                                 player.mp = Math.min(window.currentMaxMp || player.maxMp, player.mp + mpGain);
                             }
                         } else {
-                            // 🏹 일반 트리플 애로우: 단일 타격
-                            if (!isBgTick && typeof particles !== 'undefined') {
-                                particles.push({ x: caster.x, y: caster.y, speed: 22, life: 1.0, maxLife: 1.0, color: '#ffffff', isProj: true, isArrow: true, homing: true, type: 'arrow', target: target, dmg: Math.floor(finalDmg / 3), attacker: caster, rollHit: true });
-                            }
                             damageEntity(target, Math.floor(finalDmg / 3), caster, 'physical', '트리플 애로우');
                         }
                         if (typeof playSound === 'function') playSound('bow');
@@ -2944,13 +2893,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             }
         }
         else {
-            // 💡 고유 애니메이션이 없는 공격 마법은 기본 보라색 폭발 이펙트 적용
-            let hasOwnEffect = ['파이어볼', '에너지 볼트', '에어 블래스트', '트리플 애로우', '쇼크 스턴', '콜 라이트닝', '라이트닝 스톰', '이럽션', '블리자드', '헤일 스톰', '미티어 스트라이크', '디스인티그레이트', '토네이도', '저지먼트', '뱀파이어릭 터치', '데스 힐', '폴루트 워터', '캔슬레이션', '어스 바인드', '커스 파라다이스', '스트라이커 게일', '선버스트', '아이스 스파이크', '포그 오브 슬리핑'].includes(magicName);
-            
-            if (!hasOwnEffect && !isBgTick && typeof particles !== 'undefined' && (mData.type === 'attack' || mData.dmg)) {
-                particles.push({ x: target.x, y: target.y, life: 0.6, maxLife: 0.6, type: 'explosion', size: 90, color: '#c084fc' });
-            }
-
             let delay = (magicName === '미티어 스트라이크' || magicName === '저지먼트') ? 400 : 50;
             setTimeout(() => {
                 if (!target || target.hp <= 0 || target.isDead || target.map !== currentMap) return;
@@ -2968,7 +2910,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55'); 
     }
 }
-
 
 
 
@@ -3313,10 +3254,10 @@ if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
 
 if (typeof updateMercenaryAI === 'function') updateMercenaryAI();
 
-// 6. 소켓 서버 위치 및 용병 동기화 (초당 60회 -> 100ms당 1회로 제한)
 if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100) {
     window._lastSocketSendTime = timestamp;
-    if (window.socket && currentUser && (player.isMoving || timestamp % 1000 < 100)) {
+    // 💡 [수정] 제자리 사냥 중이어도 용병의 물약 복용/현재 HP가 서버에 실시간으로 반영되도록 조건 완화
+    if (window.socket && currentUser) {
         let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
         window.socket.emit('player_update', {
             name: player.name,
@@ -3336,7 +3277,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
                 ownerName: player.name,
                 x: m.x,
                 y: m.y,
-                hp: m.hp,
+                hp: m.hp, // 실시간 물약 복용 체력 반영
                 maxHp: m.maxHp,
                 equip: m.equip || { weapon: null, armor: null, helmet: null, cloak: null },
                 angle: m.angle || 0,
@@ -3502,7 +3443,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
                 });
             }
             if (typeof dmgTexts !== 'undefined') {
-                dmgTexts.push({ x: player.x, y: player.y - 40, text: "⚡ RUSH!", life: 1.0, color: '#5cf' });
+                triggerPassiveBroadcast("⚡ RUSH!", target.x, target.y, target.id, 'high', player, 16);
             }
         }
     }
@@ -4110,7 +4051,19 @@ function spawnFloorItem(itemTemplate, mob) {
     items.push(newItem);
 }
 
+
 if (window.socket) {
+    // 💡 [추가] 서버 재부팅 1분 전 경고 수신 시 강제 DB 저장
+    window.socket.on('force_client_save', async () => {
+        if (gameStarted && currentUser) {
+            if (typeof addMessage === 'function') {
+                addMessage("서버 점검에 대비하여 클라우드에 캐릭터 데이터를 긴급 저장합니다...", "#fd0");
+            }
+            if (typeof saveGameToLocal === 'function') saveGameToLocal(true);
+            if (typeof autoSaveToSupabase === 'function') await autoSaveToSupabase(true);
+        }
+    });
+
     // 1. 타 플레이어 및 용병 타격 모션 동기화
     window.socket.on('sync_player_action', (data) => {
         let p = entities.find(e => e.id === data.socketId || e.socketId === data.socketId);
@@ -4158,110 +4111,156 @@ if (window.socket) {
         }
     });
 
- 
- // 💡 [완전 통합] 타 플레이어 및 파티원/용병 마법/기술 그래픽 및 텍스트 동기화 리스너
-window.socket.on('sync_player_magic', (data) => {
-    if (typeof particles === 'undefined') return;
-    
-    let mName = data.magicName;
-    if (!mName) return;
+   
 
-    let caster = entities.find(e => e.id === data.casterId || e.socketId === data.casterId || e.id === 'merc_' + data.casterId);
-    
-    let realCasterX = caster ? caster.x : (data.casterX !== undefined ? data.casterX : 2000);
-    let realCasterY = caster ? caster.y : (data.casterY !== undefined ? data.casterY : 2000);
-    
-    let targetEnt = entities.find(e => e.id === data.targetId);
-    let tx = targetEnt ? targetEnt.x : (data.targetX !== undefined ? data.targetX : realCasterX);
-    let ty = targetEnt ? targetEnt.y : (data.targetY !== undefined ? data.targetY : realCasterY);
-    let aimAngle = Math.atan2(ty - realCasterY, tx - realCasterX);
 
-    if (caster) {
-        caster.lastAttack = performance.now();
-        caster.angle = aimAngle;
-    }
 
-    let highTier = ['라이트닝 스톰', '선버스트', '블리자드', '미티어 스트라이크', '디스인티그레이트', '헤일 스톰', '토네이도', '저지먼트', '이뮨 투 함', '앱솔루트 배리어', '쇼크 스턴'];
-    if (highTier.includes(mName)) {
-        particles.push({ 
-            x: realCasterX, 
-            y: realCasterY, 
-            life: 0.9, 
-            maxLife: 0.9, 
-            type: 'magic_circle', 
-            size: 75 
-        });
-    }
 
-    let isUltimate = ['디스인티그레이트', '저지먼트', '미티어 스트라이크'].includes(mName);
-    let isHigh = ['블리자드', '라이트닝 스톰', '쇼크 스턴', '트리플 애로우', '선버스트'].includes(mName);
-    let isBuff = mName.includes('힐') || mName.includes('가속') || mName.includes('워크');
-    let tier = isUltimate ? 'ultimate' : (isHigh ? 'high' : (isBuff ? 'buff' : 'normal'));
-    addSkillText(realCasterX, realCasterY, `[${mName}]`, tier);
+// ========================================================
+    // 💡 [통합] 40여 종 모든 마법 1:1 고유 이펙트 중앙 생성기
+    // ========================================================
+    window.spawnMagicParticle = function(cX, cY, mName, angle = 0, tX = cX, tY = cY) {
+        if (typeof particles === 'undefined' || window.isBgTick) return;
 
-    if (mName === '디스인티그레이트') {
-        particles.push({ x: tx, y: ty, angle: aimAngle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
-        if (typeof playSound === 'function') playSound('disintegrate');
-    } else if (mName === '미티어 스트라이크') {
-        particles.push({ x: tx, y: ty, life: 1.0, maxLife: 1.0, type: 'meteor', size: 350 });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName === '저지먼트') {
-        particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'judgment', size: 400 });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName === '블리자드' || mName === '헤일 스톰') {
-        particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'blizzard', size: 300 });
-        if (typeof playSound === 'function') playSound('blizzard');
-    } else if (mName === '토네이도' || mName === '에어 블래스트') {
-        particles.push({ x: tx, y: ty, life: 1.0, maxLife: 1.0, type: 'tornado', size: 240 });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName === '선버스트' || mName === '파이어볼' || mName === '이럽션') {
-        particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'explosion', size: 180, color: mName === '파이어볼' ? '#ff4400' : '#ffffaa' });
-        if (typeof playSound === 'function') playSound('fireball');
-    } else if (mName === '라이트닝 스톰') {
-        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'lightning', size: 250 });
-        if (typeof playSound === 'function') playSound('lightning');
-    } else if (mName === '콜 라이트닝') {
-        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'lightning', size: 100 });
-        if (typeof playSound === 'function') playSound('lightning');
-    } else if (mName === '트리플 애로우') {
-        for (let i = 0; i < 3; i++) {
-            setTimeout(() => {
-                particles.push({ x: realCasterX, y: realCasterY, speed: 22, life: 1.0, maxLife: 1.0, color: '#ffffff', isProj: true, isArrow: true, homing: true, type: 'arrow', angle: aimAngle, target: targetEnt || { x: tx, y: ty } });
-                if (typeof playSound === 'function') playSound('bow');
-            }, i * 90);
+        // 1. 공격 마법류 고유 이펙트
+        if (mName === '파이어볼') {
+            if (typeof createFireballExplosionEffect === 'function') createFireballExplosionEffect(tX, tY, 150);
+        } else if (mName === '선버스트') {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'sunburst_explosion', size: 220 });
+        } else if (mName === '이럽션') {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'eruption', size: 95 });
+        } else if (mName === '아이스 스파이크') {
+            particles.push({ x: tX, y: tY, life: 0.6, maxLife: 0.6, type: 'ice_spike', size: 100 });
+        } else if (mName === '토네이도' || mName === '에어 블래스트') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'tornado', size: 240, color: '#e2e8f0' });
+        } else if (mName === '포그 오브 슬리핑') {
+            particles.push({ x: tX, y: tY, life: 1.2, maxLife: 1.2, type: 'tornado', size: 300, color: '#475569' });
+        } else if (mName.includes('실프의 폭풍') || mName === '피어싱 애로우') {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'storm_blade_ring', size: 250 });
+        } else if (mName.includes('광폭화') || mName === '광폭화 클리브') {
+            particles.push({ x: tX, y: tY, life: 0.5, maxLife: 0.5, type: 'explosion', size: 150, color: '#ff2200' });
+        } else if (mName === '에너지 볼트') {
+            particles.push({ x: cX, y: cY - 15, speed: 16, life: 1.0, maxLife: 1.0, color: '#88aaff', isProj: true, type: 'energy_bolt', target: { x: tX, y: tY } });
+        } else if (mName === '디스인티그레이트') {
+            particles.push({ x: tX, y: tY, angle: angle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
+        } else if (mName === '미티어 스트라이크') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'meteor', size: 350 });
+        } else if (mName === '콜 라이트닝' || mName === '라이트닝 스톰') {
+            particles.push({ x: tX, y: tY, life: 0.6, maxLife: 0.6, type: 'lightning', size: mName === '콜 라이트닝' ? 100 : 250 });
+        } else if (mName === '블리자드' || mName === '헤일 스톰') {
+            particles.push({ x: tX, y: tY, life: 1.2, maxLife: 1.2, type: 'blizzard', size: 300 });
+        } else if (mName === '저지먼트') {
+            particles.push({ x: tX, y: tY, life: 1.2, maxLife: 1.2, type: 'judgment', size: 400 });
+        } else if (mName === '쇼크 스턴') {
+            particles.push({ x: tX, y: tY, life: 0.9, maxLife: 0.9, type: 'stun_effect', size: 70 });
+        } 
+        // 2. 디버프 및 군중제어
+        else if (['어스 바인드'].includes(mName)) {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'earth_bind' });
+        } else if (['커스 파라다이스', '폴루트 워터', '커스 디지즈', '다크니스', '사일런스', '슬로우'].includes(mName)) {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'curse_poison' });
+        } else if (['스트라이커 게일'].includes(mName)) {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'striker_gale' });
+        } else if (['뱀파이어릭 터치', '데스 힐', '블러드 투 소울'].includes(mName)) {
+            particles.push({ x: mName === '블러드 투 소울' ? cX : tX, y: mName === '블러드 투 소울' ? cY : tY, life: 0.8, maxLife: 0.8, type: 'drain' });
+        } else if (['캔슬레이션'].includes(mName)) {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'cancellation' });
+        } 
+        // 3. 힐, 버프 및 오라
+        else if (mName.includes('힐') || mName === '네이쳐스 터치') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'classic_heal', color: '#10b981' });
+        } else if (mName === '워터 라이프' || mName === '아쿠아 프로텍트') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'water_shield' });
+        } else if (mName === '솔리드 캐리지' || mName === '리덕션 아머' || mName === '실드' || mName === '어스 스킨') {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'iron_shield' });
+        } else if (mName === '마제스티') {
+            particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'majesty_shield' });
+        } else if (mName === '앱솔루트 배리어' || mName === '카운터 바리어') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'absolute_barrier' });
+        } else if (mName === '이뮨 투 함') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'immune_to_harm' });
+        } else if (mName === '어드밴스 스피릿') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'advance_spirit' });
+        } else if (mName === '매스 텔레포트') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'classic_shield', color: '#8b5cf6', size: 100 });
+        } else if (mName.includes('홀리 워크')) {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'holy_aura' });
+        } else if (mName.includes('파이어 웨폰') || mName.includes('소울 오브 프레임')) {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'fire_aura' });
+        } else if (mName.includes('바운스 어택') || mName.includes('블로우 어택')) {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'weapon_buff' });
+        } else if (mName.includes('가속') || mName.includes('윈드 워크') || mName.includes('스톰 샷') || mName === '돌진' || mName === '에코 오브 실프') {
+            let colorMap = { '돌진': '#facc15', '에코 오브 실프': '#4ade80' };
+            particles.push({ x: tX, y: tY, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 55, color: colorMap[mName] || '#22ff55' });
+        } else if (mName === '서먼 몬스터') {
+            particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'summon_effect' });
+        } else {
+            particles.push({ x: tX, y: tY, life: 0.6, maxLife: 0.6, type: 'explosion', size: 90, color: '#c084fc' });
         }
-    } else if (mName === '쇼크 스턴') {
-        particles.push({ x: tx, y: ty, life: 0.9, maxLife: 0.9, type: 'stun_effect', size: 70 });
-        if (typeof playSound === 'function') playSound('lightning');
-    } else if (mName.includes('힐') || mName === '네이쳐스 터치' || mName === '워터 라이프') {
-        particles.push({ x: tx, y: ty, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
-        if (typeof playSound === 'function') playSound('heal');
-    } else if (mName.includes('실드') || mName.includes('어스 스킨')) {
-        particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'classic_shield' });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName.includes('가속') || mName.includes('윈드 워크') || mName.includes('스톰 샷') || mName.includes('파이어 웨폰')) {
-        particles.push({ x: tx, y: ty, life: 1.2, maxLife: 1.2, type: 'haste_tornado', size: 45 });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName === '에너지 볼트') {
-        particles.push({ x: realCasterX, y: realCasterY - 15, speed: 16, life: 1.0, maxLife: 1.0, color: '#88aaff', isProj: true, type: 'energy_bolt', target: { x: tx, y: ty } });
-        if (typeof playSound === 'function') playSound('energy_bolt');
-    } else if (mName === '돌진') {
-        particles.push({ x: realCasterX, y: realCasterY, life: 0.4, maxLife: 0.4, type: 'haste_tornado', size: 40 });
-        if (typeof playSound === 'function') playSound('spell');
-    } else if (mName === '광폭화 클리브') {
-        particles.push({ x: tx, y: ty, life: 0.5, maxLife: 0.5, type: 'explosion', size: 95, color: '#ff2200' });
-        if (typeof playSound === 'function') playSound('swing');
-    } else if (mName === '에코 오브 실프') {
-        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'haste_tornado', size: 50 });
-        if (typeof playSound === 'function') playSound('bow');
-    } else if (mName === '피어싱 애로우') {
-        particles.push({ x: tx, y: ty, life: 0.8, maxLife: 0.8, type: 'storm_blade_ring', size: 120 });
-        if (typeof playSound === 'function') playSound('bow');  
-    } else {
-        particles.push({ x: tx, y: ty, life: 0.6, maxLife: 0.6, type: 'explosion', size: 90, color: '#c084fc' });
-        if (typeof playSound === 'function') playSound('spell');
-    }
-});
+    };
+
+    
+
+// 💡 [타인/용병 마법 및 오라 동기화 리스너]
+    window.socket.on('sync_player_magic', (data) => {
+        if (!gameStarted) return;
+        let mName = data.magicName;
+        if (!mName) return;
+
+        let caster = entities.find(e => e.id === data.casterId || e.socketId === data.casterId || e.id === 'merc_' + data.casterId);
+        let realCasterX = caster ? caster.x : (data.casterX !== undefined ? data.casterX : 2000);
+        let realCasterY = caster ? caster.y : (data.casterY !== undefined ? data.casterY : 2000);
+        
+        let targetEnt = entities.find(e => e.id === data.targetId);
+        let tx = targetEnt ? targetEnt.x : (data.targetX !== undefined ? data.targetX : realCasterX);
+        let ty = targetEnt ? targetEnt.y : (data.targetY !== undefined ? data.targetY : realCasterY);
+        let aimAngle = Math.atan2(ty - realCasterY, tx - realCasterX);
+
+        if (caster) { 
+            caster.lastAttack = performance.now(); 
+            caster.angle = aimAngle; 
+
+            // 💡 타 플레이어 및 용병의 광폭화 / 실프의 폭풍 오라 상태 실시간 동기화
+            if (mName.includes('광폭화') || mName.includes('BERSERK')) {
+                caster.furyUntil = Date.now() + 4000;
+            } else if (mName.includes('실프의 폭풍') || mName.includes('SYLPH')) {
+                caster.elfFuryUntil = Date.now() + 4000;
+            }
+        }
+
+        // 스킬 텍스트 폰트/티어 설정
+        let customTier = data.tier || 'normal';
+        let customSize = data.fontSize || null;
+
+        if (mName.includes('BERSERK FURY') || mName.includes('광폭화')) { customTier = 'ultimate'; customSize = 20; } 
+        else if (mName.includes('SYLPH TEMPEST') || mName.includes('실프의 폭풍')) { customTier = 'elf'; customSize = 20; } 
+        else if (mName === '돌진') { customTier = 'high'; customSize = 16; }
+
+        if (typeof addSkillText === 'function') {
+            addSkillText(realCasterX, realCasterY, mName.startsWith('[') || mName.startsWith('🔥') || mName.startsWith('🌪️') || mName.startsWith('⚡') ? mName : `[${mName}]`, customTier, customSize);
+        }
+
+        // 💡 1번 중앙 파티클 생성기 즉시 호출
+        if (typeof window.spawnMagicParticle === 'function') {
+            window.spawnMagicParticle(realCasterX, realCasterY, mName, aimAngle, tx, ty);
+        }
+        
+        // 사운드 매핑
+        if (typeof playSound === 'function') {
+            if (mName.includes('파이어') || mName === '선버스트' || mName === '이럽션') playSound('fireball');
+            else if (mName.includes('라이트닝') || mName === '쇼크 스턴') playSound('lightning');
+            else if (mName.includes('블리자드') || mName.includes('아이스') || mName === '헤일 스톰') playSound('blizzard');
+            else if (mName === '디스인티그레이트') playSound('disintegrate');
+            else if (mName.includes('힐') || mName === '네이쳐스 터치') playSound('heal');
+            else if (mName.includes('애로우') || mName.includes('실프의 폭풍')) playSound('bow');
+            else if (mName.includes('클리브') || mName.includes('광폭화')) playSound('swing');
+            else if (mName === '에너지 볼트') playSound('energy_bolt');
+            else playSound('spell');
+        }
+    });
+
+
+
 
     // 3. 타 유저 물약 이펙트
     window.socket.on('sync_player_potion', (data) => {
@@ -4491,22 +4490,11 @@ window.socket.on('monster_hit', (data) => {
                     player.furyCooldownUntil = now + 6000;
                     player.furyCleavedThisCycle = false;
 
-                    if (typeof dmgTexts !== 'undefined') {
-                        dmgTexts.push({ 
-                            x: player.x, 
-                            y: player.y - 50, 
-                            text: "🔥 BERSERK FURY! (광폭화)", 
-                            life: 1.5, 
-                            color: '#fbbf24',
-                            fontSize: 20 
-                        });
-                    }
+                    triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", player.x, player.y, null, 'ultimate', player, 20);
                     if (typeof playSound === 'function') playSound('spell');
                 }
             }
         }
-
-
 
         if (gameOptions.showDamage && typeof dmgTexts !== 'undefined') {
             dmgTexts.push({ x: player.x, y: player.y - 20, text: rawDamage, life: 1.2, color: '#f55' });
@@ -4536,8 +4524,10 @@ window.socket.on('monster_hit', (data) => {
         if (typeof updateUI === 'function') updateUI();
     });
 
+  window.socket.on('monster_attack_action', (data) => {
+        // 💡 [추가] 로그아웃 상태면 몬스터 공격 사운드 및 이펙트 처리 차단
+        if (!gameStarted) return;
 
-    window.socket.on('monster_attack_action', (data) => {
         let mob = entities.find(e => e.id === data.monsterId);
         if (!mob) return;
 
@@ -4592,7 +4582,7 @@ window.socket.on('monster_hit', (data) => {
             const currentSound = rule.sound;
 
             setTimeout(() => {
-                if (typeof particles === 'undefined') return;
+                if (!gameStarted || typeof particles === 'undefined') return;
 
                 if (spellName === '미티어 스트라이크') {
                     particles.push({ x: castX, y: castY, life: 1.0, maxLife: 1.0, type: 'meteor', size: currentRadius * 2.5 });
