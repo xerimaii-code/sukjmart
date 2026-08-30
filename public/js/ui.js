@@ -1495,24 +1495,23 @@ window.renderMagicBook = function() {
     let listEl = $('magic-list');
     if (!listEl) return;
 
-    // 마법책 창 너비 및 높이 자동 보정 (기존 250px -> 340px)
     let winMagic = $('win-magic');
     if (winMagic) {
         winMagic.style.width = '340px';
         winMagic.style.maxWidth = '95vw';
     }
 
+    player.magic = player.magic || [];
     player.magicLevels = player.magicLevels || {};
     let html = '';
 
-    // 상단 탭 버튼 (세로로 늘어나지 않도록 1줄 고정 정렬)
     html += `
     <div style="display:flex; flex-direction:row; gap:3px; margin-bottom:8px; background:#111116; padding:3px; border-radius:4px; border:1px solid #33333d; width:100%; box-sizing:border-box;">
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab==='all'?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab('all')">전체</button>
-        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===1?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(1)">1단계</button>
-        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===2?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(2)">2단계</button>
-        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===3?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(3)">3단계</button>
-        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===4?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(4)">4단계</button>
+        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===1?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(1)">1단</button>
+        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===2?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(2)">2단</button>
+        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===3?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(3)">3단</button>
+        <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===4?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(4)">4단</button>
     </div>
     <div style="max-height:280px; overflow-y:auto; overflow-x:hidden; display:flex; flex-direction:column; gap:4px; padding-right:2px;">`;
 
@@ -1534,7 +1533,6 @@ window.renderMagicBook = function() {
                 html += `<div style="color:#fd0; font-size:11px; font-weight:bold; margin:6px 0 2px 2px; border-bottom:1px dashed #444; padding-bottom:2px;">[ ${currentTier} 서클 ]</div>`;
             }
 
-            // 개별 마법 카드 (좌측 정보 + 우측 버튼 1줄 정렬)
             html += `
             <div style="padding:6px 8px; border:1px solid #333344; border-radius:4px; background:linear-gradient(to right, #181824, #0f0f16); color:#ddd; display:flex; flex-direction:row; align-items:center; justify-content:space-between; box-sizing:border-box; width:100%;" oncontextmenu="openMagicActionModal('${m}'); return false;">
                 <div style="display:flex; gap:8px; align-items:center; min-width:0; overflow:hidden;">
@@ -1557,6 +1555,7 @@ window.renderMagicBook = function() {
     html += `</div>`;
     listEl.innerHTML = html;
 };
+
 // ==========================================
 // [7. 팝업 / 확인 모달 및 윈도우 드래그]
 // ==========================================
@@ -1726,17 +1725,15 @@ window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) {
     if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
     if(it.desc) html += `<div class="tooltip-desc" style="color:#ccc; margin-top:4px;">${it.desc}</div>`;
 
-    if(hasMagic) { 
+  if(hasMagic) { 
         html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; 
-        it.magicOptions.forEach((opt, idx) => { 
+        it.magicOptions.forEach((opt) => { 
             html += `<div class="tooltip-bonus" style="display:flex; justify-content:space-between; align-items:center; margin:2px 0;">
-                        <span>✨ ${opt}</span> 
-                        <button onclick="removeMagicOption('${stackKey}', ${idx})" style="color:#f88; background:#222; border:1px solid #555; border-radius:3px; padding:2px 6px; font-size:10px; font-weight:bold; cursor:pointer;">삭제</button>
+                        <span>✨ ${opt}</span>
                      </div>`; 
         }); 
         html += `</div>`; 
-    } 
-    
+    }
     let extra = typeof getExtraDesc === 'function' ? getExtraDesc(it.name) : ''; 
     if(extra) html += `<div class="tooltip-desc" style="color:#ada; margin-top:4px;">${extra}</div>`;
     
@@ -1791,6 +1788,7 @@ window.assignHotkeyFromModal = function(idx) {
     hideItemActionModal(); 
     window.hotkeys = hotkeys; 
 };
+
 window.execItemAction = function(action) { 
     hideItemActionModal(); 
     if (!selectedItemForAction || selectedItemForAction.isMagic || action === 'cancel') return; 
@@ -1800,17 +1798,30 @@ window.execItemAction = function(action) {
     if (action === 'use') { 
         window.useItem(stackKey); 
     } 
-    else if (action === 'drop' || action === 'delete') { 
+    else if (action === 'drop') { 
         let totalCount = count || 1;
-        let actionWord = action === 'drop' ? '버리' : '삭제하';
-        
         if (totalCount > 1) { 
-            showPrompt(`${itemName} 몇 개를 ${actionWord}시겠습니까?\n(보유: ${totalCount}개)`, totalCount, totalCount, (qty) => { 
+            showPrompt(`${itemName} 몇 개를 버리시겠습니까?\n(보유: ${totalCount}개)`, totalCount, totalCount, (qty) => { 
                 handleItemRemoval(stackKey, qty, action); 
             }); 
         } else { 
             handleItemRemoval(stackKey, 1, action); 
         } 
+    } 
+    else if (action === 'delete') { 
+        let totalCount = count || 1;
+        let countText = totalCount > 1 ? `${totalCount}개` : '';
+        
+        // 💡 [수정 완료] 템플릿 리터럴 문법 오류(Missing })가 없도록 수정한 영구 삭제 확인 팝업
+        showConfirm(`정말 [${itemName}] ${countText}를 영구적으로 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, () => {
+            if (totalCount > 1) { 
+                showPrompt(`${itemName} 몇 개를 삭제하시겠습니까?\n(보유: ${totalCount}개)`, totalCount, totalCount, (qty) => { 
+                    handleItemRemoval(stackKey, qty, action); 
+                }); 
+            } else { 
+                handleItemRemoval(stackKey, 1, action); 
+            }
+        });
     } 
     else if (action === 'purge') { 
         showConfirm("마법 속성을 모두 초기화(삭제) 하시겠습니까?", () => { 
@@ -1824,6 +1835,8 @@ window.execItemAction = function(action) {
         }); 
     } 
 };
+
+
 
 function handleItemRemoval(stackKey, qty, action) { 
     let remainingToRemove = parseInt(qty) || 1; 
@@ -4337,54 +4350,74 @@ window.hideItemActionModal = function() {
     if (modal) modal.style.display = 'none';
     if (typeof hideTooltip === 'function') hideTooltip();
 };
-let dragEl = null, dragOffsetX = 0, dragOffsetY = 0;
 
-window.startDrag = function(e, id) { 
-    dragEl = document.getElementById(id); 
-    if (!dragEl) return;
 
-    if (typeof bringToFront === 'function') {
-        bringToFront(id);
+// ==========================================
+// 🔮 [마법 설정 및 단축키 등록 모달 제어 시스템]
+// ==========================================
+window.openMagicActionModal = function(magicName) {
+    if (typeof hideTooltip === 'function') hideTooltip();
+    let mData = typeof magicDb !== 'undefined' ? magicDb[magicName] : null;
+    if (!mData) return;
+
+    // 마법 관리 모달 상태 설정 (단축키 등록 연동)
+    selectedItemForAction = { isMagic: true, itemName: magicName };
+
+    if ($('action-modal-title')) $('action-modal-title').innerText = `마법 설정 (${magicName})`;
+
+    let html = `<b class="tooltip-title" style="color:#60a5fa">${magicName}</b><br>`;
+    html += `<span style="color:#88aaff; font-size:12px;">소모 MP: ${mData.mp}</span><br>`;
+    if (mData.dmg) html += `위력/피해량: ${mData.dmg}<br>`;
+    if (mData.heal) html += `회복량: ${mData.heal}<br>`;
+    if (mData.desc) html += `<div style="color:#ccc; margin-top:6px;">${mData.desc}</div>`;
+
+    let modal = $('item-action-modal');
+    if (modal) {
+        if ($('action-modal-desc')) $('action-modal-desc').innerHTML = html;
+        
+        let mgmtEl = $('action-modal-item-mgmt');
+        if (mgmtEl) mgmtEl.style.display = 'flex';
+
+        let purgeBtn = $('btn-purge-magic');
+        if (purgeBtn) purgeBtn.style.display = 'none';
+
+        modal.style.display = 'flex';
+        if (typeof bringToFront === 'function') bringToFront('item-action-modal');
+        if (typeof autoCenterWindow === 'function') autoCenterWindow('item-action-modal', true);
     }
-
-    if (dragEl.style.transform && dragEl.style.transform !== 'none') {
-        let rect = dragEl.getBoundingClientRect();
-        dragEl.style.setProperty('transform', 'none', 'important');
-        dragEl.style.left = rect.left + 'px';
-        dragEl.style.top = rect.top + 'px';
-    }
-
-    let rect = dragEl.getBoundingClientRect(); 
-    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0); 
-    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0); 
-    dragOffsetX = cx - rect.left; 
-    dragOffsetY = cy - rect.top; 
-
-    document.addEventListener('mousemove', onDrag); 
-    document.addEventListener('mouseup', stopDrag); 
-    document.addEventListener('touchmove', onDrag, { passive: false }); 
-    document.addEventListener('touchend', stopDrag); 
 };
 
-function onDrag(e) {
-    if (!dragEl) return;
-    if (e.cancelable) e.preventDefault(); // 모바일 터치 스크롤 간섭 강제 차단
-    
-    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0);
-    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0); 
-    
-    let newLeft = Math.max(0, Math.min(window.innerWidth - dragEl.offsetWidth, cx - dragOffsetX));
-    let newTop = Math.max(0, Math.min(window.innerHeight - dragEl.offsetHeight, cy - dragOffsetY));
-    
-    dragEl.style.left = newLeft + 'px';
-    dragEl.style.top = newTop + 'px';
-}
+// 마법책 목록에서 마법 아이콘을 직접 단축창으로 드래그할 수 있도록 지원
+document.addEventListener('dragstart', (e) => {
+    let targetEl = e.target.closest('[oncontextmenu*="openMagicActionModal"]');
+    if (targetEl) {
+        let match = targetEl.getAttribute('oncontextmenu').match(/openMagicActionModal\('(.*?)'\)/);
+        if (match && match[1]) {
+            e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'magic', id: match[1] }));
+        }
+    }
+});
 
-function stopDrag() {
-    dragEl = null;
-    document.removeEventListener('mousemove', onDrag);
-    document.removeEventListener('mouseup', stopDrag);
-    document.removeEventListener('touchmove', onDrag);
-    document.removeEventListener('touchend', stopDrag);
-}
+// ==========================================
+// 윈도우(모달) 전역 드래그 편의성 향상 패치
+// ==========================================
+document.addEventListener('mousedown', (e) => {
+    let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
+    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
+        let winId = winEl.id;
+        if (winId && typeof window.startDrag === 'function') {
+            window.startDrag(e, winId);
+        }
+    }
+});
+
+document.addEventListener('touchstart', (e) => {
+    let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
+    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
+        let winId = winEl.id;
+        if (winId && typeof window.startDrag === 'function') {
+            window.startDrag(e, winId);
+        }
+    }
+}, { passive: true });
 
