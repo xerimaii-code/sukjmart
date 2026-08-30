@@ -46,16 +46,34 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') resetIdleTimer();
 });
 
-// 2. 조작 없을 시 배터리 절약을 위한 화면 '암전' 기능 (꺼지진 않음)
+// ========================================================
+// 2. 스마트 절전 모드 (충전 중 및 PC 환경 완전 제외)
+// ========================================================
+let isCharging = false;
+
+// 배터리 API를 통한 충전기 연결 상태 실시간 감지
+if (navigator.getBattery) {
+    navigator.getBattery().then(battery => {
+        isCharging = battery.charging;
+        battery.addEventListener('chargingchange', () => {
+            isCharging = battery.charging;
+            if (isCharging && isDimmed) {
+                isDimmed = false;
+                let dimOverlay = document.getElementById('dim-overlay');
+                if (dimOverlay) dimOverlay.style.opacity = '0';
+            }
+        });
+    }).catch(() => {});
+}
+
 setInterval(() => {
-    // 💡 [수정] 단순 창 크기가 아닌 실제 모바일 기기(OS)인지 정확히 판별
     let isRealMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     let isTouchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
     
     // 모바일 OS이거나, 터치스크린이면서 창이 작을 때만 모바일로 인정
     let isMobile = isRealMobileOS || (window.innerWidth <= 768 && isTouchScreen);
 
-    // 💡 PC 환경이거나(창을 아무리 작게 줄여도 제외됨), 모바일인데 충전기를 꽂고 있다면 밝게 유지
+    // PC 환경이거나, 충전 중일 때는 항상 화면 밝기 100% 유지
     if (!isMobile || isCharging) {
         if (isDimmed) {
             isDimmed = false;
@@ -65,7 +83,7 @@ setInterval(() => {
         return;
     }
 
-    // 실제 모바일 기기이면서 충전선이 뽑혀 있을 때만 45초 후 화면 어둡게 처리
+    // 모바일 배터리 구동 시 45초간 미조작 시에만 어둡게 전환
     if (gameStarted && !isDimmed && (performance.now() - lastUserActionTime > 45000)) {
         isDimmed = true;
         let dimOverlay = document.getElementById('dim-overlay');
@@ -164,27 +182,24 @@ function resize() {
     width = window.innerWidth; 
     height = window.innerHeight;
     
-    // 💡 기기의 고해상도 픽셀 비율(DPR) 가져오기 (기본값 1, 레티나는 2 또는 3)
-    let dpr = window.devicePixelRatio || 1;
+    // 💡 [아이폰 미니/저사양폰 최적화] DPR을 최대 1.5로 제한하여 GPU 과부하 원천 차단
+    let rawDpr = window.devicePixelRatio || 1;
+    let isMobile = width < 768 || ('ontouchstart' in window);
+    let dpr = isMobile ? Math.min(rawDpr, 1.5) : rawDpr;
     
-    // 캔버스 내부 버퍼 크기를 DPR만큼 곱해서 고해상도로 설정
     canvas.width = width * dpr;
     canvas.height = height * dpr;
     
-    // CSS로 표시되는 크기는 원래 화면 크기로 유지
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
     
-
     ctx.setTransform(1, 0, 0, 1, 0, 0); 
     ctx.scale(dpr, dpr);
     
     ctx.imageSmoothingEnabled = false;
     
     if (width < 768) { 
-        ZOOM = width / 560;
-        if(ZOOM < 0.75) ZOOM = 0.75;
-        if(height > width) ZOOM *= 0.9; 
+        ZOOM = Math.max(0.65, Math.min(0.85, width / 480));
     } else { 
         ZOOM = 0.72; 
     }
@@ -3038,7 +3053,7 @@ canvas.addEventListener('touchstart', (e) => {
     if (!gameStarted) return; 
 
     let uiBar = document.getElementById('ui-bottom-bar'); 
-    let uiHeight = uiBar ? uiBar.offsetHeight : 165; 
+    let uiHeight = uiBar ? uiBar.offsetHeight : 140; 
     let cx = e.touches[0].clientX; 
     let cy = e.touches[0].clientY;
     if (cy > window.innerHeight - uiHeight) return; 
@@ -3047,7 +3062,7 @@ canvas.addEventListener('touchstart', (e) => {
     window.touchStartY = cy;
 
     let now = performance.now();
-    if (now - (window.lastTouchHandledTime || 0) < 100) return; 
+    if (now - (window.lastTouchHandledTime || 0) < 60) return; // 💡 터치 씹힘 방지를 위해 딜레이를 100ms -> 60ms로 단축
     window.lastTouchHandledTime = now;
 
     let pos = getWorldPos(cx, cy);
@@ -3055,10 +3070,11 @@ canvas.addEventListener('touchstart', (e) => {
     let myId = window.currentUser ? window.currentUser.id : null;
     let mySockId = window.socket ? window.socket.id : null;
 
+    // 💡 [판정 범위 확장] 타 유저 클릭/롱탭 판정 범위를 70px -> 110px로 확대하여 소형폰에서도 쉽게 잡히도록 개선
     let targetPlayer = entities.find(ent => 
         ent && ent.map === currentMap && ent.isPlayer && 
         ent.id !== myId && ent.socketId !== mySockId && ent !== player &&
-        Math.hypot(ent.x - pos.x, ent.y - pos.y) < 70
+        Math.hypot(ent.x - pos.x, ent.y - pos.y) < 110
     );
 
     if (targetPlayer) {
@@ -3066,13 +3082,13 @@ canvas.addEventListener('touchstart', (e) => {
             if (typeof window.showPartyMenu === 'function') {
                 window.showPartyMenu(targetPlayer);
             }
-        }, 500);
+        }, 380); // 💡 길게 누르기 반응 속도를 500ms -> 380ms로 경쾌하게 개선
         return;
     }
 
     let clickedSummon = entities.find(ent => 
         ent && ent.map === currentMap && ent.isSummon && ent.owner === player && 
-        Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size || 20) + 35
+        Math.hypot(ent.x - pos.x, ent.y - pos.y) < (ent.size || 20) + 45
     );
 
     if (clickedSummon) {
@@ -3082,11 +3098,12 @@ canvas.addEventListener('touchstart', (e) => {
         if (typeof addMessage === 'function') addMessage(`[소환수 지정] ${clickedSummon.name}`, '#5ff');  
         touchTimer = setTimeout(() => { 
             if (typeof window.openPetUI === 'function') window.openPetUI(clickedSummon); 
-        }, 500); 
+        }, 380); 
     } else { 
         handleInput(cx, cy, 0); 
     }
 }, { passive: false });
+
 
 canvas.addEventListener('touchmove', (e) => { 
     if (e.touches && e.touches[0]) {
@@ -3173,9 +3190,11 @@ function update(timestamp) {
     }
 
     // 1. 엔티티 부드러운 보간 이동 (보스 포함)
-    let moveDelta = Math.min(1.0, (dt / 1000) * 12); // 초당 12회 속도로 부드럽게 좌표 수렴
+    let moveDelta = Math.min(1.0, (dt / 1000) * 10);
 
-    entities.forEach(e => {
+    for (let i = 0; i < entities.length; i++) {
+        let e = entities[i];
+        if (!e) continue;
         if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
             let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
             if (dist > 1.5) {
@@ -3190,7 +3209,8 @@ function update(timestamp) {
                 }
             }
         }
-    });
+    }
+    
 
     // 2. 플레이어 자연 회복 (HP / MP)
     if (timestamp - (player.lastRegen || 0) > 2000) {
@@ -3914,24 +3934,11 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
     }
 }
 
-    // 17. 사망 엔티티 제거 및 보스 리스폰
+  // 17. 사망 엔티티 제거 (보스/일반 몬스터 공통 1.5초 후 화면에서 삭제)
     for (let i = entities.length - 1; i >= 0; i--) {
         let e = entities[i];
-        if (e && e.isDead) {
-            if (e.isBoss) { 
-                if (timestamp - e.deadTime > 300000) { 
-                    e.hp = e.maxHp;
-                    e.isDead = false;
-                    e.x = e.spawnX;
-                    e.y = e.spawnY;
-                    e.map = e.spawnMap;
-                    e.aggro = false;
-                    e.target = null; 
-                    if (typeof addMessage === 'function') addMessage(`[레이드 경고] ${e.name}이(가) 리스폰 되었습니다!`, '#f55'); 
-                } 
-            } else if (timestamp - e.deadTime > 1500) {
-                entities.splice(i, 1);
-            }
+        if (e && e.isDead && (timestamp - e.deadTime > 1500)) {
+            entities.splice(i, 1);
         }
     }
 

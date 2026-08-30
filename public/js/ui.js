@@ -13,7 +13,13 @@ window.getStackKey = function(it) {
 window.$ = (id) => document.getElementById(id);
 
 // 서버 주도형 멀티플레이를 위한 Socket.io 객체 준비 (추후 server.js와 연동)
-window.socket = typeof io !== 'undefined' ? io() : null;
+// 💡 [LTE 환경 패킷 지연 차단] WebSocket 단독 연결로 통신 지연 제거
+window.socket = typeof io !== 'undefined' ? io({
+    transports: ['websocket'],
+    upgrade: false,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000
+}) : null;
 
 const SUPABASE_URL = 'https://vnagjrhnvtngsomxwair.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_fo-6ibZ51qwEpX7XYsLyRw_BprsNvR5';
@@ -969,41 +975,44 @@ function updateUI() {
 }
 
 
-let windowZIndex = 2000;
+let windowZIndex = 100000;
+
 window.bringToFront = function(id) {
-    let el = document.getElementById(id);
-    if (el) { windowZIndex += 10; el.style.setProperty('z-index', windowZIndex, 'important'); }
-    let transferWin = document.getElementById('win-transfer');
-    if (transferWin) transferWin.style.setProperty('z-index', windowZIndex + 10000, 'important');
+    let el = document.getElementById(id);
+    if (el) { 
+        windowZIndex += 20; 
+        el.style.setProperty('z-index', windowZIndex, 'important'); 
+    }
 };
 
 window.autoCenterWindow = function(id, forceCenter = true) {
-    const el = document.getElementById(id);
-    if (!el) return;
+    const el = document.getElementById(id);
+    if (!el) return;
 
-    // 1. 숨겨져 있는 창일 경우 일시적으로 표시하여 실제 크기(offsetWidth, offsetHeight)를 정확히 측정
-    let wasHidden = el.style.display === 'none';
-    if (wasHidden) { 
-        el.style.visibility = 'hidden'; 
-        el.style.display = 'flex'; 
-    }
+    let wasHidden = el.style.display === 'none';
+    if (wasHidden) { 
+        el.style.visibility = 'hidden'; 
+        el.style.display = 'flex'; 
+    }
 
-    // 2. 💡 [핵심] 현재 화면 사이즈(window.innerWidth, window.innerHeight)를 실시간 체크하여 정중앙 좌표 계산
-    let cx = Math.max(0, (window.innerWidth - el.offsetWidth) / 2);
-    let cy = Math.max(0, (window.innerHeight - el.offsetHeight) / 2);
-    
-    // 3. 계산된 정중앙 좌표를 강제로 적용
-    el.style.left = cx + 'px';
-    el.style.top = cy + 'px';
-    el.style.setProperty('transform', 'none', 'important'); // 고정 변환 해제
+    // 화면 크기 초과 방지 (X 닫기 버튼이 화면 밖으로 나가지 않도록 안전 여백 10px 확보)
+    let maxW = window.innerWidth - 16;
+    let maxH = window.innerHeight - 16;
+    if (el.offsetWidth > maxW) el.style.width = maxW + 'px';
+    if (el.offsetHeight > maxH) el.style.maxHeight = maxH + 'px';
 
-    // 4. 상태 복원
-    if (wasHidden) { 
-        el.style.display = 'none'; 
-        el.style.visibility = 'visible'; 
-    }
+    let cx = Math.max(8, Math.min(window.innerWidth - el.offsetWidth - 8, (window.innerWidth - el.offsetWidth) / 2));
+    let cy = Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, (window.innerHeight - el.offsetHeight) / 2));
+    
+    el.style.left = cx + 'px';
+    el.style.top = cy + 'px';
+    el.style.setProperty('transform', 'none', 'important');
+
+    if (wasHidden) { 
+        el.style.display = 'none'; 
+        el.style.visibility = 'visible'; 
+    }
 };
-
 window.toggleWindow = function(id) { 
     playSound('click'); 
     const el = $(id); 
@@ -1667,16 +1676,18 @@ function bindPromptButtons() { 
 // [8. 아이템 사용, 액션 모달 & 강화]
 // ==========================================
 window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) { 
-    e.stopPropagation(); hideTooltip(); 
+    if (e && e.stopPropagation) e.stopPropagation(); 
+    if (typeof hideTooltip === 'function') hideTooltip(); 
+    
     let it = JSON.parse(decodeURIComponent(dataStr)); 
     let hasMagic = (it.magicOptions && it.magicOptions.length > 0); 
     selectedItemForAction = { isMagic: false, stackKey, itemName, count, itemType: it.type, hasMagic: hasMagic, magicOptions: it.magicOptions }; 
-    if($('action-modal-title')) $('action-modal-title').innerText = `아이템 관리 (${count}개)`; 
+    
+    if ($('action-modal-title')) $('action-modal-title').innerText = `아이템 관리 (${count}개)`; 
     
     let dName = it.isEnchantScroll ? `[${it.enchantType}] ${it.name}` : (it.enchantValue ? `+${it.enchantValue} ${it.name}` : it.name);
     let gIdx = it.grade || 0; 
 
-    // 책 종류에 따른 타이틀 색상
     function getBookColor(name) {
         if(!name) return '#ffffff';
         if(name.includes('기술서')) return '#f87171';
@@ -1690,7 +1701,6 @@ window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) {
 
     let html = `<b class="tooltip-title" style="color:${titleColor}">${dName}</b><span style="font-size:12px; color:#aaa; margin-left:5px;">[${gradeName}]</span><br>`; 
     
-    // 1. 마법서 요구 레벨 표시
     if (it.type === 'book') {
         let reqLv = (it.grade || 0) * 15 + 1;
         html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
@@ -1699,7 +1709,6 @@ window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) {
     if(it.atk) html += `공격력: ${it.atk}<br>`; 
     if(it.def) html += `방어력: ${it.def}<br>`;
     
-    // 2. 모든 상세 스탯 표시
     if(it.str) html += `<div style="color:#fff;">STR +${it.str}</div>`;
     if(it.dex) html += `<div style="color:#fff;">DEX +${it.dex}</div>`;
     if(it.int) html += `<div style="color:#fff;">INT +${it.int}</div>`;
@@ -1717,7 +1726,6 @@ window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) {
     if(it.skill) html += `<div class="tooltip-magic">발동: ${it.skill}</div>`; 
     if(it.desc) html += `<div class="tooltip-desc" style="color:#ccc; margin-top:4px;">${it.desc}</div>`;
 
-    // 3. 마법 옵션 (환상 주문서) 및 삭제 버튼
     if(hasMagic) { 
         html += `<div style="margin-top:5px; border-top:1px dashed #555; padding-top:5px;">`; 
         it.magicOptions.forEach((opt, idx) => { 
@@ -1729,46 +1737,27 @@ window.openItemActionModal = function(e, stackKey, itemName, count, dataStr) {
         html += `</div>`; 
     } 
     
-    // 4. 아이템 별 추가 설명
     let extra = typeof getExtraDesc === 'function' ? getExtraDesc(it.name) : ''; 
     if(extra) html += `<div class="tooltip-desc" style="color:#ada; margin-top:4px;">${extra}</div>`;
     
-    // 마법서의 경우 발동 마법 효과 설명
     if (it.type === 'book' && it.magicName && typeof magicDb !== 'undefined' && magicDb[it.magicName] && magicDb[it.magicName].desc) { 
         html += `<div class="tooltip-desc" style="color:#aaf; margin-top:6px; border-top:1px dashed #555; padding-top:5px;">${magicDb[it.magicName].desc}</div>`; 
     }
 
-    if($('action-modal-desc')) $('action-modal-desc').innerHTML = html; 
-    if($('btn-purge-magic')) $('btn-purge-magic').style.display = hasMagic ? 'block' : 'none'; 
-    if($('action-modal-item-mgmt')) $('action-modal-item-mgmt').style.display = 'flex'; 
-    if($('item-action-modal')) $('item-action-modal').style.display = 'flex'; 
-};
-
-window.hideItemActionModal = function() { if($('item-action-modal')) $('item-action-modal').style.display = 'none'; hideTooltip(); };
-
-window.openMagicActionModal = function(mName) { 
-    selectedItemForAction = { isMagic: true, itemName: mName }; 
-    let mData = magicDb[mName]; if(!mData) return;
-    let lv = player.magicLevels?.[mName] || 1; 
-    let scale = 1 + (lv - 1) * 0.2 + Math.max(0, (player.int - 10) * 0.05);
-    let powerText = '';
-    if(mData.dmg) powerText = `<br><span style="color:#f55;">위력(공격력): ${Math.floor(mData.dmg * scale)}</span>`;
-    else if(mData.heal) powerText = `<br><span style="color:#5f5;">위력(회복량): ${Math.floor(mData.heal * scale)}</span>`;
-    let html = `<b class="tooltip-title" style="color:#aaf;">${mName} <span style="color:#fd0; font-weight:bold;">[Lv.${lv}]</span></b><br><div style="font-size:12px; color:#aaa; line-height:1.4;">${mData.type === 'attack' ? '공격 마법' : '보조 마법'} (소모 MP: ${mData.mp})${powerText}</div>`; 
-    let extra = getExtraDesc(mName); if(extra) html += `<div class="tooltip-desc" style="color:#ada; margin-top:5px;">${extra}</div>`; 
-    if(mData.desc) html += `<div class="tooltip-desc" style="color:#aaf; margin-top:5px; border-top:1px dashed #555; padding-top:5px;">${mData.desc}</div>`;
-    if($('action-modal-title')) $('action-modal-title').innerText = `마법 상세 및 단축키 등록`; 
-    if($('action-modal-desc')) $('action-modal-desc').innerHTML = html; 
-    if($('action-modal-item-mgmt')) $('action-modal-item-mgmt').style.display = 'none'; 
-    
-    // 💡 [핵심] 모달창이 뒤로 숨지 않게 최상단 배치 및 정중앙 자동 정렬
     let modal = $('item-action-modal');
     if (modal) {
+        if ($('action-modal-desc')) $('action-modal-desc').innerHTML = html; 
+        if ($('btn-purge-magic')) $('btn-purge-magic').style.display = hasMagic ? 'block' : 'none'; 
+        if ($('action-modal-item-mgmt')) $('action-modal-item-mgmt').style.display = 'flex'; 
+        
         modal.style.display = 'flex';
-        bringToFront('item-action-modal');
+        bringToFront('item-action-modal'); // 💡 가방보다 무조건 위에 오도록 최상단 z-index 부여
         autoCenterWindow('item-action-modal', true);
     }
 };
+
+
+
 window.removeMagicOption = function(stackKey, idx) {
     let targetItem = null;
     for(let k in player.equip) { if(player.equip[k] && getStackKey(player.equip[k]) === stackKey) { targetItem = player.equip[k]; break; } }
@@ -3491,11 +3480,9 @@ let dragEl = null, dragOffsetX = 0, dragOffsetY = 0;
 window.startDrag = function(e, id) { 
     dragEl = document.getElementById(id); 
     if (!dragEl) return;
-    if (typeof bringToFront === 'function') bringToFront(id);
 
-    // 모바일 터치 드래그 시 배경 스크롤 차단
-    if (e.type.includes('touch')) {
-        document.body.style.overflow = 'hidden'; 
+    if (typeof bringToFront === 'function') {
+        bringToFront(id);
     }
 
     if (dragEl.style.transform && dragEl.style.transform !== 'none') {
@@ -3506,35 +3493,39 @@ window.startDrag = function(e, id) {
     }
 
     let rect = dragEl.getBoundingClientRect(); 
-    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX; 
-    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY; 
+    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0); 
+    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0); 
     dragOffsetX = cx - rect.left; 
     dragOffsetY = cy - rect.top; 
 
-    document.addEventListener('mousemove', onDrag, {passive: false}); 
+    document.addEventListener('mousemove', onDrag); 
     document.addEventListener('mouseup', stopDrag); 
-    document.addEventListener('touchmove', onDrag, {passive: false}); 
+    document.addEventListener('touchmove', onDrag, { passive: false }); 
     document.addEventListener('touchend', stopDrag); 
 };
 
 function onDrag(e) {
     if (!dragEl) return;
-    if (e.type.includes('touch')) e.preventDefault(); // 스크롤 원천 차단
-    let cx = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
-    let cy = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
-    dragEl.style.left = (cx - dragOffsetX) + 'px';
-    dragEl.style.top = (cy - dragOffsetY) + 'px';
+    if (e.cancelable) e.preventDefault(); // 모바일 터치 스크롤 간섭 차단
+    
+    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0);
+    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0);
+    
+    // X 버튼이 화면 밖으로 탈출하지 않도록 clamp
+    let newLeft = Math.max(0, Math.min(window.innerWidth - dragEl.offsetWidth, cx - dragOffsetX));
+    let newTop = Math.max(0, Math.min(window.innerHeight - dragEl.offsetHeight, cy - dragOffsetY));
+    
+    dragEl.style.left = newLeft + 'px';
+    dragEl.style.top = newTop + 'px';
 }
 
 function stopDrag() {
     dragEl = null;
-    document.body.style.overflow = ''; // 스크롤 복구
     document.removeEventListener('mousemove', onDrag);
     document.removeEventListener('mouseup', stopDrag);
     document.removeEventListener('touchmove', onDrag);
     document.removeEventListener('touchend', stopDrag);
 }
-
 window.autoCenterWindow = function(id, forceCenter = true) {
     const el = document.getElementById(id);
     if (!el) return;
