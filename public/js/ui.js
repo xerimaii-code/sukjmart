@@ -4331,3 +4331,60 @@ window.showClassPassiveInfo = function() {
     showCustomPrompt(body, [{ text: '확인', color: '#166534', callback: () => {} }]);
     if ($('confirm-win-title')) $('confirm-win-title').innerText = title;
 };
+
+window.hideItemActionModal = function() {
+    let modal = document.getElementById('item-action-modal');
+    if (modal) modal.style.display = 'none';
+    if (typeof hideTooltip === 'function') hideTooltip();
+};
+let dragEl = null, dragOffsetX = 0, dragOffsetY = 0;
+
+window.startDrag = function(e, id) { 
+    dragEl = document.getElementById(id); 
+    if (!dragEl) return;
+
+    if (typeof bringToFront === 'function') {
+        bringToFront(id);
+    }
+
+    if (dragEl.style.transform && dragEl.style.transform !== 'none') {
+        let rect = dragEl.getBoundingClientRect();
+        dragEl.style.setProperty('transform', 'none', 'important');
+        dragEl.style.left = rect.left + 'px';
+        dragEl.style.top = rect.top + 'px';
+    }
+
+    let rect = dragEl.getBoundingClientRect(); 
+    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0); 
+    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0); 
+    dragOffsetX = cx - rect.left; 
+    dragOffsetY = cy - rect.top; 
+
+    document.addEventListener('mousemove', onDrag); 
+    document.addEventListener('mouseup', stopDrag); 
+    document.addEventListener('touchmove', onDrag, { passive: false }); 
+    document.addEventListener('touchend', stopDrag); 
+};
+
+function onDrag(e) {
+    if (!dragEl) return;
+    if (e.cancelable) e.preventDefault(); // 모바일 터치 스크롤 간섭 강제 차단
+    
+    let cx = e.type.includes('mouse') ? e.clientX : (e.touches ? e.touches[0].clientX : 0);
+    let cy = e.type.includes('mouse') ? e.clientY : (e.touches ? e.touches[0].clientY : 0); 
+    
+    let newLeft = Math.max(0, Math.min(window.innerWidth - dragEl.offsetWidth, cx - dragOffsetX));
+    let newTop = Math.max(0, Math.min(window.innerHeight - dragEl.offsetHeight, cy - dragOffsetY));
+    
+    dragEl.style.left = newLeft + 'px';
+    dragEl.style.top = newTop + 'px';
+}
+
+function stopDrag() {
+    dragEl = null;
+    document.removeEventListener('mousemove', onDrag);
+    document.removeEventListener('mouseup', stopDrag);
+    document.removeEventListener('touchmove', onDrag);
+    document.removeEventListener('touchend', stopDrag);
+}
+
