@@ -590,95 +590,67 @@ window.addEventListener('touchstart', initAudio, {once:true});
 
 // [게임 진입 로직 연동 (데이터 세팅)]
 async function executeLogin(slotIndex, charObj, loadedData) {
-    try {
-        closeAllWindows();
-        currentSlotIndex = slotIndex;
-        window.mySessionToken = Date.now().toString() + Math.random().toString(36).substring(2);
-        loadedData.session_token = window.mySessionToken;
-        loadedData.last_sync_time = Date.now();
+    try {
+        if (typeof window.closeAllWindows === 'function') window.closeAllWindows(); // 전역 함수로 명확히 호출
+        currentSlotIndex = slotIndex;
+        window.mySessionToken = Date.now().toString() + Math.random().toString(36).substring(2);
+        loadedData.session_token = window.mySessionToken;
+        loadedData.last_sync_time = Date.now();
 
-        const sb = getSupabaseClient();
-        if (sb) {
-            await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
-        }
+        const sb = typeof window.getSupabaseClient === 'function' ? window.getSupabaseClient() : getSupabaseClient();
+        if (sb) await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
 
-        let freshPlayer = getInitialPlayer();
-        if (loadedData.player) {
-            deepMerge(freshPlayer, loadedData.player);
-        }
-        for(let k in player) delete player[k];
-        Object.assign(player, freshPlayer);
+        let freshPlayer = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { name: '모험가' };
+        if (loadedData.player) deepMerge(freshPlayer, loadedData.player);
+        
+        for(let k in player) delete player[k];
+        Object.assign(player, freshPlayer);
 
-        if (loadedData.options) {
-            Object.assign(gameOptions, loadedData.options);
-            if ($('opt-vol')) $('opt-vol').value = Math.floor((gameOptions.volume / 0.05) * 100);
-            if ($('opt-dmg')) $('opt-dmg').checked = gameOptions.showDamage;
-            if ($('opt-names')) $('opt-names').checked = gameOptions.showNames;
-            if ($('opt-loot-grade')) $('opt-loot-grade').value = gameOptions.minLootGrade || 0;
-            
-         
-        }
+        if (loadedData.options) Object.assign(gameOptions, loadedData.options);
+        window.hotkeys = loadedData.hotkeys || new Array(8).fill(null); 
+        hotkeys = window.hotkeys;
 
-        window.hotkeys = loadedData.hotkeys || new Array(8).fill(null); hotkeys = window.hotkeys;
-        applyStatsPostLoad();
+        if (typeof applyStatsPostLoad === 'function') applyStatsPostLoad();
 
-        let targetMap = loadedData.map || player.map || 'silver_knight_town';
-        let targetX = player.x || 2000; let targetY = player.y || 2000;
-        
-        entities.length = 0; 
-        for(let m in maps) { 
-            if(maps[m].b) { maps[m].b.forEach(b => { let bt = templates.bosses[b.id]; if(bt) entities.push({ ...bt, id: b.id, maxHp: bt.hp, x: b.x, y: b.y, map: m, spawnMap: m, spawnX: b.x, spawnY: b.y, angle: 0, isMoving: false, isBoss: true }); }); } 
-        }
+        let targetMap = loadedData.map || player.map || 'silver_knight_town';
+        let targetX = player.x || 2000; 
+        let targetY = player.y || 2000;
+        
+        entities.length = 0; 
+        for(let m in maps) { 
+            if(maps[m].b) { maps[m].b.forEach(b => { let bt = templates.bosses[b.id]; if(bt) entities.push({ ...bt, id: b.id, maxHp: bt.hp, x: b.x, y: b.y, map: m, spawnMap: m, spawnX: b.x, spawnY: b.y, angle: 0, isMoving: false, isBoss: true }); }); } 
+        }
 
-        if (loadedData.activeMercenaries) {
-            loadedData.activeMercenaries.forEach(m => {
-                entities.push({
-                    ...m, map: targetMap, x: targetX + (Math.random()*40-20), y: targetY + (Math.random()*40-20),
-                    isSummon: true, owner: player, isMercenary: true,
-                    color: m.mercType === 'wizard' ? '#88f' : (m.mercType === 'elf' ? '#8f8' : '#ccc')
-                });
-            });
-        }
+        if (loadedData.activeMercenaries) {
+            loadedData.activeMercenaries.forEach(m => {
+                entities.push({
+                    ...m, map: targetMap, x: targetX + (Math.random()*40-20), y: targetY + (Math.random()*40-20),
+                    isSummon: true, owner: player, isMercenary: true,
+                    color: m.mercType === 'wizard' ? '#88f' : (m.mercType === 'elf' ? '#8f8' : '#ccc')
+                });
+            });
+        }
 
-        changeMap(targetMap, targetX, targetY);
-        if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'none'; 
-        if($('main-ui')) $('main-ui').style.display = 'block';
+        if (typeof window.changeMap === 'function') window.changeMap(targetMap, targetX, targetY);
+        if ($('main-menu-overlay')) $('main-menu-overlay').style.display = 'none'; 
+        if ($('main-ui')) $('main-ui').style.display = 'block';
 
-        gameStarted = true; updateOptions(); 
+        gameStarted = true; 
+        if (typeof window.updateOptions === 'function') window.updateOptions(); 
 
-        if (typeof update === 'function') {
-            requestAnimationFrame(update);
-        } else if (typeof window.update === 'function') {
-            requestAnimationFrame(window.update);
-        } else {
-            setTimeout(() => {
-                if (typeof window.update === 'function') requestAnimationFrame(window.update);
-            }, 100);
-        }
+        if (typeof update === 'function') requestAnimationFrame(update);
+        else if (typeof window.update === 'function') requestAnimationFrame(window.update);
 
-        addMessage(`[${player.name}] 캐릭터로 접속했습니다.`, "#5f5");
-        startSessionCheckTimer();
-        
-        if (window.socket) {
-            window.socket.emit('player_join', {
-                id: currentUser.id,
-                name: player.name,
-                charClass: player.charClass,
-                x: player.x,
-                y: player.y,
-                map: currentMap
-            });
-        }
-
-    } catch (err) {
-        console.error("게임 진입 중 에러 발생:", err);
-        showAlert("게임 진입 중 오류가 발생했습니다: " + err.message);
-        loadedData.last_sync_time = 0;
-        const sb = getSupabaseClient();
-        if (sb) {
-            await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
-        }
-    }
+        if (typeof addMessage === 'function') addMessage(`[${player.name}] 캐릭터로 접속했습니다.`, "#5f5");
+        if (typeof startSessionCheckTimer === 'function') startSessionCheckTimer();
+        
+        if (window.socket) {
+            window.socket.emit('player_join', { id: currentUser.id, name: player.name, charClass: player.charClass, x: player.x, y: player.y, map: currentMap });
+        }
+    } catch (err) {
+        console.error("게임 진입 중 에러:", err);
+        if (typeof showAlert === 'function') showAlert("진입 에러: " + err.message);
+    }
 }
 
 // ==========================================
@@ -1033,10 +1005,23 @@ window.toggleWindow = function(id) {
 
 
 
-window.closeAllWindows = function() { 
-    ['win-inv', 'win-magic', 'win-option', 'win-shop', 'win-pet', 'win-mercenary', 'save-modal', 'confirm-modal', 'item-action-modal', 'teleport-modal', 'win-party', 'win-transfer'].forEach(id => { if($(id)) $(id).style.display = 'none'; }); 
-    hideTooltip(); 
-};
+function initWindowDragHelper(e) {
+    let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
+    if (winEl && !e.target.closest('button') && !e.target.closest('input')) {
+        let rect = winEl.getBoundingClientRect();
+        let clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
+        
+        // 💡 [핵심] 창의 상단 45px (제목 바 영역)만 드래그 가능하도록 제한하여 내부 리스트 스크롤 보장
+        if (clientY - rect.top <= 45) {
+            let winId = winEl.id;
+            if (winId && typeof window.startDrag === 'function') window.startDrag(e, winId);
+        }
+    }
+}
+document.addEventListener('mousedown', initWindowDragHelper);
+document.addEventListener('touchstart', initWindowDragHelper, { passive: true });
+
+
 window.toggleAutoHunt = function() {
     if (typeof playSound === 'function') playSound('click');
     if (!player.autoHunt && typeof isInSafeZone === 'function' && isInSafeZone(currentMap, player.x, player.y)) {
@@ -1666,9 +1651,24 @@ window.showCustomPrompt = function(msg, buttonsArray) { 
     modal.style.display = 'flex'; 
 };
 
-function bindPromptButtons() { 
-    if($('btn-yes')) $('btn-yes').onclick = () => { $('confirm-modal').style.display = 'none'; if($('btn-no').style.display === 'none') { $('btn-no').style.display = 'inline-block'; } if(confirmCallback) { let cb = confirmCallback; confirmCallback = null; cb(); } }; 
-    if($('btn-no')) $('btn-no').onclick = () => { $('confirm-modal').style.display = 'none'; confirmCallback = null; }; 
+function bindPromptButtons() { 
+    let btnYes = $('btn-yes');
+    let btnNo = $('btn-no');
+    let modal = $('confirm-modal');
+    
+    if(btnYes) {
+        btnYes.onclick = () => { 
+            if(modal) modal.style.display = 'none'; 
+            if(btnNo && btnNo.style.display === 'none') btnNo.style.display = 'inline-block'; 
+            if(confirmCallback) { let cb = confirmCallback; confirmCallback = null; cb(); } 
+        };
+    }
+    if(btnNo) {
+        btnNo.onclick = () => { 
+            if(modal) modal.style.display = 'none'; 
+            confirmCallback = null; 
+        };
+    }
 }
 
 // ==========================================
@@ -3980,7 +3980,7 @@ window.selectMercenary = function(mercId) {
 };
 
 // ==========================================
-// 💡 [모바일 하단 레이아웃 자동 보정 및 버프 아이콘 1줄 중앙 배치]
+// 💡 [모바일 하단 레이아웃 자동 보정 및 반응형 창 크기/스크롤 패치]
 // ==========================================
 function injectMobileBottomFix() {
     if (document.getElementById('mobile-bottom-fix')) {
@@ -3990,6 +3990,27 @@ function injectMobileBottomFix() {
     style.id = 'mobile-bottom-fix';
     
     style.innerHTML = `
+        /* 💡 [핵심] 모든 팝업창 가로 크기를 기기 화면의 95% 이하로 강제 제한 (삐져나감 완벽 방지) */
+        .window, .modal-window, [id^="win-"], [id$="-modal"] {
+            max-width: 95vw !important;
+            box-sizing: border-box !important;
+        }
+
+        /* 💡 [핵심] 상점, 인벤토리, 마법책 내부 리스트가 길어지면 자동 스크롤 활성화 */
+        #shop-list, #inv-list, #inv-tab-equip, #magic-list, #teleport-list {
+            max-height: 55vh !important; /* 모바일 세로 화면의 55%까지만 커지고 나머진 스크롤 */
+            overflow-y: auto !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+            padding-right: 4px !important;
+        }
+
+        /* 아이템 항목 가로 삐져나감 2차 방지 */
+        #shop-list > div, #inv-list > div, #magic-list > div {
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+        }
+
         /* PC 버전: 원래 사이즈 유지 (미니맵 침범 방지) */
         #map-name {
             font-size: 18px !important;
@@ -4076,7 +4097,7 @@ function injectMobileBottomFix() {
     `;
     document.head.appendChild(style);
 
-    // 💡 함수 내부로 이동됨 (안전하게 Body에 부착)
+    // 어두운 배경(dim) 안전 부착
     if (!document.getElementById('dim-overlay')) {
         const dim = document.createElement('div');
         dim.id = 'dim-overlay';
@@ -4399,25 +4420,41 @@ document.addEventListener('dragstart', (e) => {
 });
 
 // ==========================================
-// 윈도우(모달) 전역 드래그 편의성 향상 패치
+// 윈도우(모달) 전역 드래그 편의성 향상 패치 (상단 헤더 전용으로 수정)
 // ==========================================
 document.addEventListener('mousedown', (e) => {
+    // 💡 [핵심] 상점, 가방, 마법책 등 내부 리스트 영역을 클릭하면 드래그를 무시하고 스크롤 허용
+    if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
+
     let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
     if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
-        let winId = winEl.id;
-        if (winId && typeof window.startDrag === 'function') {
-            window.startDrag(e, winId);
+        let rect = winEl.getBoundingClientRect();
+        let clientY = e.clientY;
+        
+        // 창의 상단 45px (제목 바) 영역을 눌렀을 때만 드래그 시작
+        if (clientY - rect.top <= 45) {
+            let winId = winEl.id;
+            if (winId && typeof window.startDrag === 'function') {
+                window.startDrag(e, winId);
+            }
         }
     }
 });
 
 document.addEventListener('touchstart', (e) => {
+    // 💡 [핵심] 모바일 터치 시에도 내부 리스트 영역 스크롤 우선 보장
+    if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
+
     let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
     if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
-        let winId = winEl.id;
-        if (winId && typeof window.startDrag === 'function') {
-            window.startDrag(e, winId);
+        let rect = winEl.getBoundingClientRect();
+        let clientY = e.touches[0].clientY;
+        
+        if (clientY - rect.top <= 45) {
+            let winId = winEl.id;
+            if (winId && typeof window.startDrag === 'function') {
+                window.startDrag(e, winId);
+            }
         }
     }
 }, { passive: true });
-

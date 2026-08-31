@@ -108,6 +108,29 @@ function generateServerDropItem(baseItem) {
 io.on('connection', (socket) => {
     console.log(`[+] 유저 연결됨: ${socket.id}`);
 
+
+
+
+    socket.on('player_loot_item', (payload) => {
+        let p = players[socket.id];
+        if (!p || !mapsState[p.map]) return;
+        
+        let itemsArr = mapsState[p.map].items;
+        let itemIdx = itemsArr.findIndex(it => it.id === payload.itemId);
+        
+        // 아이템이 바닥에 실제로 존재할 때만 1명에게 지급
+        if (itemIdx > -1) {
+            let lootedItem = itemsArr.splice(itemIdx, 1)[0];
+            
+            // 주운 당사자에게 획득 처리 지시
+            socket.emit('item_looted_success', { item: lootedItem });
+            
+            // 맵 안의 모든 유저 화면에서 해당 아이템 삭제 브로드캐스트
+            io.to(p.map).emit('item_removed', { itemId: payload.itemId });
+        }
+    });
+
+
     socket.on('player_join', (payload) => {
         const { id, name, charClass, x, y, map } = payload;
         if (players[socket.id] && players[socket.id].map) { 

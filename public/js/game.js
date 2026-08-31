@@ -3879,62 +3879,41 @@ if (target && typeof target.y === 'number' && target.hp > 0 && !target.isDead) {
         player.stuckCheckTime = performance.now();
     }
 
-   // ========================================================
-// ========================================================
+ // ========================================================
 // 16. 발밑 근접 아이템 습득 처리
 // ========================================================
 if (typeof items !== 'undefined' && Array.isArray(items)) {
     let nearbyItem = null;
 
     if (player.autoHunt) {
-        // 💡 [자동사냥 중]: 타겟팅된 아이템이거나, 등급 필터를 만족하는 발밑 아이템만 루팅
         nearbyItem = player.targetItem || items.find(it => {
             if (!it || (it.map && it.map !== currentMap)) return false;
-            
-            // 👉 [여기에 추가됨] 내가 방금(3000ms 이내) 버린 아이템은 무시
             if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
-            
             let itemGrade = (typeof it.grade === 'number') ? it.grade : 0;
             let isAlwaysLoot = ['scroll', 'book', 'potion', 'currency'].includes(it.type);
             let minGrade = (typeof gameOptions !== 'undefined' && gameOptions.minLootGrade) || 0;
-            let isGradeOk = isAlwaysLoot || (itemGrade >= minGrade);
-            
-            return isGradeOk && Math.hypot(it.x - player.x, it.y - player.y) <= 35;
+            return (isAlwaysLoot || (itemGrade >= minGrade)) && Math.hypot(it.x - player.x, it.y - player.y) <= 35;
         });
     } else {
-        // 💡 [수동 조작 중]: 등급 필터 없이 발밑(35px 이내)을 지나가는 모든 아이템 획득
         nearbyItem = items.find(it => {
             if (!it || (it.map && it.map !== currentMap)) return false;
-            
-            // 👉 [여기에 추가됨] 내가 방금(3000ms 이내) 버린 아이템은 무시
             if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
-            
             return Math.hypot(it.x - player.x, it.y - player.y) <= 35;
         });
     }
 
     if (nearbyItem && Math.hypot(nearbyItem.x - player.x, nearbyItem.y - player.y) <= 35) {
-        let itemIdx = items.indexOf(nearbyItem);
-        if (itemIdx > -1) {
-            let loot = items.splice(itemIdx, 1)[0];
-            let existingIdx = player.inv.findIndex(p => typeof getStackKey === 'function' && getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
-            if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc', 'currency'].includes(loot.type || 'etc')) {
-                player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (loot.count || 1);
-            } else {
-                player.inv.push(JSON.parse(JSON.stringify(loot)));
+        if (window.socket && currentUser) {
+            if (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300) {
+                player.lastLootAttempt = Date.now();
+                window.socket.emit('player_loot_item', { itemId: nearbyItem.id });
+                player.targetItem = null;
             }
-
-            if (typeof playSound === 'function') playSound('click');
-            let lootTag = player.autoHunt ? '[루팅]' : '[수동 획득]';
-            if (typeof addMessage === 'function') addMessage(`${lootTag} ${loot.name}`, '#af5');
-            
-            player.targetItem = null;
-            if (typeof updateUI === 'function') updateUI();
         }
     }
-}
+} 
 
-  // 17. 사망 엔티티 제거 (보스/일반 몬스터 공통 1.5초 후 화면에서 삭제)
+    // 17. 사망 엔티티 제거 (보스/일반 몬스터 공통 1.5초 후 화면에서 삭제)
     for (let i = entities.length - 1; i >= 0; i--) {
         let e = entities[i];
         if (e && e.isDead && (timestamp - e.deadTime > 1500)) {
@@ -3944,7 +3923,7 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
 
     if (typeof draw === 'function') draw(timestamp);
     requestAnimationFrame(update);
-}
+} 
 window.update = update;
 
 
@@ -4243,8 +4222,13 @@ if (window.socket) {
         else if (mName.includes('SYLPH TEMPEST') || mName.includes('실프의 폭풍')) { customTier = 'elf'; customSize = 20; } 
         else if (mName === '돌진') { customTier = 'high'; customSize = 16; }
 
-        if (typeof addSkillText === 'function') {
-            addSkillText(realCasterX, realCasterY, mName.startsWith('[') || mName.startsWith('🔥') || mName.startsWith('🌪️') || mName.startsWith('⚡') ? mName : `[${mName}]`, customTier, customSize);
+     if (typeof addSkillText === 'function') {
+            let isKeyPassive = mName.includes('광폭화') || mName.includes('BERSERK') || 
+                               mName.includes('실프') || mName.includes('SYLPH') || 
+                               mName === '돌진';
+            if (isKeyPassive) {
+                addSkillText(realCasterX, realCasterY, mName.startsWith('[') || mName.startsWith('🔥') || mName.startsWith('🌪️') || mName.startsWith('⚡') ? mName : `[${mName}]`, customTier, customSize);
+            }
         }
 
         // 💡 1번 중앙 파티클 생성기 즉시 호출
