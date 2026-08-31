@@ -1,4 +1,3 @@
-
 // ==========================================
 // [1. 최상단 DOM 헬퍼 & 전역 상태 변수 및 멀티플레이 소켓 준비]
 // ==========================================
@@ -11,6 +10,16 @@ window.getStackKey = function(it) {
 };
 
 window.$ = (id) => document.getElementById(id);
+
+// 💡 [최상단 배치] 어디서든 안전하게 호출할 수 있도록 맨 위로 이동
+window.closeAllWindows = function() { 
+    ['win-inv', 'win-magic', 'win-option', 'win-shop', 'win-pet', 'win-mercenary', 'save-modal', 'confirm-modal', 'item-action-modal', 'teleport-modal', 'win-party', 'win-transfer'].forEach(id => { 
+        let el = document.getElementById(id);
+        if (el) el.style.display = 'none'; 
+    }); 
+    if (typeof hideTooltip === 'function') hideTooltip(); 
+};
+
 
 // 서버 주도형 멀티플레이를 위한 Socket.io 객체 준비 (추후 server.js와 연동)
 // 💡 [LTE 환경 패킷 지연 차단] WebSocket 단독 연결로 통신 지연 제거
@@ -213,61 +222,51 @@ window.handleSignIn = async function() {
     }
 };
 
-window.logout = async function() {
-    closeAllWindows();
-    let emailInput = $('auth-email');
-    let rememberChk = $('auth-remember-id');
-    if (rememberChk && rememberChk.checked && emailInput && emailInput.value.trim()) {
-        localStorage.setItem('lineage_saved_id', emailInput.value.trim());
-    }
-
-    if (gameStarted) {
-        saveGameToLocal(true); 
-        await autoSaveToSupabase(true);
-    }
-    await window.handleSignOut(); 
-};
 
 window.handleSignOut = async function() {
-    closeAllWindows();
-    const sb = getSupabaseClient();
-    
-    let emailInput = $('auth-email');
-    let rememberChk = $('auth-remember-id');
-    if (rememberChk && rememberChk.checked && emailInput && emailInput.value.trim()) {
-        localStorage.setItem('lineage_saved_id', emailInput.value.trim());
-    }
+    window.closeAllWindows(); // 💡 window. 추가됨
+    const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+    
+    let emailInput = $('auth-email');
+    let rememberChk = $('auth-remember-id');
+    if (rememberChk && rememberChk.checked && emailInput && emailInput.value.trim()) {
+        localStorage.setItem('lineage_saved_id', emailInput.value.trim());
+    }
 
-    if (gameStarted && currentUser) {
-        try {
-            let saveData = getCompleteSavePayload(null, 0); 
-            await sb.from('characters').update({
-                name: saveData.player.name, 
-                class_name: classData[saveData.player.charClass] ? classData[saveData.player.charClass].name : '기사', 
-                data: saveData, 
-                updated_at: new Date()
-            }).eq('user_id', currentUser.id).eq('slot_index', currentSlotIndex);
-        } catch(e) {}
-    }
+    if (gameStarted && currentUser) {
+        try {
+            let saveData = typeof getCompleteSavePayload === 'function' ? getCompleteSavePayload(null, 0) : null; 
+            if (sb && saveData) {
+                await sb.from('characters').update({
+                    name: saveData.player.name, 
+                    class_name: (typeof classData !== 'undefined' && classData[saveData.player.charClass]) ? classData[saveData.player.charClass].name : '기사', 
+                    data: saveData, 
+                    updated_at: new Date()
+                }).eq('user_id', currentUser.id).eq('slot_index', currentSlotIndex);
+            }
+        } catch(e) {}
+    }
 
-    if (sb) await sb.auth.signOut();
-    gameStarted = false;
-    currentUser = null;
-    myCharacters = [];
-    
-    let savedId = localStorage.getItem('lineage_saved_id');
-    if($('auth-email')) {
-        $('auth-email').value = savedId ? savedId : '';
-        if($('auth-remember-id')) $('auth-remember-id').checked = !!savedId;
-    }
-    if($('auth-password')) $('auth-password').value = '';
-    if($('auth-password-confirm')) $('auth-password-confirm').value = '';
+    if (sb) await sb.auth.signOut();
+    gameStarted = false;
+    currentUser = null;
+    myCharacters = [];
+    
+    let savedId = localStorage.getItem('lineage_saved_id');
+    if($('auth-email')) {
+        $('auth-email').value = savedId ? savedId : '';
+        if($('auth-remember-id')) $('auth-remember-id').checked = !!savedId;
+    }
+    if($('auth-password')) $('auth-password').value = '';
+    if($('auth-password-confirm')) $('auth-password-confirm').value = '';
 
-    if($('main-ui')) $('main-ui').style.display = 'none';
-    if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'flex';
-    if($('auth-box')) $('auth-box').style.display = 'block';
-    if($('slot-box')) $('slot-box').style.display = 'none';
+    if($('main-ui')) $('main-ui').style.display = 'none';
+    if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'flex';
+    if($('auth-box')) $('auth-box').style.display = 'block';
+    if($('slot-box')) $('slot-box').style.display = 'none';
 };
+
+window.logout = window.handleSignOut;
 
 window.triggerFileImport = function() {
     let fileInput = $('file-import');
@@ -280,21 +279,22 @@ window.triggerFileImport = function() {
 };
 
 window.returnToCharSelect = async function() {
-    if (gameStarted) {
-        saveGameToLocal(true);
-        await autoSaveToSupabase(true);
-    }
-    closeAllWindows();
-    gameStarted = false;
-    
-    if($('main-ui')) $('main-ui').style.display = 'none';
-    if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'flex';
-    if($('auth-box')) $('auth-box').style.display = 'none';
-    if($('slot-box')) $('slot-box').style.display = 'block';
-    
-    await fetchCharacterList(); 
-    addMessage("캐릭터 선택 화면으로 이동했습니다.", "#fd0");
+    if (gameStarted) {
+        if (typeof saveGameToLocal === 'function') saveGameToLocal(true);
+        if (typeof autoSaveToSupabase === 'function') await autoSaveToSupabase(true);
+    }
+    window.closeAllWindows(); // 💡 window. 추가됨
+    gameStarted = false;
+    
+    if($('main-ui')) $('main-ui').style.display = 'none';
+    if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'flex';
+    if($('auth-box')) $('auth-box').style.display = 'none';
+    if($('slot-box')) $('slot-box').style.display = 'block';
+    
+    if (typeof fetchCharacterList === 'function') await fetchCharacterList(); 
+    if (typeof addMessage === 'function') addMessage("캐릭터 선택 화면으로 이동했습니다.", "#fd0");
 };
+
 
 window.fetchCharacterList = async function() {
     if(!currentUser) return;
@@ -591,30 +591,38 @@ window.addEventListener('touchstart', initAudio, {once:true});
 // [게임 진입 로직 연동 (데이터 세팅)]
 async function executeLogin(slotIndex, charObj, loadedData) {
     try {
-        if (typeof window.closeAllWindows === 'function') window.closeAllWindows(); // 전역 함수로 명확히 호출
+        window.closeAllWindows(); // 💡 window. 추가됨
         currentSlotIndex = slotIndex;
         window.mySessionToken = Date.now().toString() + Math.random().toString(36).substring(2);
         loadedData.session_token = window.mySessionToken;
         loadedData.last_sync_time = Date.now();
 
-        const sb = typeof window.getSupabaseClient === 'function' ? window.getSupabaseClient() : getSupabaseClient();
-        if (sb) await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
+        const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+        if (sb) {
+            await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
+        }
 
         let freshPlayer = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { name: '모험가' };
-        if (loadedData.player) deepMerge(freshPlayer, loadedData.player);
-        
+        if (loadedData.player) {
+            if (typeof deepMerge === 'function') deepMerge(freshPlayer, loadedData.player);
+        }
         for(let k in player) delete player[k];
         Object.assign(player, freshPlayer);
 
-        if (loadedData.options) Object.assign(gameOptions, loadedData.options);
+        if (loadedData.options) {
+            Object.assign(gameOptions, loadedData.options);
+            if ($('opt-vol')) $('opt-vol').value = Math.floor((gameOptions.volume / 0.05) * 100);
+            if ($('opt-dmg')) $('opt-dmg').checked = gameOptions.showDamage;
+            if ($('opt-names')) $('opt-names').checked = gameOptions.showNames;
+            if ($('opt-loot-grade')) $('opt-loot-grade').value = gameOptions.minLootGrade || 0;
+        }
+
         window.hotkeys = loadedData.hotkeys || new Array(8).fill(null); 
         hotkeys = window.hotkeys;
-
         if (typeof applyStatsPostLoad === 'function') applyStatsPostLoad();
 
         let targetMap = loadedData.map || player.map || 'silver_knight_town';
-        let targetX = player.x || 2000; 
-        let targetY = player.y || 2000;
+        let targetX = player.x || 2000; let targetY = player.y || 2000;
         
         entities.length = 0; 
         for(let m in maps) { 
@@ -631,27 +639,44 @@ async function executeLogin(slotIndex, charObj, loadedData) {
             });
         }
 
-        if (typeof window.changeMap === 'function') window.changeMap(targetMap, targetX, targetY);
-        if ($('main-menu-overlay')) $('main-menu-overlay').style.display = 'none'; 
-        if ($('main-ui')) $('main-ui').style.display = 'block';
+        if (typeof changeMap === 'function') changeMap(targetMap, targetX, targetY);
+        if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'none'; 
+        if($('main-ui')) $('main-ui').style.display = 'block';
 
         gameStarted = true; 
-        if (typeof window.updateOptions === 'function') window.updateOptions(); 
+        if (typeof updateOptions === 'function') updateOptions(); 
 
-        if (typeof update === 'function') requestAnimationFrame(update);
-        else if (typeof window.update === 'function') requestAnimationFrame(window.update);
+        if (typeof update === 'function') {
+            requestAnimationFrame(update);
+        } else if (typeof window.update === 'function') {
+            requestAnimationFrame(window.update);
+        }
 
         if (typeof addMessage === 'function') addMessage(`[${player.name}] 캐릭터로 접속했습니다.`, "#5f5");
         if (typeof startSessionCheckTimer === 'function') startSessionCheckTimer();
         
         if (window.socket) {
-            window.socket.emit('player_join', { id: currentUser.id, name: player.name, charClass: player.charClass, x: player.x, y: player.y, map: currentMap });
+            window.socket.emit('player_join', {
+                id: currentUser.id,
+                name: player.name,
+                charClass: player.charClass,
+                x: player.x,
+                y: player.y,
+                map: currentMap
+            });
         }
+
     } catch (err) {
-        console.error("게임 진입 중 에러:", err);
-        if (typeof showAlert === 'function') showAlert("진입 에러: " + err.message);
+        console.error("게임 진입 중 에러 발생:", err);
+        if (typeof showAlert === 'function') showAlert("게임 진입 중 오류가 발생했습니다: " + err.message);
+        loadedData.last_sync_time = 0;
+        const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+        if (sb) {
+            await sb.from('characters').update({ data: loadedData }).eq('id', charObj.id);
+        }
     }
 }
+
 
 // ==========================================
 // [4. UI 메시지, 스탯 계산, 버프]
@@ -1769,26 +1794,23 @@ window.removeMagicOption = function(stackKey, idx) {
 
 window.assignHotkeyFromModal = function(idx) { 
     if(!selectedItemForAction) return; 
+    
     if(selectedItemForAction.isMagic) { 
-        // 마법 고유 ID 저장
-        let mKey = Object.keys(magicDb).find(k => magicDb[k].name === selectedItemForAction.itemName) || selectedItemForAction.itemName;
+        let mKey = typeof magicDb !== 'undefined' ? (Object.keys(magicDb).find(k => magicDb[k].name === selectedItemForAction.itemName) || selectedItemForAction.itemName) : selectedItemForAction.itemName;
         hotkeys[idx] = { type: 'magic', id: mKey }; 
-        addMessage(`[F${idx+5}] 슬롯에 [${selectedItemForAction.itemName}] 등록 완료`, '#5f5'); 
+        if (typeof addMessage === 'function') addMessage(`[F${idx+5}] 슬롯에 [${selectedItemForAction.itemName}] 등록 완료`, '#5f5'); 
     } else { 
-        // 아이템 고유 ID 저장
+        // 💡 [수정됨] 템플릿 ID가 아닌 정확한 아이템 이름을 등록하여 인벤토리 수량과 정상 연동되도록 패치
         let { itemName, itemType } = selectedItemForAction; 
-        let targetItemTemplate = itemDb.find(i => i.name === itemName);
-        let itemId = targetItemTemplate ? targetItemTemplate.id : itemName;
-
-        hotkeys[idx] = { type: 'item', id: itemId, name: itemName }; 
-        addMessage(`[F${idx+5}] 슬롯에 [${itemName}] 등록 완료`, '#5f5'); 
+        hotkeys[idx] = { type: 'item', id: itemName, itemType: itemType }; 
+        if (typeof addMessage === 'function') addMessage(`[F${idx+5}] 슬롯에 [${itemName}] 등록 완료`, '#5f5'); 
     } 
-    playSound('click'); 
-    updateUI(); 
-    hideItemActionModal(); 
+    
+    if (typeof playSound === 'function') playSound('click'); 
+    if (typeof updateUI === 'function') updateUI(); 
+    if (typeof hideItemActionModal === 'function') window.hideItemActionModal(); 
     window.hotkeys = hotkeys; 
 };
-
 window.execItemAction = function(action) { 
     hideItemActionModal(); 
     if (!selectedItemForAction || selectedItemForAction.isMagic || action === 'cancel') return; 
@@ -2972,9 +2994,13 @@ window.showCharSelect = function() { $('main-menu-overlay').style.display = 'non
 window.hideCharSelect = function() { $('char-select-overlay').style.display = 'none'; $('main-menu-overlay').style.display = 'flex'; };
 
 window.inGameNewGame = function() {
-    showConfirm("현재 캐릭터 진행 상황을 자동 저장하고 새 캐릭터를 생성하시겠습니까?", () => {
-        saveGameToLocal(true); closeAllWindows(); showCharSelect();
-    });
+    if (typeof showConfirm === 'function') {
+        showConfirm("현재 캐릭터 진행 상황을 자동 저장하고 새 캐릭터를 생성하시겠습니까?", () => {
+            if (typeof saveGameToLocal === 'function') saveGameToLocal(true); 
+            window.closeAllWindows(); // 💡 window. 추가됨
+            if (typeof showCharSelect === 'function') showCharSelect();
+        });
+    }
 };
 
 function checkAndInitMainMenu() { if($('main-menu-overlay')) $('main-menu-overlay').style.display = 'flex'; }
@@ -4420,19 +4446,17 @@ document.addEventListener('dragstart', (e) => {
 });
 
 // ==========================================
-// 윈도우(모달) 전역 드래그 편의성 향상 패치 (상단 헤더 전용으로 수정)
+// 윈도우(모달) 전역 드래그 편의성 향상 패치 (버튼/인풋 완벽 제외)
 // ==========================================
 document.addEventListener('mousedown', (e) => {
-    // 💡 [핵심] 상점, 가방, 마법책 등 내부 리스트 영역을 클릭하면 드래그를 무시하고 스크롤 허용
+    // 💡 버튼, 입력 요소, 리스트를 누른 경우 창 드래그를 즉시 취소하여 버튼 클릭 100% 보장
+    if (e.target.closest('button, input, select, textarea, .confirm-btn, .menu-btn, .btn-close')) return;
     if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
 
     let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
-    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
+    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN')) {
         let rect = winEl.getBoundingClientRect();
-        let clientY = e.clientY;
-        
-        // 창의 상단 45px (제목 바) 영역을 눌렀을 때만 드래그 시작
-        if (clientY - rect.top <= 45) {
+        if (e.clientY - rect.top <= 45) {
             let winId = winEl.id;
             if (winId && typeof window.startDrag === 'function') {
                 window.startDrag(e, winId);
@@ -4442,15 +4466,13 @@ document.addEventListener('mousedown', (e) => {
 });
 
 document.addEventListener('touchstart', (e) => {
-    // 💡 [핵심] 모바일 터치 시에도 내부 리스트 영역 스크롤 우선 보장
+    if (e.target.closest('button, input, select, textarea, .confirm-btn, .menu-btn, .btn-close')) return;
     if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
 
     let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
-    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN') && !e.target.closest('button') && !e.target.closest('input')) {
+    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN')) {
         let rect = winEl.getBoundingClientRect();
-        let clientY = e.touches[0].clientY;
-        
-        if (clientY - rect.top <= 45) {
+        if (e.touches[0].clientY - rect.top <= 45) {
             let winId = winEl.id;
             if (winId && typeof window.startDrag === 'function') {
                 window.startDrag(e, winId);
