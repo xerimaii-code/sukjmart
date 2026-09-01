@@ -30,6 +30,20 @@ window.socket = typeof io !== 'undefined' ? io({
     reconnectionDelay: 1000
 }) : null;
 
+
+
+
+if (window.socket) {
+    window.socket.on('connect', () => {
+        // 첫 접속이 아닌, 서버 재시작으로 인한 재접속일 때만 새로고침 실행
+        if (window._hasConnectedOnce) {
+            window.location.reload();
+        }
+        window._hasConnectedOnce = true;
+    });
+}
+
+
 const SUPABASE_URL = 'https://vnagjrhnvtngsomxwair.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_fo-6ibZ51qwEpX7XYsLyRw_BprsNvR5';
 
@@ -575,14 +589,16 @@ function playSound(type, targetEntity = null) {
     } catch(e){}
 }
 
-window.updateOptions = function() { 
-    if($('opt-vol')) {
-        let vol = $('opt-vol').value; gameOptions.volume = (vol / 100) * 0.05; 
-        gameOptions.showDamage = $('opt-dmg').checked; 
-        gameOptions.showNames = $('opt-names').checked; 
-        gameOptions.minLootGrade = parseInt($('opt-loot-grade').value);
-        if(gameOptions.volume > 0 && gameStarted) playSound('click');
-    }
+window.updateOptions = function() { 
+    if ($('opt-vol')) {
+        let vol = $('opt-vol').value; 
+        gameOptions.volume = (vol / 100) * 0.05; 
+        gameOptions.showDamage = $('opt-dmg').checked; 
+        gameOptions.showNames = $('opt-names').checked; 
+        // 💡 루팅 등급 선택값 숫자로 변환하여 gameOptions에 저장
+        gameOptions.minLootGrade = parseInt($('opt-loot-grade').value) || 0; 
+        if (gameOptions.volume > 0 && gameStarted) playSound('click');
+    }
 };
 
 window.addEventListener('click', initAudio, {once:true});
@@ -1081,27 +1097,44 @@ window.toggleAutoPotion = function() {
 };
 
 window.respawnPlayer = function() {
-    let townMaps = ['talking_island', 'gludin', 'silver_knight_town', 'windawood', 'giran'];
-    let targetMap = townMaps.includes(currentMap) ? currentMap : 'silver_knight_town';
-    let targetX = 2000, targetY = 2000;
-    
-    if (maps[targetMap] && maps[targetMap].safeZones && maps[targetMap].safeZones.length > 0) {
-        targetX = maps[targetMap].safeZones[0].x;
-        targetY = maps[targetMap].safeZones[0].y;
+    // 💡 만약 현재 맵이 보스 레이드('boss_raid')라면 마을로 보내지 않고 그 자리(안전 좌표)에서 즉시 부활!
+    if (currentMap === 'boss_raid') {
+        player.hp = currentMaxHp;
+        player.mp = currentMaxMp;
+        player.isDead = false;
+        player.autoHunt = true; // 레이드 중이므로 사냥 유지 가능
+        player.target = null;
+        player.isMoving = false;
+
+        // 보스 방 입장 초기 좌표로 부활
+        player.x = 2000;
+        player.y = 3500;
+
+        if (typeof addMessage === 'function') {
+            addMessage("💀 사망하였으나 차원의 틈새 안에서 부활했습니다! 전투를 계속합니다.", "#f55");
+        }
+    } else {
+        // 일반 필드인 경우 기존처럼 마을로 부활
+        let townMaps = ['talking_island', 'gludin', 'silver_knight_town', 'windawood', 'giran'];
+        let targetMap = townMaps.includes(currentMap) ? currentMap : 'silver_knight_town';
+        let targetX = 2000, targetY = 2000;
+        
+        if (maps[targetMap] && maps[targetMap].safeZones && maps[targetMap].safeZones.length > 0) {
+            targetX = maps[targetMap].safeZones[0].x;
+            targetY = maps[targetMap].safeZones[0].y;
+        }
+        
+        player.hp = currentMaxHp;
+        player.mp = currentMaxMp;
+        player.isDead = false;
+        player.autoHunt = false;
+        player.autoPotion = false;
+        player.target = null;
+        player.isMoving = false;
+        
+        changeMap(targetMap, targetX, targetY);
+        addMessage("마을 안전지대에서 부활하였습니다.", "#f55");
     }
-    
-    player.hp = currentMaxHp;
-    player.mp = currentMaxMp;
-    player.isDead = false;
-    
-    // 💡 [추가] 사망 시 자동사냥과 자동물약 강제 OFF
-    player.autoHunt = false;
-    player.autoPotion = false;
-    player.target = null;
-    player.isMoving = false;
-    
-    changeMap(targetMap, targetX, targetY);
-    addMessage("마을 안전지대에서 부활하였습니다. (자동사냥/물약 OFF)", "#f55");
 
     if (window.socket && currentUser) {
         window.socket.emit('player_update', {
@@ -1113,6 +1146,7 @@ window.respawnPlayer = function() {
 
     updateUI();
 };
+
 // ==========================================
 // [5. 툴팁 & 단축키]
 // ==========================================
@@ -3789,63 +3823,62 @@ window.changeMap = function(newMap, nx, ny) { 
 };
 
 window.teleportPrompt = function() {
-    let teleportListEl = document.getElementById('teleport-list');
-    if (!teleportListEl) return;
-    
-    // 💡 맵 레벨 파싱 및 오름차순 정렬 로직 수정
-    let mapKeys = Object.keys(maps);
-    mapKeys.sort((a, b) => {
-        let m1 = maps[a];
-        let m2 = maps[b];
-        
-        let textA = m1.recLv || '';
-        let textB = m2.recLv || '';
+    let teleportListEl = document.getElementById('teleport-list');
+    if (!teleportListEl) return;
+    
+    let mapKeys = Object.keys(maps);
+    mapKeys.sort((a, b) => {
+        // 💡 [수정] 보스 레이드 맵 무조건 맨 하단 고정
+        if (a === 'boss_raid') return 1;
+        if (b === 'boss_raid') return -1;
 
-        // 1. 안전지대(마을)가 포함된 곳을 가장 최우선(상단)으로 배치
-        let isSafeA = m1.safeZones && m1.safeZones.length > 0;
-        let isSafeB = m2.safeZones && m2.safeZones.length > 0;
-        if (isSafeA && !isSafeB) return -1;
-        if (!isSafeA && isSafeB) return 1;
+        let m1 = maps[a]; let m2 = maps[b];
+        let isSafeA = m1.safeZones && m1.safeZones.length > 0;
+        let isSafeB = m2.safeZones && m2.safeZones.length > 0;
+        if (isSafeA && !isSafeB) return -1;
+        if (!isSafeA && isSafeB) return 1;
 
-        // 2. 레벨 문자열에서 정확한 시작 레벨 숫자 추출 (예: "Lv.100+" -> 100, "Lv.1~15" -> 1)
-        let getMinLevel = (str) => {
-            if (str.includes('100+') || str.includes('105+')) return 100; // 고레벨 맵 강제 후순위 배치
-            let match = str.match(/\d+/);
-            return match ? parseInt(match[0]) : 999;
-        };
+        let getMinLevel = (str) => {
+            if (!str) return 999;
+            if (str.includes('100+') || str.includes('105+')) return 100;
+            let match = str.match(/\d+/);
+            return match ? parseInt(match[0]) : 999;
+        };
+        return getMinLevel(m1.recLv) - getMinLevel(m2.recLv);
+    });
 
-        let lvA = getMinLevel(textA);
-        let lvB = getMinLevel(textB);
-        
-        return lvA - lvB;
-    });
+    let html = '';
+    mapKeys.forEach(key => {
+        let m = maps[key];
+        let isRaid = key === 'boss_raid';
+        let hasSafeZone = m.safeZones && m.safeZones.length > 0;
+        let safeBadge = hasSafeZone ? ` <span style="color:#5f5; font-size:11px;">[안전지대]</span>` : '';
+        let recLvText = m.recLv ? ` [${m.recLv}]` : '';
 
-    let html = '';
-    mapKeys.forEach(key => {
-        let m = maps[key];
-        let hasSafeZone = m.safeZones && m.safeZones.length > 0;
-        let safeBadge = hasSafeZone ? ` <span style="color:#5f5; font-size:11px;">[안전지대]</span>` : '';
-        let recLvText = m.recLv ? ` [${m.recLv}]` : '';
+        let targetX = hasSafeZone ? m.safeZones[0].x : -1;
+        let targetY = hasSafeZone ? m.safeZones[0].y : -1;
 
-        let targetX = hasSafeZone ? m.safeZones[0].x : -1;
-        let targetY = hasSafeZone ? m.safeZones[0].y : -1;
+        let onClickAction = isRaid 
+            ? `window.enterBossRaid(); document.getElementById('teleport-modal').style.display='none';` 
+            : `changeMap('${key}', ${targetX}, ${targetY}); document.getElementById('teleport-modal').style.display='none';`;
 
-        html += `<button class="confirm-btn bg-dark-green" style="margin:2px; display:flex; justify-content:space-between; align-items:center; padding:8px 12px;" onclick="changeMap('${key}', ${targetX}, ${targetY}); document.getElementById('teleport-modal').style.display='none';">
-            <span>${m.name}${safeBadge}</span>
-            <span style="font-size:11px; color:#fd0;">${recLvText}</span>
-        </button>`;
-    });
-    
-    teleportListEl.innerHTML = html;
-    
-    let modal = document.getElementById('teleport-modal');
-    if (modal) {
-        modal.style.display = 'flex';
-        bringToFront('teleport-modal');
-        setTimeout(() => autoCenterWindow('teleport-modal', true), 10);
-    }
+        let btnBg = isRaid ? 'background: linear-gradient(to right, #7f1d1d, #450a0a); border-color:#dc2626;' : '';
+
+        html += `<button class="confirm-btn bg-dark-green" style="margin:2px; display:flex; justify-content:space-between; align-items:center; padding:8px 12px; ${btnBg}" onclick="${onClickAction}">
+            <span style="${isRaid ? 'color:#facc15; font-weight:bold;' : ''}">${m.name}${safeBadge}</span>
+            <span style="font-size:11px; color:#fd0;">${recLvText}</span>
+        </button>`;
+    });
+    
+    teleportListEl.innerHTML = html;
+    
+    let modal = document.getElementById('teleport-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        bringToFront('teleport-modal');
+        setTimeout(() => autoCenterWindow('teleport-modal', true), 10);
+    }
 };
-
 window.selectClass = async function(charClass) {
     playSound('click');
     let charName = window.pendingCharName || '모험가';

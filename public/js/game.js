@@ -1,39 +1,38 @@
+// ========================================================
+// 📱 [화면 꺼짐 완전 방지 & 백그라운드 논블로킹 엔진]
+// ========================================================
 let wakeLock = null;
-let wakeLockVideo = null;
 let lastUserActionTime = performance.now();
 let isDimmed = false;
+let bgGameInterval = null;
 
-// 1. 화면 꺼짐 및 잠금 완벽 방지 (안드로이드 WakeLock + 아이폰 무음 비디오 루프)
-async function requestWakeLock() {
-    if ('wakeLock' in navigator) {
-        try {
-            if (!wakeLock || wakeLock.released) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                wakeLock.addEventListener('release', () => { wakeLock = null; });
-            }
-        } catch (err) {}
-    }
+// 모바일 기기(스마트폰/태블릿) 여부 판별 (PC에서 창을 좁혀도 PC로 정확히 인식)
+const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-    // 아이폰(iOS Safari) 등 WakeLock 미지원 기기를 위한 백그라운드 무음 비디오 강제 재생
-    if (!wakeLockVideo) {
-        wakeLockVideo = document.createElement('video');
-        wakeLockVideo.setAttribute('loop', '');
-        wakeLockVideo.setAttribute('muted', '');
-        wakeLockVideo.setAttribute('playsinline', '');
-        // 1픽셀짜리 투명 비디오 데이터
-        wakeLockVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBpc29tAAACAGlzb21pc28yYXZjMQAAAAhmcmVlAAAAG21kYXQAAAH0MDk3//wAAAAAAAAAAAAAAABAAAAB/wD/G21vb3YAAABsbXZoZAAAAADawT7M2sE+zAAAAAACSAAAACQAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAADV0cmFrAAAAXHRraGQAAAAD2sE+zNrBPswAAAABAAAAAAAkAAAAAAAAAAAAAAAAAAEAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAIAAAAAIAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAAAJAAAAAACAAAAAABybWRpYQAAACBtZGhkAAAAANrBPszawT7MAAAAIAAAACQAAAAAAAAAAAAAAAB1aGRscgAAAAAAAAAAdmlkZQAAAAAAAAAAAAAAAAAAAAAAO21pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAABNzdGJsAAAAb3N0c2QAAAAAAAAAAQAAAF9hdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAgACAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAxYXZjQwH0AAr/4QAYZ/QwKqKysxIBAgEBAwAQAAMB6gBvwBEAAAMAEAAAAwPI8SgAAAAIcHThAigAAABMc3R0cwAAAAAAAAABAAAAAQAAAAIAAAAoc3RzYwAAAAAAAAABAAAAFHN0Y28AAAAAAAAAAQAAAAEAAAABAAAAFHN0c3oAAAAAAAAAAQAAAAEAAAAUc3RjbwAAAAAAAAABAAAAMg==';
-        wakeLockVideo.style.display = 'none';
-        document.body.appendChild(wakeLockVideo);
-    }
-    if (wakeLockVideo.paused) wakeLockVideo.play().catch(() => {});
+// 1. 화면 꺼짐 방지 함수 (에러 완전 격리형)
+function requestWakeLock() {
+    if (!isMobileDevice || !('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    
+    navigator.wakeLock.request('screen')
+        .then(lock => {
+            wakeLock = lock;
+            wakeLock.addEventListener('release', () => { wakeLock = null; });
+        })
+        .catch(() => {
+            wakeLock = null;
+        });
 }
 
+// 2. 유저 터치/조작 시 화면 복귀 및 타이머 리셋
 function resetIdleTimer() {
     lastUserActionTime = performance.now();
     if (isDimmed) {
         isDimmed = false;
         let dimOverlay = document.getElementById('dim-overlay');
-        if (dimOverlay) dimOverlay.style.opacity = '0';
+        if (dimOverlay) {
+            dimOverlay.style.opacity = '0';
+            dimOverlay.style.pointerEvents = 'none';
+        }
     }
     requestWakeLock();
 }
@@ -42,39 +41,32 @@ function resetIdleTimer() {
     window.addEventListener(evt, resetIdleTimer, { passive: true });
 });
 
+// 3. 탭 전환/화면 가림 시 백그라운드 무한 사냥 가동 (PC 창 가림 대응)
 document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') resetIdleTimer();
+    if (document.visibilityState === 'hidden') {
+        // 화면이 가려지면 50ms(초당 20회) 주기로 내부 전투/사냥 로직 강제 가동
+        if (!bgGameInterval && gameStarted) {
+            bgGameInterval = setInterval(() => {
+                if (typeof update === 'function') {
+                    update(performance.now());
+                }
+            }, 50);
+        }
+    } else {
+        // 다시 화면이 보이면 백그라운드 타이머 정리 후 정상 프레임 복귀
+        if (bgGameInterval) {
+            clearInterval(bgGameInterval);
+            bgGameInterval = null;
+        }
+        lastTime = performance.now();
+        resetIdleTimer();
+        requestAnimationFrame(update);
+    }
 });
 
-// ========================================================
-// 2. 스마트 절전 모드 (충전 중 및 PC 환경 완전 제외)
-// ========================================================
-let isCharging = false;
-
-// 배터리 API를 통한 충전기 연결 상태 실시간 감지
-if (navigator.getBattery) {
-    navigator.getBattery().then(battery => {
-        isCharging = battery.charging;
-        battery.addEventListener('chargingchange', () => {
-            isCharging = battery.charging;
-            if (isCharging && isDimmed) {
-                isDimmed = false;
-                let dimOverlay = document.getElementById('dim-overlay');
-                if (dimOverlay) dimOverlay.style.opacity = '0';
-            }
-        });
-    }).catch(() => {});
-}
-
+// 4. 모바일 기기 전용 45초 스마트 절전 (PC는 작동하지 않음)
 setInterval(() => {
-    let isRealMobileOS = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    let isTouchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-    
-    // 모바일 OS이거나, 터치스크린이면서 창이 작을 때만 모바일로 인정
-    let isMobile = isRealMobileOS || (window.innerWidth <= 768 && isTouchScreen);
-
-    // PC 환경이거나, 충전 중일 때는 항상 화면 밝기 100% 유지
-    if (!isMobile || isCharging) {
+    if (!isMobileDevice || typeof gameStarted === 'undefined' || !gameStarted) {
         if (isDimmed) {
             isDimmed = false;
             let dimOverlay = document.getElementById('dim-overlay');
@@ -83,15 +75,21 @@ setInterval(() => {
         return;
     }
 
-    // 모바일 배터리 구동 시 45초간 미조작 시에만 어둡게 전환
-    if (gameStarted && !isDimmed && (performance.now() - lastUserActionTime > 45000)) {
+    if (!wakeLock) {
+        requestWakeLock();
+    }
+
+    let idleTime = performance.now() - lastUserActionTime;
+    if (idleTime > 45000 && !isDimmed) {
         isDimmed = true;
         let dimOverlay = document.getElementById('dim-overlay');
-        if (dimOverlay) dimOverlay.style.opacity = '0.65';
+        if (dimOverlay) {
+            dimOverlay.innerHTML = ''; 
+            dimOverlay.style.opacity = '0.35';
+            dimOverlay.style.pointerEvents = 'none';
+        }
     }
-}, 1000);
-
-
+}, 5000);
 
 
 
@@ -3278,7 +3276,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
     window._lastSocketSendTime = timestamp;
     // 💡 [수정] 제자리 사냥 중이어도 용병의 물약 복용/현재 HP가 서버에 실시간으로 반영되도록 조건 완화
     if (window.socket && currentUser) {
-        let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
+let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
         window.socket.emit('player_update', {
             name: player.name,
             charClass: player.charClass,
@@ -3286,6 +3284,12 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
             y: player.y,
             hp: player.hp,
             maxHp: currentMaxHp,
+            atk: player.atk || 20,       // 💡 실제 최종 연산 공격력 전송
+            def: player.def || 0,        // 💡 실제 최종 연산 방어력 전송
+            str: player.str || 18,
+            dex: player.dex || 14,
+            int: player.int || 8,
+            level: player.level || 1,
             map: currentMap,
             equip: player.equip,
             mercs: myActiveMercs.map(m => ({
@@ -3297,8 +3301,10 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
                 ownerName: player.name,
                 x: m.x,
                 y: m.y,
-                hp: m.hp, // 실시간 물약 복용 체력 반영
+                hp: m.hp,
                 maxHp: m.maxHp,
+                atk: m.atk || 15,        // 💡 용병 실시간 공격력
+                def: m.def || 5,         // 💡 용병 실시간 방어력
                 equip: m.equip || { weapon: null, armor: null, helmet: null, cloak: null },
                 angle: m.angle || 0,
                 isMoving: m.isMoving || false
@@ -3470,7 +3476,7 @@ if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100)
 // ========================================================
 // 12. 타겟 추적 이동 및 패시브 공격 실행 (기사/요정 완결판)
 // ========================================================
-if (target && typeof target.y === 'number' && target.hp > 0 && !target.isDead) {
+if (target && typeof target === 'object' && typeof target.y === 'number' && typeof target.x === 'number' && target.hp > 0 && !target.isDead) {
     if (target.isSummon && target.owner === player) {
         player.isMoving = false;
     } 
@@ -3921,10 +3927,15 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
         }
     }
 
-    if (typeof draw === 'function') draw(timestamp);
-    requestAnimationFrame(update);
-} 
-window.update = update;
+if (document.visibilityState === 'visible') {
+        try {
+            if (typeof draw === 'function') draw(timestamp);
+        } catch (renderErr) {
+            console.error("[-] 렌더링 중 일시적 오류 발생 (루프 유지됨):", renderErr);
+        }
+        requestAnimationFrame(update);
+    }
+}
 
 
 function updateMercenaryCombat(merc) {
@@ -5568,5 +5579,153 @@ window.processAutoConsumablesAndBuffs = function() {
                 break;
             }
         }
+    }
+};
+
+// ==========================================
+// 🔥 [보스 레이드: 15초 대기실, 단계별 스폰 및 자동 귀환]
+// ==========================================
+window.enterBossRaid = function() {
+    if (!gameStarted || !player) return;
+
+    player.isMoving = false;
+    player.target = null;
+    player.moveX = undefined;
+    player.moveY = undefined;
+    player.autoHunt = false;
+    if (typeof updateUI === 'function') updateUI();
+
+    let wpEnchant = (player.equip && player.equip.weapon && player.equip.weapon.enchantValue) ? player.equip.weapon.enchantValue : 0;
+    let amEnchant = (player.equip && player.equip.armor && player.equip.armor.enchantValue) ? player.equip.armor.enchantValue : 0;
+    
+    let mainStat = 0;
+    let classPowerBonus = 0;
+
+    // 1. 클래스별 스탯 및 특화 계수 계산
+    if (player.charClass === 'wizard') {
+        mainStat = player.int || 18;
+        // 마법사는 SP(마공)가 화력의 핵심이므로 SP 당 전투력 대폭 가산
+        classPowerBonus = (player.sp || 0) * 50; 
+    } else if (player.charClass === 'elf') {
+        mainStat = player.dex || 14;
+        classPowerBonus = (player.dex || 14) * 10;
+    } else {
+        mainStat = player.str || 18;
+        classPowerBonus = (player.str || 18) * 10;
+    }
+
+    // 2. 동행 중인 용병들의 화력 가중치 산출
+    let mercsCombatPower = 0;
+    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.hp > 0);
+    
+    activeMercs.forEach(m => {
+        if (m.mercType === 'wizard' || m.charClass === 'wizard') {
+            // 마법사 용병은 상급 마법 난사 딜레이/데미지를 고려하여 높은 가중치 부여
+            mercsCombatPower += 2000 + ((m.level || 1) * 100);
+        } else {
+            // 기사/요정 용병은 물리 탱킹 및 평타 화력 기준 가중치 부여
+            mercsCombatPower += 800 + ((m.level || 1) * 50);
+        }
+    });
+
+    // 3. 최종 통합 전투력 (플레이어 기본 + 직업 특화 + 용병 화력)
+    let combatPower = (player.level * 300) + (wpEnchant * 250) + (amEnchant * 150) + (mainStat * 20) + classPowerBonus + mercsCombatPower;
+
+    if (window.socket && currentUser) {
+        window.socket.emit('request_join_raid', { combatPower });
+    }
+
+    let raidOverlay = document.createElement('div');
+    raidOverlay.id = 'raid-cutscene';
+    raidOverlay.style.cssText = 'position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.9); z-index:9999999; display:flex; flex-direction:column; justify-content:center; align-items:center; opacity:0; transition:opacity 0.3s ease;';
+    
+    let textEl = document.createElement('div');
+    textEl.style.cssText = 'color:#fff; font-size:20px; font-weight:bold; text-align:center; text-shadow: 2px 2px 4px #000; line-height: 2.0;';
+    textEl.innerHTML = `[ 차원의 틈새 대기실 ]<br><span style="color:#fd0; font-size:24px;">파티원 모집 중... (15초 후 시작)</span><br><span style="font-size:13px; color:#aaa;">⚠️ 시작 후에는 추가 난입이 불가능합니다.</span>`;
+    raidOverlay.appendChild(textEl);
+    document.body.appendChild(raidOverlay);
+
+    setTimeout(() => raidOverlay.style.opacity = '1', 50);
+
+    window.socket.off('raid_countdown_tick');
+    window.socket.on('raid_countdown_tick', (data) => {
+        textEl.innerHTML = `[ 차원의 틈새 대기실 ]<br><span style="color:#fd0; font-size:26px;">⚔️ 전투 시작까지 ${data.countdown}초 전!</span><br><span style="font-size:13px; color:#aaa;">대기 중인 파티원과 함께 진입합니다.</span>`;
+        if (typeof playSound === 'function') playSound('click');
+    });
+
+    window.socket.off('raid_battle_start');
+    window.socket.on('raid_battle_start', (data) => {
+        let bgTypes = ['lava', 'dungeon', 'tower', 'stone'];
+        let timeSeed = Math.floor(Date.now() / 600000);
+        let randomBg = bgTypes[timeSeed % bgTypes.length];
+        
+        if (maps['boss_raid']) maps['boss_raid'].bg = randomBg;
+        if (generatedMaps['boss_raid']) delete generatedMaps['boss_raid'];
+        
+        changeMap('boss_raid', 2000, 3600);
+        window.spawnRaidBoss(data.tierIndex, 1);
+
+        raidOverlay.style.opacity = '0';
+        setTimeout(() => raidOverlay.remove(), 400);
+    });
+
+    // 💡 5보스 최종 클리어 후 안전한 마을 강제 복귀 리스너
+    window.socket.off('raid_clear_return_town');
+    window.socket.on('raid_clear_return_town', (data) => {
+        if (!gameStarted) return;
+
+        if (typeof addMessage === 'function') {
+            addMessage("🏆 레이드 완전 정복! 안전한 마을로 귀환합니다.", "#fd0");
+        }
+
+        player.autoHunt = false;
+        player.autoPotion = false;
+        player.target = null;
+        player.isMoving = false;
+        player.moveX = undefined;
+        player.moveY = undefined;
+
+        if (typeof changeMap === 'function') {
+            changeMap(data.map || 'talking_island', data.x || 2000, data.y || 2000);
+        }
+        if (typeof updateUI === 'function') updateUI();
+    });
+};
+
+window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
+    let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+    let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
+    let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
+    
+    // 💡 1차 웨이브 기본 스펙
+    let pAtk = (player.atk || 20) + ((player.equip && player.equip.weapon && player.equip.weapon.atk) || 10);
+    let calculatedHp = Math.max(150000, pAtk * 40 * (1 + waveNum * 0.2));
+
+    let raidBoss = {
+        id: 'raid_boss_w' + waveNum + '_' + Date.now(),
+        name: `${tierTitles[tierIndex || 0]} ${selectedBoss} (${waveNum}/5)`,
+        isBoss: true,
+        x: 2000, 
+        y: 800, // 맵 안쪽 스폰
+        map: 'boss_raid',
+        size: 30 + ((tierIndex || 0) * 3),
+        hp: calculatedHp,
+        maxHp: calculatedHp,
+        atk: 80 + (waveNum * 15),
+        def: 50 + (waveNum * 10),
+        exp: 30000 * waveNum,
+        color: '#ff3333',
+        angle: 0,
+        isMoving: false,
+        raidTier: tierIndex || 0
+    };
+
+    if (window.socket && currentUser) {
+        window.socket.emit('spawn_raid_boss', raidBoss);
+    }
+
+    entities.push(raidBoss);
+    if (typeof addMessage === 'function') {
+        addMessage(`차원의 틈새 최심부에 [${waveNum}차 웨이브] ${raidBoss.name}이(가) 나타났습니다!`, '#f55');
     }
 };

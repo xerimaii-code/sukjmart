@@ -19,6 +19,10 @@ const _pt = (n, h, p, x={}) => ({ name: n, type: "potion", heal: h, price: p, ..
 // [2. 맵 정보 데이터] (몬스터 젠 수 대폭 상향 패치)
 // ==========================================
 const maps = {
+
+
+ 
+
     'talking_island': {
         ..._map('말하는 섬', 'Lv.1~15', 'grass', ['goblin', 'orc', 'werewolf', 'shelob', 'doberman', 'slime'], [{id:'giant_ungoliant', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
         maxMobs: 65,
@@ -67,7 +71,13 @@ const maps = {
     'giran_dungeon_4': { ..._map('기란 감옥 4층', 'Lv.55~70', 'dungeon', ['giran_guard', 'giran_prisoner', 'doppelganger'], [{id:'kline', x:3500, y:3500}], [], []), maxMobs: 90 },
     'eva_kingdom': { ..._map('에바 왕국 던전 (수던 4층)', 'Lv.60~75', 'dungeon', ['crustacean', 'alligator', 'mermaid', 'merman', 'bone_eel'], [{id:'zariandy', x:3500, y:3500}], [], []), maxMobs: 100 },
     'dragon_valley_deep': { ..._map('용의 계곡 심층', 'Lv.70~85', 'stone', ['giant_ogre', 'cockatrice', 'skeleton_marksman', 'drake'], [{id:'zeroth', x:3500, y:3500}], [], []), maxMobs: 80 },
-    'elven_forest_deep': { ..._map('요정의 숲 깊은 곳', 'Lv.40~55', 'grass', ['ent', 'fairy', 'arachne', 'pan'], [], [], []), maxMobs: 70 }
+    'elven_forest_deep': { ..._map('요정의 숲 깊은 곳', 'Lv.40~55', 'grass', ['ent', 'fairy', 'arachne', 'pan'], [], [], []), maxMobs: 70 },
+        'boss_raid': {
+        name: "🔥 [보스 레이드] 차원의 틈새",
+        bg: "dungeon", // 진입 시마다 랜덤으로 덮어씌워짐
+        recLv: "자동 스케일링",
+        safeZones: [] // 안전지대 없는 완전 전투 구역
+    }
 };
 // ==========================================
 // [3. 몬스터 & 보스 데이터 (체력 대폭 상향)]

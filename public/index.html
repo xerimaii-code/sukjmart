@@ -16,9 +16,6 @@
     <script src="/socket.io/socket.io.js"></script>
 
 <style>
-
-
-
 /* 기본 모바일/반응형 하단 바 */
 #ui-bottom-bar {
     height: 165px;
@@ -43,7 +40,7 @@
         display: flex !important; 
         align-items: center !important; 
         gap: 8px !important; 
-        height: 16px !important; /* PC 전용: 두껍고 큼직한 체력바 (20px) */
+        height: 16px !important;
     }
     .bar-label { 
         width: 36px !important; 
@@ -66,7 +63,6 @@
     .mp { background: linear-gradient(to bottom, #3366ff, #001188) !important; }
     .exp { background: linear-gradient(to bottom, #ffcc00, #886600) !important; }
 
-    /* PC 전용 글씨: 크고 진한 폰트 + 4방향 블랙 외곽선 */
     .bar-text { 
         position: absolute !important; 
         top: 0 !important; 
@@ -74,10 +70,10 @@
         width: 100% !important; 
         height: 100% !important; 
         text-align: center !important; 
-        font-size: 11.5px !important; /* 큼직한 폰트 크기 */
+        font-size: 11.5px !important; 
         font-weight: bold !important; 
         color: #ffffff !important; 
-        line-height: 20px !important; /* 바 높이에 맞춰 수직 중앙 정렬 */
+        line-height: 16px !important; 
         text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000 !important; 
     }
 }
@@ -92,7 +88,6 @@
 .ce-slot:hover { border-color: #fd0; }
 .ce-label { position: absolute; bottom: -14px; width: 100%; text-align: center; font-size: 10px; color: #aaa; text-shadow: 1px 1px 0 #000; pointer-events: none; }
 
-/* 장비 슬롯 위치 (원작 파워북 스타일 배치) */
 .ce-helm { top: 10px; left: 90px; }
 .ce-tshirt { top: 60px; left: 40px; }
 .ce-armor { top: 60px; left: 90px; }
@@ -105,10 +100,8 @@
 .ce-ring2 { top: 210px; left: 115px; }
 .ce-belt { top: 110px; left: 90px; }
 
-/* E (장착) 마크 */
 .e-mark { position: absolute; top: 2px; left: 2px; font-size: 10px; font-weight: bold; color: #fd0; background: rgba(0,0,0,0.7); padding: 0 3px; border-radius: 2px; border: 1px solid #da0; pointer-events: none; }
 
-/* --- 마법책 세련된 버튼 --- */
 .btn-magic-setup { background: linear-gradient(to bottom, #444, #222); border: 1px solid #666; color: #ccc; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
 .btn-magic-setup:hover { border-color: #fd0; color: #fff; }
 .btn-magic-use { background: linear-gradient(to bottom, #262, #141); border: 1px solid #4a4; color: #5f5; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
@@ -369,7 +362,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         margin-top: 1px !important; 
     }
 
-  #ui-bottom-bar {
+    #ui-bottom-bar {
         position: absolute !important;
         bottom: 0 !important;
         left: 0 !important;
@@ -410,55 +403,54 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         flex-direction: column !important; 
         border-right: 1px solid #444; 
     }
-   #ui-bars { 
-    padding: 6px 8px; 
-    background: #0c0c10; 
-    display: flex; 
-    flex-direction: column; 
-    gap: 3px; 
-    border-bottom: 1px solid #33333d; 
-}
-.bar-wrap { 
-    display: flex; 
-    align-items: center; 
-    gap: 6px; 
-    height: 16px; /* 두께 16px로 확장 */
-}
-.bar-label { 
-    width: 32px; 
-    font-size: 11px; 
-    font-weight: bold; 
-    color: #ccc; 
-    text-align: right; 
-}
-.bar-bg { 
-    flex: 1; 
-    height: 100%; 
-    background: #000; 
-    border: 1px inset #555; 
-    position: relative; 
-    overflow: hidden; 
-    border-radius: 2px;
-}
-.bar-fill { height: 100%; }
-.hp { background: linear-gradient(to bottom, #e33, #800); }
-.mp { background: linear-gradient(to bottom, #36f, #008); }
-.exp { background: linear-gradient(to bottom, #fd0, #880); }
+    #ui-bars { 
+        padding: 6px 8px; 
+        background: #0c0c10; 
+        display: flex; 
+        flex-direction: column; 
+        gap: 3px; 
+        border-bottom: 1px solid #33333d; 
+    }
+    .bar-wrap { 
+        display: flex; 
+        align-items: center; 
+        gap: 6px; 
+        height: 16px; 
+    }
+    .bar-label { 
+        width: 32px; 
+        font-size: 11px; 
+        font-weight: bold; 
+        color: #ccc; 
+        text-align: right; 
+    }
+    .bar-bg { 
+        flex: 1; 
+        height: 100%; 
+        background: #000; 
+        border: 1px inset #555; 
+        position: relative; 
+        overflow: hidden; 
+        border-radius: 2px;
+    }
+    .bar-fill { height: 100%; }
+    .hp { background: linear-gradient(to bottom, #e33, #800); }
+    .mp { background: linear-gradient(to bottom, #36f, #008); }
+    .exp { background: linear-gradient(to bottom, #fd0, #880); }
 
-/* 글씨 크기 확대 + 검정 외곽선 처리로 가독성 극대화 */
-.bar-text { 
-    position: absolute; 
-    top: 0; 
-    left: 0; 
-    width: 100%; 
-    height: 100%; 
-    text-align: center; 
-    font-size: 12px; 
-    font-weight: bold; 
-    color: #fff; 
-    line-height: 16px; /* 높이에 맞춤 */
-    text-shadow: 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; 
-}
+    .bar-text { 
+        position: absolute; 
+        top: 0; 
+        left: 0; 
+        width: 100%; 
+        height: 100%; 
+        text-align: center; 
+        font-size: 12px; 
+        font-weight: bold; 
+        color: #fff; 
+        line-height: 16px; 
+        text-shadow: 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; 
+    }
 
     #ui-chat { 
         flex: 1 !important; 
@@ -504,15 +496,15 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     .menu-btn { font-size: 7.5px !important; padding: 1px !important; height: 100% !important; }
     
     #buff-list {
-                position: fixed !important;
-                top: 75px !important; 
-                left: 10px !important;
-                transform: none !important;
-                display: flex !important;
-                flex-wrap: wrap !important;
-                max-width: 50vw !important;
-                z-index: 999 !important;
-            }
+        position: fixed !important;
+        top: 75px !important; 
+        left: 10px !important;
+        transform: none !important;
+        display: flex !important;
+        flex-wrap: wrap !important;
+        max-width: 50vw !important;
+        z-index: 999 !important;
+    }
     
     #win-pet .win-content { padding: 6px 8px !important; gap: 3px !important; overflow: hidden !important; }
     #win-pet div[style*="background:#111"] { padding: 4px 6px !important; margin-bottom: 3px !important; }
@@ -585,14 +577,13 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
             </div>
 
             <div id="slot-box" style="display:none; margin-bottom: 15px;">
-    <div id="user-info-text" style="font-size: 12px; color: #aaa; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;"></div>
-    <div id="character-slots" style="display: flex; flex-direction: column; gap: 8px;"></div>
-    <button class="confirm-btn bg-dark-red w-full mt-3" style="font-size: 12px; font-weight: bold; padding: 8px; color: #f88;" onclick="handleSignOut()">로그아웃</button>
-</div>
+                <div id="user-info-text" style="font-size: 12px; color: #aaa; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 5px;"></div>
+                <div id="character-slots" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                <button class="confirm-btn bg-dark-red w-full mt-3" style="font-size: 12px; font-weight: bold; padding: 8px; color: #f88;" onclick="handleSignOut()">로그아웃</button>
+            </div>
         </div>
     </div>
 
-    <!-- 캐릭터 선택 -->
     <!-- 캐릭터 선택 -->
     <div id="char-select-overlay" class="modal-overlay">
         <div style="width: 100%; text-align: center; padding: 20px; box-sizing: border-box; overflow-y: auto; max-height: 100vh;">
@@ -623,41 +614,40 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                     <div class="char-stat"><span style="color:#aaa">초기 체력/마나</span> <span style="color:#f55">80</span> / <span style="color:#55f">50</span></div>
                 </div>
             </div>
-            <!-- 💡 [추가 완료] 뒤로 가기 버튼 -->
             <div style="margin-top: 25px;">
                 <button class="confirm-btn bg-gray" style="width: 200px; padding: 10px; font-weight: bold; cursor: pointer;" onclick="hideCharSelect()">뒤로 가기</button>
             </div>
         </div>
     </div>
 
-<div class="window" id="win-transfer" style="width: 290px; z-index: 1000; display: none;">
-    <div class="win-header" onmousedown="startDrag(event, 'win-transfer')">
-        <span id="transfer-win-title">아이템 전달 (용병)</span>
-        <span class="win-close" onclick="closeTransferWindow()">X</span>
-    </div>
-    <div class="win-content" style="padding: 15px; text-align: center;">
-        <div style="margin-bottom: 12px;">
-            <span id="transfer-item-name" style="font-weight: bold; color: #fff; display: block; font-size: 14px;"></span>
-            <span id="transfer-item-count" style="font-size: 12px; color: #aaa; margin-top: 2px; display: block;"></span>
+    <div class="window" id="win-transfer" style="width: 290px; z-index: 1000; display: none;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-transfer')">
+            <span id="transfer-win-title">아이템 전달 (용병)</span>
+            <span class="win-close" onclick="closeTransferWindow()">X</span>
         </div>
+        <div class="win-content" style="padding: 15px; text-align: center;">
+            <div style="margin-bottom: 12px;">
+                <span id="transfer-item-name" style="font-weight: bold; color: #fff; display: block; font-size: 14px;"></span>
+                <span id="transfer-item-count" style="font-size: 12px; color: #aaa; margin-top: 2px; display: block;"></span>
+            </div>
 
-        <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
-            <input type="number" id="transfer-input" class="modal-input" value="1" min="1" oninput="validateTransferInput()" style="width: 100%; margin: 0;">
-            <div style="display: flex; gap: 4px;">
-                <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('min')">1개</button>
-                <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('half')">반절</button>
-                <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('max')">전체</button>
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+                <input type="number" id="transfer-input" class="modal-input" value="1" min="1" oninput="validateTransferInput()" style="width: 100%; margin: 0;">
+                <div style="display: flex; gap: 4px;">
+                    <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('min')">1개</button>
+                    <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('half')">반절</button>
+                    <button type="button" class="menu-btn" style="flex:1; padding: 5px 0; font-size:11px;" onclick="setTransferQuickQty('max')">전체</button>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="confirm-btn bg-dark-green" onclick="submitTransfer()">전달</button>
+                <button type="button" class="confirm-btn bg-gray" onclick="closeTransferWindow()">취소</button>
             </div>
         </div>
-
-        <div style="display: flex; gap: 8px;">
-            <button type="button" class="confirm-btn bg-dark-green" onclick="submitTransfer()">전달</button>
-            <button type="button" class="confirm-btn bg-gray" onclick="closeTransferWindow()">취소</button>
-        </div>
     </div>
-</div>
 
- <!-- 인게임 메인 UI -->
+    <!-- 인게임 메인 UI -->
     <div id="main-ui" style="display: none;">
         <div id="party-hud-list" style="position: absolute; top: 150px; left: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 350; pointer-events: auto;"></div>
         <div id="mercenary-hud-list"></div>
@@ -714,107 +704,125 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                 </div>
             </div>
         </div>
+    </div> <!-- 💡 [수정] 누락되었던 main-ui 종료 태그 정상 삽입 -->
+
+    <!-- 옵션 창 -->
+    <div class="window" id="win-option" style="width: 300px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-option')">
+            <span>환경 설정</span> 
+            <span class="win-close" onclick="toggleWindow('win-option')">X</span>
+        </div>
+        <div class="win-content" style="padding: 15px; display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; color: #ccc; font-size: 13px;">
+                <label style="font-weight:bold; color:#fff;">효과음 볼륨</label>
+                <input type="range" id="opt-vol" min="0" max="100" value="50" oninput="updateOptions()" style="width: 100%; cursor: pointer;">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
+                <label style="font-weight:bold; color:#fff;">데미지 텍스트 표시</label>
+                <input type="checkbox" id="opt-dmg" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
+                <label style="font-weight:bold; color:#fff;">캐릭터/몬스터 이름 표시</label>
+                <input type="checkbox" id="opt-names" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
+                <label style="font-weight:bold; color:#fff;">자동 루팅 최소 등급</label>
+                <select id="opt-loot-grade" onchange="updateOptions()" style="background:#222; color:#fff; border:1px solid #555; padding:2px;">
+                    <option value="0">일반 이상</option>
+                    <option value="1">고급 이상</option>
+                    <option value="2">희귀 이상</option>
+                    <option value="3">영웅 이상</option>
+                    <option value="4">전설 이상</option>
+                </select>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px dashed #444;">
+                <span style="font-size:12px; color:#ddd;">화면 모드</span>
+                <button type="button" id="btn-fullscreen-toggle" class="confirm-btn bg-dark-green" style="padding:4px 12px; font-size:11px;" onclick="toggleFullScreenMode()">
+                    전체화면 켜기
+                </button>
+            </div>
+
+            <div style="border-top: 1px solid #444; padding-top: 10px;">
+                <label style="font-weight:bold; color:#fd0; font-size:14px; display:block; margin-bottom:8px;">[ 계정 관리 ]</label>
+                <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                    <button class="menu-btn bg-dark-gray" onclick="returnToCharSelect()" style="padding: 8px; flex:1; font-weight:bold; color:#fd0;">캐릭터 선택</button>
+                    <button class="menu-btn bg-dark-red" onclick="logout()" style="padding: 8px; flex:1; font-weight:bold;">로그아웃</button>
+                </div>
+                <div style="font-size:11px; color:#aaa; margin-top:6px; text-align:center;">* 멀티플레이어 환경에서 서버 동기화가 진행됩니다.</div>
+            </div>
+        </div>
     </div>
 
-      <!-- 옵션 창 -->
-       <div class="window" id="win-option" style="width: 300px;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-option')">
-                <span>환경 설정</span> 
-                <span class="win-close" onclick="toggleWindow('win-option')">X</span>
+    <div id="save-modal" class="window" style="width: 300px;">
+        <div class="win-header" onmousedown="startDrag(event, 'save-modal')">
+            <span>저장소 목록 (로컬)</span>
+            <span class="win-close" onclick="document.getElementById('save-modal').style.display='none'">X</span>
+        </div>
+        <div class="win-content"><div id="save-list-container"></div></div>
+    </div>
+    
+    <div class="window" id="win-inv" style="width: 340px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-inv')">
+            <span id="inv-title">인벤토리</span> 
+            <span class="win-close" onclick="toggleWindow('win-inv')">X</span>
+        </div>
+        <div class="inv-tabs">
+            <div class="inv-tab active" id="tab-btn-bag" onclick="switchInvTab('bag')">가방(아이템)</div>
+            <div class="inv-tab" id="tab-btn-equip" onclick="switchInvTab('equip')">착용 장비</div>
+        </div>
+        <div class="win-content" style="padding: 0;">
+            <div id="inv-tab-bag" style="display: block; padding: 10px; overflow-y: auto; max-height: 300px;">
+                <div id="inv-list"></div>
             </div>
-            <div class="win-content" style="padding: 15px; display: flex; flex-direction: column; gap: 12px;">
-                <div style="display: flex; flex-direction: column; gap: 8px; color: #ccc; font-size: 13px;">
-                    <label style="font-weight:bold; color:#fff;">효과음 볼륨</label>
-                    <input type="range" id="opt-vol" min="0" max="100" value="50" oninput="updateOptions()" style="width: 100%; cursor: pointer;">
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
-                    <label style="font-weight:bold; color:#fff;">데미지 텍스트 표시</label>
-                    <input type="checkbox" id="opt-dmg" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
-                    <label style="font-weight:bold; color:#fff;">캐릭터/몬스터 이름 표시</label>
-                    <input type="checkbox" id="opt-names" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
-                    <label style="font-weight:bold; color:#fff;">자동 루팅 최소 등급</label>
-                    <select id="opt-loot-grade" onchange="updateOptions()" style="background:#222; color:#fff; border:1px solid #555; padding:2px;">
-                        <option value="0">일반 이상</option>
-                        <option value="1">고급 이상</option>
-                        <option value="2">희귀 이상</option>
-                        <option value="3">영웅 이상</option>
-                        <option value="4">전설 이상</option>
-                    </select>
-                </div>
-
-
-               <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; padding-top:8px; border-top:1px dashed #444;">
-    <span style="font-size:12px; color:#ddd;">화면 모드</span>
-    <button type="button" id="btn-fullscreen-toggle" class="confirm-btn bg-dark-green" style="padding:4px 12px; font-size:11px;" onclick="toggleFullScreenMode()">
-        전체화면 켜기
-    </button>
-</div>
-
-                <div style="border-top: 1px solid #444; padding-top: 10px;">
-                    <label style="font-weight:bold; color:#fd0; font-size:14px; display:block; margin-bottom:8px;">[ 계정 관리 ]</label>
-                    <div style="display: flex; gap: 5px; margin-bottom: 6px;">
-                        <button class="menu-btn bg-dark-gray" onclick="returnToCharSelect()" style="padding: 8px; flex:1; font-weight:bold; color:#fd0;">캐릭터 선택</button>
-                        <button class="menu-btn bg-dark-red" onclick="logout()" style="padding: 8px; flex:1; font-weight:bold;">로그아웃</button>
-                    </div>
-                    <div style="font-size:11px; color:#aaa; margin-top:6px; text-align:center;">* 멀티플레이어 환경에서 서버 동기화가 진행됩니다.</div>
-                </div>
+            <div id="inv-tab-equip" style="display: none; padding: 10px; background: #0c0c10;">
+                <div class="classic-equip-bg" id="equip-grid"></div>
             </div>
         </div>
+    </div>
 
-        <div id="save-modal" class="window" style="width: 300px;"><div class="win-header" onmousedown="startDrag(event, 'save-modal')"><span>저장소 목록 (로컬)</span><span class="win-close" onclick="document.getElementById('save-modal').style.display='none'">X</span></div><div class="win-content"><div id="save-list-container"></div></div></div>
-        
-        <div class="window" id="win-inv" style="width: 340px;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-inv')">
-                <span id="inv-title">인벤토리</span> 
-                <span class="win-close" onclick="toggleWindow('win-inv')">X</span>
-            </div>
-            <div class="inv-tabs">
-                <div class="inv-tab active" id="tab-btn-bag" onclick="switchInvTab('bag')">가방(아이템)</div>
-                <div class="inv-tab" id="tab-btn-equip" onclick="switchInvTab('equip')">착용 장비</div>
-            </div>
-            <div class="win-content" style="padding: 0;">
-                <!-- 가방 탭 -->
-                <div id="inv-tab-bag" style="display: block; padding: 10px; overflow-y: auto; max-height: 300px;">
-                    <div id="inv-list"></div>
-                </div>
-                <!-- 장비 탭 (원작 UI 배치) -->
-                <div id="inv-tab-equip" style="display: none; padding: 10px; background: #0c0c10;">
-                    <div class="classic-equip-bg" id="equip-grid"></div>
-                </div>
+    <div class="window" id="win-inv2" style="width: 340px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-inv2')">
+            <span id="inv-title-2">인벤토리 2 (0/100)</span> 
+            <span class="win-close" onclick="toggleWindow('win-inv2')">X</span>
+        </div>
+        <div class="win-content">
+            <div id="equip-grid-2" style="display:none;"></div>
+            <div id="inv-scroll-area-2" style="padding: 10px; padding-right: 15px; max-height: 320px; overflow-y: auto; flex: 1; box-sizing: border-box;">
+                <div id="inv-list-2" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding-bottom: 5px; box-sizing: border-box;"></div>
             </div>
         </div>
-
-        <div class="window" id="win-inv2" style="width: 340px;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-inv2')"><span id="inv-title-2">인벤토리 2 (0/100)</span> <span class="win-close" onclick="toggleWindow('win-inv2')">X</span></div>
-            <div class="win-content">
-                <div id="equip-grid-2" style="display:none;"></div>
-                <div id="inv-scroll-area-2" style="padding: 10px; padding-right: 15px; max-height: 320px; overflow-y: auto; flex: 1; box-sizing: border-box;">
-                    <div id="inv-list-2" style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding-bottom: 5px; box-sizing: border-box;"></div>
-                </div>
-            </div>
+    </div>
+    
+    <div class="window" id="win-magic" style="width: 250px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-magic')">
+            <span>마법책</span> 
+            <span class="win-close" onclick="toggleWindow('win-magic')">X</span>
         </div>
-        
-        <div class="window" id="win-magic" style="width: 250px;"><div class="win-header" onmousedown="startDrag(event, 'win-magic')"><span>마법책</span> <span class="win-close" onclick="toggleWindow('win-magic')">X</span></div><div class="win-content" style="padding:10px; max-height:300px;" id="magic-list"></div></div>
-        
-        <div class="window" id="win-shop" style="width: 350px;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-shop')"><span id="shop-title">상점</span> <span class="win-close" onclick="document.getElementById('win-shop').style.display='none'">X</span></div>
-            <div style="display:flex;"><div class="shop-tab active" id="tab-buy" onclick="setShopTab('buy')" style="flex:1;text-align:center;padding:5px;cursor:pointer;background:#222;color:#fff;">구매</div><div class="shop-tab" id="tab-sell" onclick="setShopTab('sell')" style="flex:1;text-align:center;padding:5px;cursor:pointer;background:#111;color:#888;">판매</div></div>
-            <div class="win-content" style="padding:10px; max-height:300px;" id="shop-list"></div>
+        <div class="win-content" style="padding:10px; max-height:300px;" id="magic-list"></div>
+    </div>
+    
+    <div class="window" id="win-shop" style="width: 350px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-shop')">
+            <span id="shop-title">상점</span> 
+            <span class="win-close" onclick="document.getElementById('win-shop').style.display='none'">X</span>
         </div>
-
-        <div class="window" id="win-mercenary" style="width: 340px;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-mercenary')">
-                <span id="mercenary-title">용병 단장 영입소</span> 
-                <span class="win-close" onclick="document.getElementById('win-mercenary').style.display='none'">X</span>
-            </div>
-            <div class="win-content" id="mercenary-content" style="padding:15px; color:#fff; overflow-y:auto; max-height:350px;"></div>
+        <div style="display:flex;">
+            <div class="shop-tab active" id="tab-buy" onclick="setShopTab('buy')" style="flex:1;text-align:center;padding:5px;cursor:pointer;background:#222;color:#fff;">구매</div>
+            <div class="shop-tab" id="tab-sell" onclick="setShopTab('sell')" style="flex:1;text-align:center;padding:5px;cursor:pointer;background:#111;color:#888;">판매</div>
         </div>
+        <div class="win-content" style="padding:10px; max-height:300px;" id="shop-list"></div>
+    </div>
 
-       <div class="window" id="teleport-modal" style="width: 360px; max-width: 90vw; display: none; z-index: 100000;">
+    <div class="window" id="win-mercenary" style="width: 340px;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-mercenary')">
+            <span id="mercenary-title">용병 단장 영입소</span> 
+            <span class="win-close" onclick="document.getElementById('win-mercenary').style.display='none'">X</span>
+        </div>
+        <div class="win-content" id="mercenary-content" style="padding:15px; color:#fff; overflow-y:auto; max-height:350px;"></div>
+    </div>
+
+    <div class="window" id="teleport-modal" style="width: 360px; max-width: 90vw; display: none; z-index: 100000;">
         <div class="win-header" onmousedown="startDrag(event, 'teleport-modal')">
             <span>월드 맵 이동 (텔레포트)</span>
             <span class="win-close" onclick="document.getElementById('teleport-modal').style.display='none'">X</span>
@@ -825,96 +833,97 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         </div>
     </div>
 
-        <div id="tooltip"></div>
-        
-        <div class="window" id="win-pet" style="width: 250px; z-index: 300;">
-            <div class="win-header" onmousedown="startDrag(event, 'win-pet')">
-                <span id="pet-title">용병 및 소환수 정보</span> 
-                <div style="display: flex; gap: 8px;">
-                    <span class="win-close" onclick="document.getElementById('win-pet').style.display='none'" title="닫기">X</span>
-                </div>
-            </div>
-
-            <div class="win-content" style="padding: 10px; font-size: 13px; color: #ccc;">
-                <div style="font-weight:bold; color:#fd0; font-size:15px; margin-bottom:5px;" id="pet-name">이름</div>
-                <div style="display:flex; justify-content:space-between;"><span>레벨</span> <span id="pet-lv" style="color:#fff;">1</span></div>
-                <div style="display:flex; justify-content:space-between;"><span>HP</span> <span id="pet-hp" style="color:#f55;">0 / 0</span></div>
-                <div style="display:flex; justify-content:space-between;"><span>공격력 (ATK)</span> <span id="pet-atk" style="color:#fff;">0</span></div>
-                <div style="display:flex; justify-content:space-between;"><span>방어력 (AC)</span> <span id="pet-def" style="color:#fff;">0</span></div>
-                <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span>경험치</span> <span id="pet-exp" style="color:#ff0;">0</span></div>
-                
-                <div style="background:#111; border:1px solid #444; padding:6px; margin-bottom:10px; border-radius:3px;">
-                    <div style="font-weight:bold; color:#fff; margin-bottom:4px; font-size:12px;">보유 물약 관리</div>
-               <div style="display:flex; gap:5px; margin-bottom: 5px;">
-                        <button class="menu-btn bg-dark-green" style="font-size:11px; padding:4px; flex:1;" onclick="giveMercenaryPotion('hp')">❤️ 체력물약 주기</button>
-                        <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px; flex:1;" onclick="retrieveMercenaryPotion('hp')">회수</button>
-                    </div>
-                    <div style="display:flex; gap:5px;">
-                        <button class="menu-btn bg-dark-green" style="font-size:11px; padding:4px; flex:1;" onclick="giveMercenaryPotion('mp')">💙 마나물약 주기</button>
-                        <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px; flex:1;" onclick="retrieveMercenaryPotion('mp')">회수</button>
-                    </div>
-                </div>
-
-                <div style="background:#111; border:1px solid #444; padding:5px; margin-bottom:10px; border-radius:3px;">
-                    <div style="font-weight:bold; color:#fff; margin-bottom:5px; font-size:12px;">장착 장비 (터치하여 해제)</div>
-                    <div style="display:flex; flex-direction:column; gap:5px;">
-                        <button class="menu-btn" id="pet-eq-wp" style="font-size:11px; padding:4px;" onclick="unequipPetItem('weapon')">무기 없음</button>
-                        <button class="menu-btn" id="pet-eq-am" style="font-size:11px; padding:4px;" onclick="unequipPetItem('armor')">방어구 없음</button>
-                    </div>
-                    <div style="display:flex; gap:5px; margin-top:5px;">
-                        <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px;" onclick="openPetEquipModal('weapon')">가방에서 무기 입히기</button>
-                        <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px;" onclick="openPetEquipModal('armor')">가방에서 방어구 입히기</button>
-                    </div>
-                </div>
-
-                <div style="font-weight:bold; color:#fff; margin-bottom:5px;">명령 하달</div>
-                <div style="display:flex; gap:4px; margin-bottom:8px;">
-                    <button class="menu-btn bg-dark-green" id="btn-stance-attack" onclick="setPetStance('attack')" style="padding:6px; color:#5f5;">공격</button>
-                    <button class="menu-btn" id="btn-stance-defend" onclick="setPetStance('defend')" style="padding:6px;">방어</button>
-                    <button class="menu-btn" id="btn-stance-rest" onclick="setPetStance('rest')" style="padding:6px;">휴식</button>
-                </div>
-                <button class="confirm-btn w-full bg-red" style="padding:6px; font-size:12px;" onclick="dismissPet()">해산 (돌려보내기)</button>
+    <div id="tooltip"></div>
+    
+    <div class="window" id="win-pet" style="width: 250px; z-index: 300;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-pet')">
+            <span id="pet-title">용병 및 소환수 정보</span> 
+            <div style="display: flex; gap: 8px;">
+                <span class="win-close" onclick="document.getElementById('win-pet').style.display='none'" title="닫기">X</span>
             </div>
         </div>
 
-        <div class="window" id="item-action-modal" style="width: 320px; max-width: 90vw; z-index: 1000000; display: none;">
-            <div class="win-header" onmousedown="startDrag(event, 'item-action-modal')">
-                <span id="action-modal-title">아이템 관리</span>
-                <span class="win-close" onclick="hideItemActionModal()">X</span>
+        <div class="win-content" style="padding: 10px; font-size: 13px; color: #ccc;">
+            <div style="font-weight:bold; color:#fd0; font-size:15px; margin-bottom:5px;" id="pet-name">이름</div>
+            <div style="display:flex; justify-content:space-between;"><span>레벨</span> <span id="pet-lv" style="color:#fff;">1</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>HP</span> <span id="pet-hp" style="color:#f55;">0 / 0</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>공격력 (ATK)</span> <span id="pet-atk" style="color:#fff;">0</span></div>
+            <div style="display:flex; justify-content:space-between;"><span>방어력 (AC)</span> <span id="pet-def" style="color:#fff;">0</span></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:10px;"><span>경험치</span> <span id="pet-exp" style="color:#ff0;">0</span></div>
+            
+            <div style="background:#111; border:1px solid #444; padding:6px; margin-bottom:10px; border-radius:3px;">
+                <div style="font-weight:bold; color:#fff; margin-bottom:4px; font-size:12px;">보유 물약 관리</div>
+                <div style="display:flex; gap:5px; margin-bottom: 5px;">
+                    <button class="menu-btn bg-dark-green" style="font-size:11px; padding:4px; flex:1;" onclick="giveMercenaryPotion('hp')">❤️ 체력물약 주기</button>
+                    <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px; flex:1;" onclick="retrieveMercenaryPotion('hp')">회수</button>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <button class="menu-btn bg-dark-green" style="font-size:11px; padding:4px; flex:1;" onclick="giveMercenaryPotion('mp')">💙 마나물약 주기</button>
+                    <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px; flex:1;" onclick="retrieveMercenaryPotion('mp')">회수</button>
+                </div>
             </div>
-            <div class="win-content" style="display: flex; flex-direction: column; height: 100%; padding: 12px; overflow-y: auto;">
-                <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 2px;">
-                    <div id="action-modal-desc" style="font-size:13px; color:#ccc; text-align:left; background:#1a1a24; padding:10px; border:1px inset #555; border-radius:3px;"></div>
-                    <div style="font-size:13px; color:#fff; font-weight:bold; text-align:left;">단축키(퀵슬롯) 터치 등록</div>
-                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(0)">F5</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(1)">F6</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(2)">F7</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(3)">F8</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(4)">F9</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(5)">F10</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(6)">F11</button>
-                        <button class="menu-btn" onclick="assignHotkeyFromModal(7)">F12</button>
-                    </div>
-                    <div id="action-modal-item-mgmt" style="width: 100%;">
-                        <div style="font-size:13px; color:#fff; margin-bottom:8px; font-weight:bold; text-align:left; width: 100%;">아이템 액션</div>
-                        <div class="confirm-btn-wrap" style="gap:8px; flex-direction: column; margin-top:0; width: 100%;">
-                            <button class="confirm-btn bg-dark-green" onclick="execItemAction('use')" style="color:#fff;">사용 / 장착</button>
-                            <button class="confirm-btn bg-red" id="btn-purge-magic" onclick="execItemAction('purge')" style="color:#fcc; display:none;">모든 마법 속 지우기</button>
-                            <button class="confirm-btn bg-dark-gray" onclick="execItemAction('drop')">땅에 버리기</button>
-                            <button class="confirm-btn bg-dark-red" onclick="execItemAction('delete')" style="color:#f88;">영구 파괴 (삭제)</button>
-                        </div>
+
+            <div style="background:#111; border:1px solid #444; padding:5px; margin-bottom:10px; border-radius:3px;">
+                <div style="font-weight:bold; color:#fff; margin-bottom:5px; font-size:12px;">장착 장비 (터치하여 해제)</div>
+                <div style="display:flex; flex-direction:column; gap:5px;">
+                    <button class="menu-btn" id="pet-eq-wp" style="font-size:11px; padding:4px;" onclick="unequipPetItem('weapon')">무기 없음</button>
+                    <button class="menu-btn" id="pet-eq-am" style="font-size:11px; padding:4px;" onclick="unequipPetItem('armor')">방어구 없음</button>
+                </div>
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px;" onclick="openPetEquipModal('weapon')">가방에서 무기 입히기</button>
+                    <button class="menu-btn bg-dark-gray" style="font-size:11px; padding:4px;" onclick="openPetEquipModal('armor')">가방에서 방어구 입히기</button>
+                </div>
+            </div>
+
+            <div style="font-weight:bold; color:#fff; margin-bottom:5px;">명령 하달</div>
+            <div style="display:flex; gap:4px; margin-bottom:8px;">
+                <button class="menu-btn bg-dark-green" id="btn-stance-attack" onclick="setPetStance('attack')" style="padding:6px; color:#5f5;">공격</button>
+                <button class="menu-btn" id="btn-stance-defend" onclick="setPetStance('defend')" style="padding:6px;">방어</button>
+                <button class="menu-btn" id="btn-stance-rest" onclick="setPetStance('rest')" style="padding:6px;">휴식</button>
+            </div>
+            <button class="confirm-btn w-full bg-red" style="padding:6px; font-size:12px;" onclick="dismissPet()">해산 (돌려보내기)</button>
+        </div>
+    </div>
+
+    <div class="window" id="item-action-modal" style="width: 320px; max-width: 90vw; z-index: 1000000; display: none;">
+        <div class="win-header" onmousedown="startDrag(event, 'item-action-modal')">
+            <span id="action-modal-title">아이템 관리</span>
+            <span class="win-close" onclick="hideItemActionModal()">X</span>
+        </div>
+        <div class="win-content" style="display: flex; flex-direction: column; height: 100%; padding: 12px; overflow-y: auto;">
+            <div style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 2px;">
+                <div id="action-modal-desc" style="font-size:13px; color:#ccc; text-align:left; background:#1a1a24; padding:10px; border:1px inset #555; border-radius:3px;"></div>
+                <div style="font-size:13px; color:#fff; font-weight:bold; text-align:left;">단축키(퀵슬롯) 터치 등록</div>
+                <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:5px;">
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(0)">F5</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(1)">F6</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(2)">F7</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(3)">F8</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(4)">F9</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(5)">F10</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(6)">F11</button>
+                    <button class="menu-btn" onclick="assignHotkeyFromModal(7)">F12</button>
+                </div>
+                <div id="action-modal-item-mgmt" style="width: 100%;">
+                    <div style="font-size:13px; color:#fff; margin-bottom:8px; font-weight:bold; text-align:left; width: 100%;">아이템 액션</div>
+                    <div class="confirm-btn-wrap" style="gap:8px; flex-direction: column; margin-top:0; width: 100%;">
+                        <button class="confirm-btn bg-dark-green" onclick="execItemAction('use')" style="color:#fff;">사용 / 장착</button>
+                        <button class="confirm-btn bg-red" id="btn-purge-magic" onclick="execItemAction('purge')" style="color:#fcc; display:none;">모든 마법 속성 지우기</button>
+                        <button class="confirm-btn bg-dark-gray" onclick="execItemAction('drop')">땅에 버리기</button>
+                        <button class="confirm-btn bg-dark-red" onclick="execItemAction('delete')" style="color:#f88;">영구 파괴 (삭제)</button>
                     </div>
                 </div>
-                <div style="margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; flex-shrink: 0; width: 100%;">
-                    <button class="confirm-btn w-full bg-gray" onclick="hideItemActionModal()">닫기</button>
-                </div>
+            </div>
+            <div style="margin-top: 10px; border-top: 1px solid #444; padding-top: 8px; flex-shrink: 0; width: 100%;">
+                <button class="confirm-btn w-full bg-gray" onclick="hideItemActionModal()">닫기</button>
             </div>
         </div>
+    </div>
 
-    <!-- 외부 스크립트 연결 -->
-    <script src="js/data.js"></script>
-    <script src="js/ui.js"></script>
-    <script src="js/game.js"></script>
+    <!-- 💡 [자동 다운로드 연동] 캐시 버스팅 적용 스크립트 로드 -->
+    <script src="js/data.js?v=1.0.0"></script>
+    <script src="js/ui.js?v=1.0.0"></script>
+    <script src="js/game.js?v=1.0.0"></script>
 </body>
 </html>
+

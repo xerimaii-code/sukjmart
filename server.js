@@ -64,15 +64,12 @@ function generateServerDropItem(baseItem) {
     if (grade >= 4) {
         let optCount = Math.floor(Math.random() * 4) + 2; // 2 ~ 5개 옵션
         let legendaryPool = [
-            () => { let v = Math.floor(Math.random() * 21) + 15; item.magicOptions.push(`[전설] 추가 대미지 +${v}`); }, // +15 ~ +35
-            () => { let v = Math.floor(Math.random() * 16) + 15; item.magicOptions.push(`[전설] 추가 방어력 +${v}`); }, // +15 ~ +30
-
-            // 💡 스탯 상한치: 최대 +10 유지 (STR/DEX 10 = 대미지 약 32 상승)
+            () => { let v = Math.floor(Math.random() * 21) + 15; item.magicOptions.push(`[전설] 추가 대미지 +${v}`); },
+            () => { let v = Math.floor(Math.random() * 16) + 15; item.magicOptions.push(`[전설] 추가 방어력 +${v}`); },
             () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] STR +${v}`); },
             () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] INT +${v}`); },
             () => { let v = Math.floor(Math.random() * 10) + 1; item.magicOptions.push(`[스탯] DEX +${v}`); },
-
-            () => { let v = (Math.floor(Math.random() * 5) + 2) * 100; item.magicOptions.push(`[생명] 최대 HP +${v}`); }, // +200 ~ +600
+            () => { let v = (Math.floor(Math.random() * 5) + 2) * 100; item.magicOptions.push(`[생명] 최대 HP +${v}`); },
             () => { item.magicOptions.push(`[${['화령','수령','풍령','지령'][Math.floor(Math.random()*4)]}] 속성 대미지 +${Math.floor(Math.random()*15)+10}`); },
             () => { item.magicOptions.push("타격 시 HP 흡수"); },
             () => { item.magicOptions.push("타격 시 MP 흡수"); }
@@ -108,9 +105,6 @@ function generateServerDropItem(baseItem) {
 io.on('connection', (socket) => {
     console.log(`[+] 유저 연결됨: ${socket.id}`);
 
-
-
-
     socket.on('player_loot_item', (payload) => {
         let p = players[socket.id];
         if (!p || !mapsState[p.map]) return;
@@ -118,18 +112,12 @@ io.on('connection', (socket) => {
         let itemsArr = mapsState[p.map].items;
         let itemIdx = itemsArr.findIndex(it => it.id === payload.itemId);
         
-        // 아이템이 바닥에 실제로 존재할 때만 1명에게 지급
         if (itemIdx > -1) {
             let lootedItem = itemsArr.splice(itemIdx, 1)[0];
-            
-            // 주운 당사자에게 획득 처리 지시
             socket.emit('item_looted_success', { item: lootedItem });
-            
-            // 맵 안의 모든 유저 화면에서 해당 아이템 삭제 브로드캐스트
             io.to(p.map).emit('item_removed', { itemId: payload.itemId });
         }
     });
-
 
     socket.on('player_join', (payload) => {
         const { id, name, charClass, x, y, map } = payload;
@@ -163,7 +151,101 @@ io.on('connection', (socket) => {
         });
     });
 
-// 💡 클라이언트에서 버린 아이템 수신 및 전체 브로드캐스트
+    // 💡 방 생성 및 인원별 실시간 전투력 합산 누적
+    socket.on('request_join_raid', (data) => {
+        let p = players[socket.id];
+        if (!p) return;
+
+        let targetRoomId = null;
+        for (let rId in raidRooms) {
+            let room = raidRooms[rId];
+            if (room.status === 'WAITING' && room.map === 'boss_raid') {
+                targetRoomId = rId;
+                break;
+            }
+        }
+
+        let userCombatPower = data.combatPower || (p.level * 300);
+
+        if (!targetRoomId) {
+            targetRoomId = 'raid_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            raidRooms[targetRoomId] = {
+                roomId: targetRoomId,
+                map: 'boss_raid',
+                status: 'WAITING', 
+                members: [],
+                totalCombatPower: 0,
+                tierIndex: data.tierIndex || 0,
+                currentWave: 1,
+                maxWave: 5,
+                bossSpawned: false,
+                createdAt: Date.now()
+            };
+        }
+
+        let currentRoom = raidRooms[targetRoomId];
+        if (!currentRoom.members.includes(socket.id)) {
+            currentRoom.members.push(socket.id);
+            currentRoom.totalCombatPower += userCombatPower;
+        }
+        p.currentRaidRoomId = targetRoomId;
+
+        socket.emit('raid_room_joined', {
+            roomId: targetRoomId,
+            status: currentRoom.status,
+            memberCount: currentRoom.members.length
+        });
+
+        if (currentRoom.status === 'WAITING' && currentRoom.members.length === 1) {
+            startRaidCountdown(targetRoomId);
+        }
+    });
+
+    // 💡 1차 보스 스폰 (파티 총 스펙 기준 60%)
+    socket.on('spawn_raid_boss', (data) => {
+        let mapId = data.map || 'boss_raid';
+        if (!mapsState[mapId]) {
+            mapsState[mapId] = { monsters: [], items: [], deadBosses: [] };
+        }
+
+        let existingBoss = mapsState[mapId].monsters.find(m => m.isBoss);
+        if (existingBoss) return;
+
+        let userRaidRoom = Object.values(raidRooms).find(room => room.members.includes(socket.id));
+        let partyCombatPower = userRaidRoom ? userRaidRoom.totalCombatPower : (data.combatPower || 15000);
+        let playerCount = userRaidRoom ? Math.max(1, userRaidRoom.members.length) : 1;
+
+        let baseBossHp = Math.floor((partyCombatPower * 5) * 0.60); 
+        let baseBossDef = Math.floor((20 + (partyCombatPower / 400)) * 0.60);
+        let baseBossAtk = Math.floor((40 + (partyCombatPower / 250)) * 0.60);
+
+        let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+        let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
+        let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
+
+        let raidBoss = {
+            id: data.id || ('raid_boss_' + Date.now()),
+            name: `${tierTitles[data.tierIndex || 0]} ${selectedBoss} (1/5)`,
+            isBoss: true,
+            x: 2000, 
+            y: 800,
+            map: mapId,
+            size: 30 + ((data.tierIndex || 0) * 3),
+            hp: baseBossHp,
+            maxHp: baseBossHp,
+            atk: baseBossAtk,
+            def: baseBossDef,
+            exp: 30000 * playerCount,
+            color: '#ff3333',
+            targetId: null,
+            angle: 0,
+            isMoving: false,
+            raidTier: data.tierIndex || 0 
+        };
+        
+        mapsState[mapId].monsters.push(raidBoss);
+    });
+
     socket.on('player_drop_item', (droppedItemData) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : (droppedItemData.map || 'talking_island');
@@ -184,7 +266,7 @@ io.on('connection', (socket) => {
         socket.to(mapId).emit('item_spawned', { item: floorItem });
     });
 
-
+    // 💡 실시간 최종 스펙 보관 및 자동 폭파 로직
     socket.on('player_update', (payload) => {
         let p = players[socket.id];
         let currentMap = payload.map || 'talking_island';
@@ -200,6 +282,12 @@ io.on('connection', (socket) => {
                 map: currentMap, 
                 hp: payload.hp || 150, 
                 maxHp: payload.maxHp || 150, 
+                atk: payload.atk || 20,
+                def: payload.def || 0,
+                str: payload.str || 18,
+                dex: payload.dex || 14,
+                int: payload.int || 8,
+                level: payload.level || 1,
                 targetId: null, 
                 partyId: null, 
                 equip: payload.equip || {},
@@ -213,9 +301,24 @@ io.on('connection', (socket) => {
         }
 
         if (p.map !== payload.map) {
-            socket.leave(p.map); 
+            let prevMap = p.map;
+            socket.leave(prevMap); 
             socket.join(payload.map); 
             p.map = payload.map;
+
+            if (prevMap === 'boss_raid') {
+                let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid' && pl.socketId !== socket.id);
+                if (remainingPlayers.length === 0) {
+                    mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };
+                    for (let rId in raidRooms) {
+                        if (raidRooms[rId].map === 'boss_raid') {
+                            delete raidRooms[rId];
+                        }
+                    }
+                    console.log("[🧹 레이드 초기화] 파티원 전원 퇴장으로 보스 맵 및 인스턴스 방이 초기화되었습니다.");
+                }
+            }
+
             socket.emit('sync_map_state', { monsters: mapsState[p.map].monsters, items: mapsState[p.map].items });
         }
         
@@ -223,14 +326,14 @@ io.on('connection', (socket) => {
         p.charClass = payload.charClass || p.charClass;
         p.x = payload.x; 
         p.y = payload.y; 
-        
-        if (payload.hp !== undefined) {
-            if (payload.hp > p.hp) {
-                p.hp = payload.hp; 
-            }
-        }
-        
+        if (payload.hp !== undefined && payload.hp > p.hp) p.hp = payload.hp; 
         p.maxHp = payload.maxHp !== undefined ? payload.maxHp : p.maxHp;
+        p.atk = payload.atk || p.atk || 20;
+        p.def = payload.def || p.def || 0;
+        p.str = payload.str || p.str || 18;
+        p.dex = payload.dex || p.dex || 14;
+        p.int = payload.int || p.int || 8;
+        p.level = payload.level || p.level || 1;
         p.angle = payload.angle || 0;
         p.isMoving = payload.isMoving || false;
         p.equip = payload.equip || p.equip;
@@ -253,7 +356,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        let summonTypes = ['knight', 'elf', 'wizard'];
         let chosenType = p.charClass === 'wizard' ? 'wizard' : (p.charClass === 'elf' ? 'elf' : 'knight');
 
         let newSummon = {
@@ -289,23 +391,22 @@ io.on('connection', (socket) => {
         });
     });
 
-  socket.on('player_magic_action', (payload) => {
-    let p = players[socket.id];
-    let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
-    
-    // 💡 socket.to 대신 io.to를 사용하여 시전자를 포함해 맵 안의 모든 유저에게 마법 동기화 전송
-    io.to(mapId).emit('sync_player_magic', {
-        casterId: payload.casterId || socket.id, 
-        magicName: payload.magicName, 
-        tier: payload.tier,
-        fontSize: payload.fontSize,
-        targetX: payload.targetX,
-        targetY: payload.targetY,
-        targetId: payload.targetId,
-        casterX: payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000),
-        casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000)
+    socket.on('player_magic_action', (payload) => {
+        let p = players[socket.id];
+        let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
+        
+        io.to(mapId).emit('sync_player_magic', {
+            casterId: payload.casterId || socket.id, 
+            magicName: payload.magicName, 
+            tier: payload.tier,
+            fontSize: payload.fontSize,
+            targetX: payload.targetX,
+            targetY: payload.targetY,
+            targetId: payload.targetId,
+            casterX: payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000),
+            casterY: payload.casterY !== undefined ? payload.casterY : (p ? p.y : 2000)
+        });
     });
-});
 
     socket.on('player_attack_action', (payload) => {
         let p = players[socket.id];
@@ -321,7 +422,7 @@ io.on('connection', (socket) => {
         });
     });
 
-   socket.on('player_target', (payload) => {
+    socket.on('player_target', (payload) => {
         let p = players[socket.id];
         if (!p) return;
 
@@ -361,7 +462,6 @@ io.on('connection', (socket) => {
         });
     });
 
-    // ⚔️ [서버 권위형] 몬스터 타격 수신 및 데미지/흡혈 단독 연산
     const handlePlayerAttack = (payload) => {
         let p = players[socket.id];
         if (!p || !mapsState[p.map]) return;
@@ -381,15 +481,13 @@ io.on('connection', (socket) => {
         });
 
         let hitType = payload.attackType || 'physical';
-        let isMagic = hitType === 'magic';
         let spellName = payload.magicName;
         let finalDamage = 10;
 
         if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
             finalDamage = Math.max(1, payload.calculatedDmg - Math.floor((monster.def || 0) / 3));
         } else {
-            let pStr = p.str || 18;
-            let statAtk = Math.max(1, Math.floor((pStr - 10) * 3.2));
+            let statAtk = Math.max(1, Math.floor((p.str - 10) * 3.2));
             let wpAtk = (p.equip && p.equip.weapon ? p.equip.weapon.atk || 0 : 0);
             finalDamage = Math.max(1, statAtk + wpAtk - Math.floor((monster.def || 0) / 3));
         }
@@ -420,7 +518,6 @@ io.on('connection', (socket) => {
             hitType: hitType
         });
 
-        // 몬스터 사망 판정
         if (monster.hp <= 0) {
             monster.hp = 0;
             io.to(p.map).emit('monster_dead', { monsterId: monster.id });
@@ -430,12 +527,10 @@ io.on('connection', (socket) => {
                 ? Math.floor(Math.random() * 150000 + 50000)
                 : Math.floor(Math.random() * 200 + 50);
 
-            // 💡 [파티 경험치 & 아데나 버프 및 공유 시스템]
             if (p.partyId && parties[p.partyId]) {
                 let party = parties[p.partyId];
                 let memberCount = party.members.length;
                 
-                // 파티원 수 비례 경험치 및 아데나 파이 30%씩 증가 후 1/n 분배
                 let partyBonusMultiplier = 1 + (memberCount - 1) * 0.30; 
                 let sharedExp = Math.floor((baseRewardExp * partyBonusMultiplier) / memberCount);
                 let sharedAdena = Math.floor((baseAdenaCount * partyBonusMultiplier) / memberCount);
@@ -498,14 +593,67 @@ io.on('connection', (socket) => {
                 }
             }
 
+            // 💡 [2~5차 보스 연속 스폰 및 파티 스펙 비례 스케일링]
             if (monster.isBoss) {
-                mapsState[p.map].deadBosses.push({ baseBossId: monster.baseBossId, spawnX: monster.spawnX, spawnY: monster.spawnY, deadTime: Date.now() });
-                io.to(p.map).emit('system_message', { 
-                    message: `👑 [보스 토벌] ${p.name} 님께서 [${monster.name}]을(를) 쓰러뜨렸습니다!`, 
-                    color: '#ffdd00' 
-                });
+                let userRaidRoom = Object.values(raidRooms).find(room => room.members.includes(socket.id));
+                
+                if (userRaidRoom && userRaidRoom.currentWave < userRaidRoom.maxWave) {
+                    userRaidRoom.currentWave++;
+                    let nextWave = userRaidRoom.currentWave;
+                    
+                    io.to(p.map).emit('system_message', { 
+                        message: `⚡ [웨이브 돌파] 잠시 후 [${nextWave} / 5] 단계 보스가 출현합니다! (5초 후)`, 
+                        color: '#38bdf8' 
+                    });
+
+                    setTimeout(() => {
+                        let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+                        let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
+
+                        let partyCombatPower = userRaidRoom.totalCombatPower || 15000;
+                        let playerCount = Math.max(1, userRaidRoom.members.length);
+
+                        // 💡 1차: 60% ➔ 5차: 100% (파티 전투력 기준 점진적 상승)
+                        let waveRatio = 0.50 + (nextWave * 0.10);
+                        let finalBossHp = Math.floor((partyCombatPower * 5) * waveRatio);
+                        let finalBossDef = Math.floor((20 + (partyCombatPower / 400)) * waveRatio);
+                        let finalBossAtk = Math.floor((40 + (partyCombatPower / 250)) * waveRatio);
+
+                        let nextBoss = {
+                            id: 'raid_boss_w' + nextWave + '_' + Date.now(),
+                            name: `[${nextWave}차 웨이브] ${selectedBoss}`,
+                            isBoss: true,
+                            x: 2000, 
+                            y: 800, // 안쪽 스폰
+                            map: p.map,
+                            size: 28 + (nextWave * 3),
+                            hp: finalBossHp,
+                            maxHp: finalBossHp,
+                            atk: finalBossAtk,
+                            def: finalBossDef,
+                            exp: Math.floor(40000 * waveRatio * playerCount),
+                            color: '#ff3333',
+                            targetId: null,
+                            angle: 0,
+                            isMoving: false
+                        };
+                        mapsState[p.map].monsters.push(nextBoss);
+                        io.to(p.map).emit('system_message', { message: `🚨 ${nextBoss.name}이(가) 최심부에 나타났습니다!`, color: '#f55' });
+                    }, 5000);
+                } else {
+                    // 💡 [5단계 최종 클리어] 강제 귀환 타이머를 없애고 자유롭게 루팅하도록 알림만 출력
+                    io.to(p.map).emit('system_message', { 
+                        message: `🎉 [레이드 완수] 5차 보스를 모두 토벌했습니다! 전리품을 챙긴 뒤 귀환 주문서나 텔레포트로 퇴장하세요.`, 
+                        color: '#fd0' 
+                    });
+
+                    // 해당 방 상태를 'CLEARED'로 변경 (수동 퇴장 시 0명이 되면 기존 로직에 의해 방 자동 폭파)
+                    if (userRaidRoom) {
+                        userRaidRoom.status = 'CLEARED';
+                    }
+                }
             }
-            
+
             monster.isDead = true;
             monster.deadTime = Date.now();
             setTimeout(() => {
@@ -514,7 +662,7 @@ io.on('connection', (socket) => {
                 }
             }, 2000);
         }
-    };
+    }; 
 
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
@@ -557,25 +705,22 @@ io.on('connection', (socket) => {
         });
     });
 
-socket.on('party_set_mode', (payload) => {
-    let p = players[socket.id];
-    if (!p || !p.partyId || !parties[p.partyId]) return;
-    let party = parties[p.partyId];
+    socket.on('party_set_mode', (payload) => {
+        let p = players[socket.id];
+        if (!p || !p.partyId || !parties[p.partyId]) return;
+        let party = parties[p.partyId];
 
-    // 클라이언트가 요청한 모드('free' 또는 'focus')로 변경
-    party.mode = payload.mode || (party.mode === 'focus' ? 'normal' : 'focus');
-    let modeLabel = party.mode === 'focus' ? '점사 ++ 따라가기' : '자유 사냥';
+        party.mode = payload.mode || (party.mode === 'focus' ? 'normal' : 'focus');
+        let modeLabel = party.mode === 'focus' ? '점사 ++ 따라가기' : '자유 사냥';
 
-    party.members.forEach(member => {
-        io.to(member.socketId).emit('party_update', { party });
-        io.to(member.socketId).emit('system_message', { 
-            message: `[파티 모드 변경] 모드가 [ ${modeLabel} ]로 전환되었습니다.`, 
-            color: '#fd0' 
+        party.members.forEach(member => {
+            io.to(member.socketId).emit('party_update', { party });
+            io.to(member.socketId).emit('system_message', { 
+                message: `[파티 모드 변경] 모드가 [ ${modeLabel} ]로 전환되었습니다.`, 
+                color: '#fd0' 
+            });
         });
     });
-});
-
-
 
     socket.on('party_mode_toggle', () => {
         let p = players[socket.id];
@@ -621,6 +766,8 @@ socket.on('party_set_mode', (payload) => {
 
     socket.on('disconnect', () => {
         let p = players[socket.id];
+        let userMap = p ? p.map : null;
+
         if (p && p.partyId && parties[p.partyId]) {
             let party = parties[p.partyId];
             party.members = party.members.filter(m => m.socketId !== socket.id);
@@ -637,9 +784,25 @@ socket.on('party_set_mode', (payload) => {
                 });
             }
         }
+
         delete players[socket.id];
+
+        // 💡 퇴장 유저가 보스 레이드 맵에 있었고, 잔여 플레이어가 0명이면 즉시 초기화
+        if (userMap === 'boss_raid') {
+            let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid');
+            if (remainingPlayers.length === 0) {
+                mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };
+
+                for (let rId in raidRooms) {
+                    if (raidRooms[rId].map === 'boss_raid') {
+                        delete raidRooms[rId];
+                    }
+                }
+                console.log("[🧹 레이드 초기화] 모든 유저 접속 종료로 보스 레이드 방이 초기화되었습니다.");
+            }
+        }
     });
-});
+}); 
 
 // 3. 서버 몬스터 AI & 보스 장판/타격 연산 (100ms)
 function processMonsterAI() {
@@ -804,18 +967,18 @@ function processMonsterAI() {
 
                         } else {
                             let targetDef = target.def || 0;
-let dmg = Math.max(1, (mob.atk || 15) - Math.floor(targetDef * 0.5));
+                            let dmg = Math.max(1, (mob.atk || 15) - Math.floor(targetDef * 0.5));
 
-target.hp = Math.max(0, target.hp - dmg);
-if (ownerSocketId) {
-    io.to(ownerSocketId).emit('take_damage', { 
-        damage: dmg, 
-        hitType: 'physical', 
-        hpRemaining: target.hp,
-        targetId: target.id || target.socketId 
-    });
-}
-io.to(mapId).emit('monster_attack_action', { monsterId: mob.id, hitType: 'physical', targetX: target.x, targetY: target.y });
+                            target.hp = Math.max(0, target.hp - dmg);
+                            if (ownerSocketId) {
+                                io.to(ownerSocketId).emit('take_damage', { 
+                                    damage: dmg, 
+                                    hitType: 'physical', 
+                                    hpRemaining: target.hp,
+                                    targetId: target.id || target.socketId 
+                                });
+                            }
+                            io.to(mapId).emit('monster_attack_action', { monsterId: mob.id, hitType: 'physical', targetX: target.x, targetY: target.y });
                         }
                     }
                 }
@@ -912,21 +1075,18 @@ setInterval(() => {
         let state = mapsState[mapId];
         if (!state) continue;
 
-        // 1. 시체가 된 지 3초 지난 몬스터 삭제
         if (state.monsters) {
             state.monsters = state.monsters.filter(m => {
                 return !(m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000));
             });
         }
         
-        // 2. 생성된 지 60초 지난 바닥 아이템 완전 삭제
         if (state.items) {
             state.items = state.items.filter(item => {
                 return (now - item.spawnTime) < 60000;
             });
         }
 
-        // 3. 보스 부활 및 배열 초기화
         if (state.deadBosses) {
             state.deadBosses = state.deadBosses.filter(db => {
                 if (now - db.deadTime > 300000) { 
@@ -951,18 +1111,73 @@ setInterval(() => {
 setInterval(processMonsterSpawning, 1000);
 setInterval(processMonsterAI, 40);
 
+// ==========================================
+// 🔥 [보스 레이드 멀티 인스턴스 방 객체 및 15초 카운트다운 루프]
+// ==========================================
+const raidRooms = {}; 
+
+function startRaidCountdown(roomId) {
+    let room = raidRooms[roomId];
+    if (!room) return;
+
+    let countdown = 15; 
+    let timer = setInterval(() => {
+        if (!raidRooms[roomId]) {
+            clearInterval(timer);
+            return;
+        }
+
+        countdown--;
+        room.members.forEach(sockId => {
+            io.to(sockId).emit('raid_countdown_tick', { countdown });
+        });
+
+        if (countdown <= 0) {
+            clearInterval(timer);
+            room.status = 'STARTED'; 
+
+            let totalLv = 0;
+            room.members.forEach(sockId => {
+                let memberP = players[sockId];
+                if (memberP) totalLv += (memberP.level || 1);
+            });
+            let finalAvgLv = Math.floor(totalLv / Math.max(1, room.members.length));
+            let finalTier = Math.min(4, Math.floor(finalAvgLv / 20)); 
+
+            room.members.forEach(sockId => {
+                io.to(sockId).emit('raid_battle_start', { tierIndex: finalTier });
+            });
+        }
+    }, 1000);
+}
+
+// 🧹 유령방 및 빈 방 자동 청소 코드
+setInterval(() => {
+    let now = Date.now();
+    for (let rId in raidRooms) {
+        let room = raidRooms[rId];
+        let activeMembers = room.members.filter(sockId => players[sockId]);
+        room.members = activeMembers;
+
+        let isGhostRoom = (room.members.length === 0 && (now - room.createdAt > 30000));
+        let isExpired = (now - room.createdAt > 7200000); 
+
+        if (isGhostRoom || isExpired) {
+            delete raidRooms[rId];
+        }
+    }
+}, 10000);
+
 // =======================================================
-// 💡 [추가] 매주 일요일 새벽 4시 서버 자동 재부팅 (KST 기준)
+// 💡 매주 일요일 새벽 4시 서버 자동 재부팅 (KST 기준)
 // =======================================================
 let isWarningSent = false;
 let isRebootTriggered = false;
 
 setInterval(() => {
     const now = new Date();
-    // HostDare 서버의 국가를 무시하고 한국 시간(KST)으로 강제 고정
     const kstTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 60 * 60 * 1000));
 
-    // 매주 일요일(0), 새벽 3시 59분 0초 (1분 전 경고 및 강제 저장 신호)
     if (kstTime.getDay() === 0 && kstTime.getHours() === 3 && kstTime.getMinutes() === 59) {
         if (!isWarningSent) {
             isWarningSent = true;
@@ -975,21 +1190,27 @@ setInterval(() => {
         }
     }
 
-    // 매주 일요일(0), 새벽 4시 0분 0초 (리부팅 실행)
     if (kstTime.getDay() === 0 && kstTime.getHours() === 4 && kstTime.getMinutes() === 0) {
         if (!isRebootTriggered) {
             isRebootTriggered = true;
             console.log("[서버] 정기 자동 재부팅을 실행합니다.");
-            process.exit(0); // 프로세스를 완전히 종료시켜 PM2가 재시작하도록 유도
+            process.exit(0); 
         }
     }
     
-    // 새벽 5시 플래그 초기화
     if (kstTime.getHours() === 5) {
         isWarningSent = false;
         isRebootTriggered = false;
     }
 }, 1000);
+
+process.on('uncaughtException', (err) => {
+    console.error('[-] 치명적 오류 발생 (Uncaught Exception):', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[-] 처리되지 않은 프로미스 거부 (Unhandled Rejection):', reason);
+});
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`[✔] 서버 가동 완료: http://localhost:${PORT}`));
