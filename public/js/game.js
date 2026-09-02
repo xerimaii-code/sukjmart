@@ -5601,35 +5601,36 @@ window.enterBossRaid = function() {
     let mainStat = 0;
     let classPowerBonus = 0;
 
-    // 1. 클래스별 스탯 및 특화 계수 계산
-    if (player.charClass === 'wizard') {
-        mainStat = player.int || 18;
-        // 마법사는 SP(마공)가 화력의 핵심이므로 SP 당 전투력 대폭 가산
-        classPowerBonus = (player.sp || 0) * 50; 
-    } else if (player.charClass === 'elf') {
-        mainStat = player.dex || 14;
-        classPowerBonus = (player.dex || 14) * 10;
-    } else {
-        mainStat = player.str || 18;
-        classPowerBonus = (player.str || 18) * 10;
-    }
-
-    // 2. 동행 중인 용병들의 화력 가중치 산출
+// 1. 동행 중인 용병들의 화력 가중치 산출
     let mercsCombatPower = 0;
     let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.hp > 0);
     
     activeMercs.forEach(m => {
         if (m.mercType === 'wizard' || m.charClass === 'wizard') {
-            // 마법사 용병은 상급 마법 난사 딜레이/데미지를 고려하여 높은 가중치 부여
             mercsCombatPower += 2000 + ((m.level || 1) * 100);
         } else {
-            // 기사/요정 용병은 물리 탱킹 및 평타 화력 기준 가중치 부여
             mercsCombatPower += 800 + ((m.level || 1) * 50);
         }
     });
 
-    // 3. 최종 통합 전투력 (플레이어 기본 + 직업 특화 + 용병 화력)
-    let combatPower = (player.level * 300) + (wpEnchant * 250) + (amEnchant * 150) + (mainStat * 20) + classPowerBonus + mercsCombatPower;
+    // 2. 클래스별 실질 초당 화력(DPS 배율) 정밀 반영
+    let realDpsPower = 0;
+    if (player.charClass === 'wizard') {
+        let intVal = player.int || 18;
+        let spVal = (player.sp || 0) + Math.floor((intVal - 10) / 2);
+        // 실제 마법 대미지 증폭 공식 반영 (INT 128 / SP 24 스펙 완벽 인식)
+        let magicScale = 1 + (spVal * 0.15) + Math.max(0, (intVal - 12) * 0.05);
+        realDpsPower = Math.floor(250 * magicScale * 15); 
+    } else if (player.charClass === 'elf') {
+        let dexVal = player.dex || 14;
+        realDpsPower = Math.floor((player.atk || 20) * 25 + dexVal * 100);
+    } else {
+        let strVal = player.str || 18;
+        realDpsPower = Math.floor((player.atk || 20) * 25 + strVal * 100);
+    }
+
+    // 3. 최종 통합 전투력 (레벨 + 장비 + 실질 화력 + 용병)
+    let combatPower = (player.level * 400) + (wpEnchant * 300) + (amEnchant * 150) + realDpsPower + mercsCombatPower;
 
     if (window.socket && currentUser) {
         window.socket.emit('request_join_raid', { combatPower });
@@ -5669,14 +5670,23 @@ window.enterBossRaid = function() {
         setTimeout(() => raidOverlay.remove(), 400);
     });
 
-    // 💡 5보스 최종 클리어 후 안전한 마을 강제 복귀 리스너
+   // 💡 레이드 2차 종료 시 자동사냥 강제 해제 수신 (정상 정돈)
     window.socket.off('raid_clear_return_town');
-    window.socket.on('raid_clear_return_town', (data) => {
-        if (!gameStarted) return;
-
-        if (typeof addMessage === 'function') {
-            addMessage("🏆 레이드 완전 정복! 안전한 마을로 귀환합니다.", "#fd0");
+    window.socket.off('raid_clear_disable_autohunt');
+    window.socket.on('raid_clear_disable_autohunt', () => {
+        if (typeof player !== 'undefined' && player) {
+            player.autoHunt = false;
+            player.target = null;
+            player.isMoving = false;
+            player.moveX = undefined;
+            player.moveY = undefined;
+            
+            if (typeof updateUI === 'function') updateUI();
+            if (typeof addMessage === 'function') {
+                addMessage("⚔️ 보스 레이드가 종료되어 자동사냥이 해제되었습니다.", "#aaa");
+            }
         }
+    });
 
         player.autoHunt = false;
         player.autoPotion = false;
@@ -5689,7 +5699,7 @@ window.enterBossRaid = function() {
             changeMap(data.map || 'talking_island', data.x || 2000, data.y || 2000);
         }
         if (typeof updateUI === 'function') updateUI();
-    });
+    
 };
 
 window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
@@ -5703,7 +5713,7 @@ window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
 
     let raidBoss = {
         id: 'raid_boss_w' + waveNum + '_' + Date.now(),
-        name: `${tierTitles[tierIndex || 0]} ${selectedBoss} (${waveNum}/5)`,
+        name: `${tierTitles[tierIndex || 0]} ${selectedBoss} (${waveNum}/2)`,
         isBoss: true,
         x: 2000, 
         y: 800, // 맵 안쪽 스폰

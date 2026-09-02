@@ -1341,30 +1341,43 @@ window.addEventListener('keyup', (e) => { if(e.key === 'Control') isCtrlPressed 
 window.addEventListener('blur', () => { isCtrlPressed = false; });
 
 
+// ==========================================
+// 🌟 [1] 인벤토리 메인 렌더링 & 탭 전환
+// ==========================================
 window.currentInvTab = 'bag';
 
 window.switchInvTab = function(tabName) {
-    if (typeof playSound === 'function') playSound('click');
-    window.currentInvTab = tabName;
-    
-    let tabBag = $('tab-btn-bag');
-    let tabEquip = $('tab-btn-equip');
-    let contentBag = $('inv-tab-bag');
-    let contentEquip = $('inv-tab-equip');
+    if (typeof playSound === 'function') playSound('click');
+    window.currentInvTab = tabName;
+    
+    let tabBag = $('tab-btn-bag');
+    let tabEquip = $('tab-btn-equip');
+    let contentBag = $('inv-tab-bag');
+    let contentEquip = $('inv-tab-equip');
 
-    // ★ 요소가 존재할 때만 안전하게 제어하여 null 에러 원천 차단
-    if (tabBag) tabBag.className = tabName === 'bag' ? 'inv-tab active' : 'inv-tab';
-    if (tabEquip) tabEquip.className = tabName === 'equip' ? 'inv-tab active' : 'inv-tab';
-    if (contentBag) contentBag.style.display = tabName === 'bag' ? 'block' : 'none';
-    if (contentEquip) contentEquip.style.display = tabName === 'equip' ? 'block' : 'none';
-    
-    renderInventory();
+    if (tabBag) tabBag.className = tabName === 'bag' ? 'inv-tab active' : 'inv-tab';
+    if (tabEquip) tabEquip.className = tabName === 'equip' ? 'inv-tab active' : 'inv-tab';
+    if (contentBag) contentBag.style.display = tabName === 'bag' ? 'block' : 'none';
+    if (contentEquip) contentEquip.style.display = tabName === 'equip' ? 'block' : 'none';
+    
+    if (typeof window.renderInventory === 'function') window.renderInventory();
 };
 
-function renderInventory() {
-    if ($('inv-title')) $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
 
-    // 💡 [장비창 렌더링 완벽 독립] 인벤토리 리스트와 섞이지 않도록 단독 3열 그리드 UI 적용
+   
+window.renderInventory = function() {
+    if (!player || !player.inv) return;
+
+    // 💡 [인벤토리 들썩거림 방지] 아이템 변동이 없으면 DOM을 새로 그리지 않음
+    let currentInvHash = window.currentInvTab + '_' + player.inv.map(it => (it.id || it.name) + '_' + (it.count || 1) + '_' + (it.enchantValue || 0)).join('|');
+    if (window._lastInvRenderHash === currentInvHash && !window.isInventorySelectMode) {
+        return; 
+    }
+    window._lastInvRenderHash = currentInvHash;
+
+ if ($('inv-title')) $('inv-title').innerText = `인벤토리 (${player.inv.length}/100)`;
+
+    // [장비창 렌더링]
     if (window.currentInvTab === 'equip') {
         const equipTabEl = $('inv-tab-equip');
         if (!equipTabEl) return;
@@ -1397,10 +1410,10 @@ function renderInventory() {
         }
         equipHtml += `</div>`;
         equipTabEl.innerHTML = equipHtml;
-        return; // 가방 렌더링 중지
+        return;
     }
 
-    // 일반 가방(bag) 탭 렌더링
+    // [일괄 다중 선택 모드 적용된 일반 가방 렌더링]
     const displayList = player.inv.map((it, idx) => ({ ...it, isEquipped: false, originalIndex: idx }));
 
     displayList.sort((a, b) => {
@@ -1428,6 +1441,14 @@ function renderInventory() {
     const invListEl = $('inv-list');
     if (invListEl) {
         invListEl.innerHTML = '';
+
+        let selectBtn = document.getElementById('btn-inv-select');
+        if (selectBtn) {
+            selectBtn.style.background = window.isInventorySelectMode ? '#1e3a8a' : '#444';
+            selectBtn.style.color = window.isInventorySelectMode ? '#fd0' : '#fff';
+            selectBtn.style.border = window.isInventorySelectMode ? '1px solid #3b82f6' : '1px outset #556';
+        }
+
         if (counts.size === 0) {
             invListEl.innerHTML = '<div style="color:#666;text-align:center;padding:10px; grid-column: 1 / -1;">가방이 비었습니다.</div>';
         } else {
@@ -1437,6 +1458,11 @@ function renderInventory() {
                 const dStr = encodeURIComponent(JSON.stringify(c.item)).replace(/'/g, "%27");
                 const itemElement = document.createElement('div');
                 itemElement.className = `inv-slot grade-${c.item.grade || 0}`;
+
+                if (window.selectedInventoryKeys && window.selectedInventoryKeys.has(c.rawKey)) {
+                    itemElement.style.border = '2px solid #fd0';
+                    itemElement.style.boxShadow = '0 0 10px rgba(255, 221, 0, 0.4) inset';
+                }
 
                 let clickTimer = null; let clickCount = 0;
 
@@ -1454,6 +1480,18 @@ function renderInventory() {
                         if (targetIt) window.attemptEnchant(window.activeEnchantScrollKey, targetIt);
                         return;
                     }
+
+                    if (window.isInventorySelectMode) {
+                        if (!window.selectedInventoryKeys) window.selectedInventoryKeys = new Set();
+                        if (window.selectedInventoryKeys.has(c.rawKey)) {
+                            window.selectedInventoryKeys.delete(c.rawKey);
+                        } else {
+                            window.selectedInventoryKeys.add(c.rawKey);
+                        }
+                        window.renderInventory();
+                        return;
+                    }
+
                     clickCount++;
                     if (clickCount === 1) {
                         clickTimer = setTimeout(() => {
@@ -1471,8 +1509,7 @@ function renderInventory() {
             });
         }
     }
-}
-
+};
 
 let equipSlotClickCount = {};
 let equipSlotClickTimer = {};
@@ -1506,16 +1543,101 @@ window.handleEquipSlotClick = function(e, slotKey, dataStr) {
         window.unequip(slotKey);
     }
 };
-window.cancelEnchantMode = function() {
-    window.activeEnchantScrollKey = null;
-    document.body.classList.remove('enchanting-mode');
-    document.body.style.cursor = 'default';
+
+
+// ==========================================
+// 🌟 [2] 인벤토리 다중 선택 & 일괄 판매/삭제 시스템
+// ==========================================
+window.selectedInventoryKeys = new Set();
+window.isInventorySelectMode = false;
+
+window.toggleInventorySelectMode = function() {
+    if (typeof playSound === 'function') playSound('click');
+    window.isInventorySelectMode = !window.isInventorySelectMode;
+    if (!window.isInventorySelectMode) {
+        window.selectedInventoryKeys.clear(); 
+    }
+    if (typeof updateUI === 'function') updateUI();
+    if (typeof window.renderInventory === 'function') window.renderInventory();
 };
 
+window.sortPlayerInventory = function() {
+    if (typeof playSound === 'function') playSound('click');
+    if (!player || !player.inv) return;
+    
+    player.inv.sort((a, b) => {
+        const pRegex = /주홍|맑은|빨간|파란|물약|초록|용기|와퍼|마나|체력/;
+        const isA = a.type === 'potion' || pRegex.test(a.name);
+        const isB = b.type === 'potion' || pRegex.test(b.name);
+        if (isA && !isB) return -1;
+        if (!isA && isB) return 1;
+        
+        let gA = a.grade || 0, gB = b.grade || 0;
+        if (gA !== gB) return gB - gA;
+        
+        let tA = a.type || '', tB = b.type || '';
+        if (tA !== tB) return tA.localeCompare(tB);
+        return a.name.localeCompare(b.name);
+    });
+    
+    window.selectedInventoryKeys.clear();
+    if (typeof window.renderInventory === 'function') window.renderInventory();
+};
 
+window.confirmSellSelectedItems = function() {
+    if (!window.selectedInventoryKeys || window.selectedInventoryKeys.size === 0) {
+        if (typeof addMessage === 'function') addMessage("판매할 아이템을 선택해주세요.", "#f55");
+        return;
+    }
+    
+    // 💡 브라우저 기본 confirm 대신 커스텀 showConfirm 사용
+    showConfirm(`선택한 ${window.selectedInventoryKeys.size}종류의 아이템을 전부 판매하시겠습니까?`, () => {
+        let totalEarned = 0;
+        
+        for (let i = player.inv.length - 1; i >= 0; i--) {
+            let it = player.inv[i];
+            if (it && it.type !== 'currency' && window.selectedInventoryKeys.has(getStackKey(it))) {
+                let price = it.price || (it.grade ? (it.grade + 1) * 100 : 50);
+                let count = it.count || 1;
+                totalEarned += price * count;
+                player.inv.splice(i, 1);
+            }
+        }
+        
+        player.adena = (player.adena || 0) + totalEarned;
+        window.selectedInventoryKeys.clear();
+        window.isInventorySelectMode = false; 
+        
+        if (typeof addMessage === 'function') addMessage(`일괄 판매로 ${totalEarned.toLocaleString()} 아데나를 획득했습니다.`, "#fd0");
+        if (typeof playSound === 'function') playSound('buy');
+        if (typeof updateUI === 'function') updateUI();
+        if (typeof window.renderInventory === 'function') window.renderInventory();
+    });
+};
 
-
-
+window.confirmDeleteSelectedItems = function() {
+    if (!window.selectedInventoryKeys || window.selectedInventoryKeys.size === 0) {
+        if (typeof addMessage === 'function') addMessage("삭제할 아이템을 선택해주세요.", "#f55");
+        return;
+    }
+    
+    // 💡 브라우저 기본 confirm 대신 커스텀 showConfirm 사용
+    showConfirm(`⚠️ 경고: 선택한 아이템을 영구 삭제하시겠습니까?\n이 작업은 복구할 수 없습니다!`, () => {
+        for (let i = player.inv.length - 1; i >= 0; i--) {
+            let it = player.inv[i];
+            if (it && it.type !== 'currency' && window.selectedInventoryKeys.has(getStackKey(it))) {
+                player.inv.splice(i, 1);
+            }
+        }
+        
+        window.selectedInventoryKeys.clear();
+        window.isInventorySelectMode = false;
+        
+        if (typeof addMessage === 'function') addMessage("선택한 아이템이 영구 삭제되었습니다.", "#aaa");
+        if (typeof updateUI === 'function') updateUI();
+        if (typeof window.renderInventory === 'function') window.renderInventory();
+    });
+};
 
 
 function getMagicLevelTier(mName) {
@@ -4057,8 +4179,9 @@ function injectMobileBottomFix() {
 
         /* 💡 [핵심] 상점, 인벤토리, 마법책 내부 리스트가 길어지면 자동 스크롤 활성화 */
         #shop-list, #inv-list, #inv-tab-equip, #magic-list, #teleport-list {
-            max-height: 55vh !important; /* 모바일 세로 화면의 55%까지만 커지고 나머진 스크롤 */
-            overflow-y: auto !important;
+            max-height: 55vh !important;
+            overflow-y: scroll !important;
+            scrollbar-gutter: stable;
             overflow-x: hidden !important;
             box-sizing: border-box !important;
             padding-right: 4px !important;
@@ -4513,3 +4636,5 @@ document.addEventListener('touchstart', (e) => {
         }
     }
 }, { passive: true });
+
+

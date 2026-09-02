@@ -772,7 +772,14 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
             <div class="inv-tab" id="tab-btn-equip" onclick="switchInvTab('equip')">착용 장비</div>
         </div>
         <div class="win-content" style="padding: 0;">
-            <div id="inv-tab-bag" style="display: block; padding: 10px; overflow-y: auto; max-height: 300px;">
+          <div id="inv-tab-bag" style="display: block; padding: 10px; overflow-y: auto; max-height: 300px;">
+                <!-- 💡 다중 선택 모드 토글 버튼 추가 -->
+                <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+                    <button id="btn-inv-select" class="confirm-btn bg-dark-gray" style="flex:1; padding:4px 0; font-size:11px;" onclick="toggleInventorySelectMode()">☑️ 선택 모드</button>
+                    <button class="confirm-btn bg-dark-gray" style="flex:1; padding:4px 0; font-size:11px;" onclick="sortPlayerInventory()">🔄 정렬</button>
+                    <button class="confirm-btn bg-dark-green" style="flex:1; padding:4px 0; font-size:11px;" onclick="confirmSellSelectedItems()">💰 판매</button>
+                    <button class="confirm-btn bg-dark-red" style="flex:1; padding:4px 0; font-size:11px;" onclick="confirmDeleteSelectedItems()">🗑️ 삭제</button>
+                </div>
                 <div id="inv-list"></div>
             </div>
             <div id="inv-tab-equip" style="display: none; padding: 10px; background: #0c0c10;">
