@@ -79,6 +79,10 @@ setInterval(() => {
         requestWakeLock();
     }
 
+    if (typeof player !== 'undefined' && player && (player.autoHunt || currentMap === 'boss_raid')) {
+        lastUserActionTime = performance.now(); 
+    }
+
     let idleTime = performance.now() - lastUserActionTime;
     if (idleTime > 45000 && !isDimmed) {
         isDimmed = true;
@@ -5587,7 +5591,10 @@ window.processAutoConsumablesAndBuffs = function() {
 // ==========================================
 window.enterBossRaid = function() {
     if (!gameStarted || !player) return;
+    
+    window.closeAllWindows(); 
 
+  
     player.isMoving = false;
     player.target = null;
     player.moveX = undefined;
@@ -5703,7 +5710,7 @@ window.enterBossRaid = function() {
 };
 
 window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
-    let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+    let baseBosses = Object.values(templates.bosses).map(b => b.name);
     let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
     let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
     

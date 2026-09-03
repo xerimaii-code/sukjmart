@@ -293,7 +293,7 @@ io.on('connection', (socket) => {
       let baseBossDef = Math.floor(30 + (partyCombatPower / 300));
       let baseBossAtk = Math.floor(50 + (partyCombatPower / 200));
 
-        let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
         let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
         let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
 
@@ -723,7 +723,7 @@ io.on('connection', (socket) => {
                     });
 
                     setTimeout(() => {
-                        let baseBosses = ['데스나이트', '바포메트', '발라카스', '리치'];
+                        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
                         let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
 
                         // 💡 1차와 동일하게 100% Full HP 부여
