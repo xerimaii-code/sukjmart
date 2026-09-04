@@ -481,6 +481,58 @@ let confirmCallback = null;
 let hotkeys = new Array(8).fill(null);
 window.hotkeys = hotkeys;
 
+
+// 🔊 [오디오 에셋 사전 로드]
+const customAudio = {
+    swing: [new Audio('/sound/sword-miss3.ogg'), new Audio('/sound/fishing-cast.ogg')],
+    hit_flesh: [new Audio('/sound/sword-flesh3.ogg'), new Audio('/sound/sword-flesh4.ogg')],
+    hit_stone: [new Audio('/sound/sword-stone.ogg')],
+    hit_armor: [new Audio('/sound/sword-leather.ogg')],
+    player_hit: [new Audio('/sound/player-hurt-male.ogg')],
+    player_dead: [new Audio('/sound/player-death-male.ogg')],
+    drink: [new Audio('/sound/fishing-plop.ogg')],
+    buy: [new Audio('/sound/coin-spill.ogg')],
+    chest: [new Audio('/sound/chest-open.ogg')],
+    break: [new Audio('/sound/crate-break.ogg'), new Audio('/sound/fishing-snap.ogg')],
+    boss_roar: [new Audio('/sound/dungeon-roar.ogg')],
+    
+    // 💡 몬스터 데스 사운드 풀
+    death_boss_demon: [new Audio('/sound/ogre-boss-death.ogg')], 
+    death_boss_human: [new Audio('/sound/orc-boss-death.ogg')],
+    death_dragon: [new Audio('/sound/cyclop-death.ogg')],
+    death_female: [new Audio('/sound/orc-female-death.ogg')],
+    death_creepy: [new Audio('/sound/scp939-death.ogg')],
+    death_reptile: [new Audio('/sound/lizardfolk-death.ogg')],
+    death_kobold: [new Audio('/sound/kobold-death.ogg')],
+    death_troll: [new Audio('/sound/troll-death.ogg')],
+    death_ogre: [new Audio('/sound/ogre-death.ogg')],
+    death_orc: [new Audio('/sound/orc-death.ogg')],
+    death_golem: [new Audio('/sound/stone-golem-death.ogg')],
+    death_beast: [new Audio('/sound/gnoll-death.ogg')], // 늑대, 켈베로스 등 진짜 짐승류
+    death_common: [new Audio('/sound/hobgoblin-death.ogg'), new Audio('/sound/goblin-death.ogg')] // 💡 허스키한 공용 사운드 (슬라임, 판, 고블린 등 범용)
+};
+
+// 💡 사운드별 볼륨 배율
+const soundMultipliers = {
+    swing: 0.3, hit_flesh: 0.5, hit_stone: 0.5, hit_armor: 0.5,
+    player_hit: 0.6, player_dead: 1.2,
+    drink: 0.6, buy: 0.8, chest: 0.8, break: 0.8, boss_roar: 1.2,
+    death_boss_demon: 1.1, death_boss_human: 1.1, death_dragon: 1.2,
+    death_female: 0.45, death_creepy: 0.4, death_reptile: 0.4,
+    death_kobold: 0.4, death_troll: 0.5, death_ogre: 0.5, 
+    death_orc: 0.4, death_golem: 0.5, death_beast: 0.4,
+    death_common: 0.45 // 💡 신규 공용 사운드 볼륨
+};
+
+// 💡 연속 재생 방지 쿨타임 (ms 단위)
+const soundCooldowns = {
+    player_hit: 450, hit_flesh: 120, hit_stone: 150, hit_armor: 150,
+    swing: 100, drink: 300, 
+    death_female: 150, death_creepy: 150, death_reptile: 150,
+    death_kobold: 150, death_beast: 150, death_common: 120, death_orc: 120
+};
+
+
 const getInitialPlayer = () => ({
     name: '리니지 마스터', 
     charClass: 'knight', 
@@ -523,71 +575,154 @@ window.items = items;
 window.particles = particles;
 window.dmgTexts = dmgTexts;
 
+const lastSoundPlayTime = {};
 let audioCtx = null;
-function initAudio() { if(!audioCtx) { const AudioContext = window.AudioContext || window.webkitAudioContext; if(AudioContext) audioCtx = new AudioContext(); } }
 
+function initAudio() { 
+    if(!audioCtx) { 
+        const AudioContext = window.AudioContext || window.webkitAudioContext; 
+        if(AudioContext) audioCtx = new AudioContext(); 
+    } 
+}
+
+// 💡 전역 playSound 함수
+// 💡 전역 playSound 함수
 function playSound(type, targetEntity = null) {
     try {
-        // 💡 [수정] 게임이 시작되지 않았거나(로그아웃 상태) 볼륨이 0이면 소리 재생 차단
         if (!gameStarted || !audioCtx || gameOptions.volume <= 0) return;
-        const now = audioCtx.currentTime; 
-        let vol = gameOptions.volume; 
+        
+        let baseVol = gameOptions.volume * 20; 
+        let soundCategory = null;
 
-        const createNoise = (duration) => {
-            let bufferSize = audioCtx.sampleRate * duration;
-            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            let data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-            let noise = audioCtx.createBufferSource(); noise.buffer = buffer; return noise;
-        };
-
-        if (type === 'swing') {
-            let dur = 0.08 + Math.random() * 0.02; let noise = createNoise(dur);
-            let filter = audioCtx.createBiquadFilter(); filter.type = 'bandpass'; filter.frequency.setValueAtTime(1500 + Math.random()*500, now); filter.frequency.exponentialRampToValueAtTime(300, now + dur);
-            let gain = audioCtx.createGain(); gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(vol * 3.5, now + 0.02); gain.gain.exponentialRampToValueAtTime(0.01, now + dur);
-            noise.connect(filter).connect(gain).connect(audioCtx.destination); noise.start(now);
-        } else if (type === 'monster_hit') {
-            if (!targetEntity) return;
-            let name = targetEntity.name || ''; let p = 0.8 + Math.random() * 0.3; let hitVol = vol * 4.0; 
-            let osc1 = audioCtx.createOscillator(); let osc1Gain = audioCtx.createGain();
-            osc1.type = 'triangle'; osc1.frequency.setValueAtTime(150 * p, now); osc1.frequency.exponentialRampToValueAtTime(40 * p, now + 0.1);
-            osc1Gain.gain.setValueAtTime(hitVol, now); osc1Gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc1.connect(osc1Gain).connect(audioCtx.destination);
-            let noise = createNoise(0.2); let filter = audioCtx.createBiquadFilter(); let noiseGain = audioCtx.createGain();
-            if (name.includes('해골') || targetEntity.isUndead) { filter.type = 'highpass'; filter.frequency.value = 2500 * p; noiseGain.gain.setValueAtTime(hitVol * 1.5, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); } 
-            else if (name.includes('버그베어') || name.includes('오우거') || name.includes('골렘')) { filter.type = 'lowpass'; filter.frequency.value = 800 * p; osc1.type = 'sine'; osc1.frequency.setValueAtTime(100 * p, now); noiseGain.gain.setValueAtTime(hitVol * 2.0, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2); } 
-            else { filter.type = 'bandpass'; filter.frequency.value = 1200 * p; filter.Q.value = 1.0; noiseGain.gain.setValueAtTime(hitVol * 1.2, now); noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1); }
-            noise.connect(filter).connect(noiseGain).connect(audioCtx.destination); osc1.start(now); osc1.stop(now + 0.2); noise.start(now);
-        } else if (type === 'magic_hit') {
-            let p = 0.8 + Math.random() * 0.4; let osc = audioCtx.createOscillator(); let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); let masterGain = audioCtx.createGain();
-            masterGain.connect(audioCtx.destination); osc.connect(masterGain); noise.connect(filter).connect(masterGain);
-            osc.type = 'sawtooth'; osc.frequency.setValueAtTime(1500 * p, now); osc.frequency.exponentialRampToValueAtTime(100 * p, now + 0.1);
-            filter.type = 'bandpass'; filter.frequency.value = 3000 * p; filter.Q.value = 2.0; masterGain.gain.setValueAtTime(vol * 3.5, now); masterGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now); osc.stop(now + 0.15); noise.start(now);
-        } else if (type === 'player_hit') { 
-            let noise = createNoise(0.15); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.value = 350; 
-            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15); noise.connect(filter).connect(gain); noise.start(now);
-        } else {
-            let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
-            if (type === 'fireball') { let noise = createNoise(0.5); let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
-            else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
-            else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
-            else if (type === 'spell' || type === 'drink') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+(type==='drink'?0.15:0.3)); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
-            else if (type === 'click' || type==='buy') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
-            else if (type === 'bow') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(800,now); osc.frequency.exponentialRampToValueAtTime(200,now+0.1); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.15); osc.start(now); osc.stop(now+0.15); }
-            else if (type === 'disintegrate') { 
-                const osc = audioCtx.createOscillator(); 
-                osc.connect(gain); 
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(2200, now); 
-                osc.frequency.exponentialRampToValueAtTime(300, now + 1.2); 
-                gain.gain.setValueAtTime(vol * 5.0, now); 
-                gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2); 
-                osc.start(now); osc.stop(now + 1.2); 
+        if (type === 'swing' || type === 'bow') soundCategory = 'swing';
+        else if (type === 'drink') soundCategory = 'drink';
+        else if (type === 'buy' || type === 'loot') soundCategory = 'buy';
+        else if (type === 'chest') soundCategory = 'chest';
+        else if (type === 'break') soundCategory = 'break';
+        else if (type === 'player_hit') soundCategory = 'player_hit';
+        else if (type === 'player_dead') soundCategory = 'player_dead';
+        else if (type === 'boss_roar') soundCategory = 'boss_roar';
+        
+        else if (type === 'monster_hit') {
+            if (targetEntity) {
+                let n = targetEntity.name || '';
+                if (n.includes('골렘') || n.includes('돌') || n.includes('가고일')) soundCategory = 'hit_stone';
+                else if (n.includes('해골') || n.includes('기사') || n.includes('데스나이트') || n.includes('단테스') || n.includes('아머')) soundCategory = 'hit_armor';
+                else soundCategory = 'hit_flesh';
+            } else {
+                soundCategory = 'hit_flesh';
             }
         }
-    } catch(e){}
+        
+        else if (type === 'monster_dead') {
+            if (targetEntity) {
+                let n = targetEntity.name || '';
+                
+                if (targetEntity.isBoss) {
+                    if (n.includes('드래곤') || n.includes('드레이크') || n.includes('안타라스') || n.includes('발라카스')) soundCategory = 'death_dragon';
+                    else if (n.includes('여왕') || n.includes('퀸') || n.includes('아이리스') || n.includes('제니스')) soundCategory = 'death_female';
+                    else if (n.includes('대장') || n.includes('커츠') || n.includes('단테스')) soundCategory = 'death_boss_human';
+                    else if (n.includes('웅골리언트')) soundCategory = 'death_creepy';
+                    else soundCategory = 'death_boss_demon'; 
+                } else {
+                    if (n.includes('오크')) soundCategory = 'death_orc';
+                    else if (n.includes('서큐버스') || n.includes('메두사') || n.includes('하피') || n.includes('페어리') || n.includes('머메이드')) soundCategory = 'death_female';
+                    else if (n.includes('셀로브') || n.includes('스콜피온') || n.includes('개미') || n.includes('아라크네') || n.includes('크로')) soundCategory = 'death_creepy';
+                    else if (n.includes('리자드맨') || n.includes('악어') || n.includes('크러스테시안') || n.includes('머맨') || n.includes('본 일') || n.includes('실라칸스')) soundCategory = 'death_reptile';
+                    else if (n.includes('해골') || n.includes('스파토이') || n.includes('코볼트') || n.includes('임프') || n.includes('병사') || n.includes('구울') || n.includes('좀비')) soundCategory = 'death_kobold';
+                    else if (n.includes('가고일') || n.includes('키메라') || n.includes('리빙 아머')) soundCategory = 'death_troll';
+                    else if (n.includes('골렘')) soundCategory = 'death_golem';
+                    else if (n.includes('오우거')) soundCategory = 'death_ogre';
+                    else if (n.includes('늑대') || n.includes('켈베로스') || n.includes('도베르만') || n.includes('셰퍼드') || n.includes('멧돼지') || n.includes('유니콘') || n.includes('야수')) soundCategory = 'death_beast';
+                    else if (n.includes('슬라임') || n.includes('괴물 눈') || n.includes('브롭') || n.includes('해파리')) soundCategory = 'death_slime';
+                    else soundCategory = 'death_common'; 
+                }
+            } else {
+                soundCategory = 'death_common';
+            }
+        }
+
+        if (soundCategory && soundCategory !== 'death_slime' && customAudio[soundCategory]) {
+            let now = performance.now();
+            let cooldown = soundCooldowns[soundCategory] || 0;
+
+            if (cooldown > 0) {
+                let lastTime = lastSoundPlayTime[soundCategory] || 0;
+                if (now - lastTime < cooldown) return;
+                lastSoundPlayTime[soundCategory] = now;
+            }
+
+            let arr = customAudio[soundCategory];
+            let audioNode = arr[Math.floor(Math.random() * arr.length)].cloneNode();
+            let multiplier = soundMultipliers[soundCategory] || 1.0;
+            audioNode.volume = Math.min(1.0, baseVol * multiplier);
+            audioNode.play().catch(() => {});
+            return; 
+        }
+
+        const now = audioCtx.currentTime; 
+        let vol = gameOptions.volume;
+        let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
+
+        // 💡 어둡고 힘빠진 슬라임 사망음 합성 (경쾌함 완전 제거)
+        if (soundCategory === 'death_slime') {
+            let bufferSize = audioCtx.sampleRate * 0.45; 
+            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+            let data = buffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                data[i] = Math.random() * 2 - 1;
+            }
+            let noise = audioCtx.createBufferSource();
+            noise.buffer = buffer;
+
+            const noiseFilter = audioCtx.createBiquadFilter();
+            noiseFilter.type = 'lowpass';
+            noiseFilter.frequency.setValueAtTime(300, now); 
+            noiseFilter.frequency.exponentialRampToValueAtTime(50, now + 0.45);
+
+            const osc = audioCtx.createOscillator();
+            const lfo = audioCtx.createOscillator(); 
+            const lfoGain = audioCtx.createGain();
+
+            lfo.type = 'sine';
+            lfo.frequency.setValueAtTime(10, now); 
+            lfoGain.gain.setValueAtTime(20, now);  
+            lfo.connect(lfoGain);
+            lfoGain.connect(osc.frequency);
+
+            noise.connect(noiseFilter);
+            noiseFilter.connect(gain);
+            osc.connect(gain);
+            
+            osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(550, now);   
+            osc.frequency.linearRampToValueAtTime(350, now + 0.2);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.45); 
+            
+            // 💡 기존 baseVol * 4.0에서 절반인 baseVol * 2.0으로 조정
+            gain.gain.setValueAtTime(baseVol * 2.0, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+            
+            lfo.start(now);
+            osc.start(now);
+            noise.start(now);
+            lfo.stop(now + 0.45);
+            osc.stop(now + 0.45);
+            noise.stop(now + 0.45);
+        }
+        else if (type === 'fireball') { let bufferSize = audioCtx.sampleRate * 0.5; let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); let data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; let noise = audioCtx.createBufferSource(); noise.buffer = buffer; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
+        else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
+        else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
+        else if (type === 'spell') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+0.3); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
+        else if (type === 'click') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
+        else if (type === 'disintegrate') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type = 'sine'; osc.frequency.setValueAtTime(2200, now); osc.frequency.exponentialRampToValueAtTime(300, now + 1.2); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2); osc.start(now); osc.stop(now + 1.2); }
+    } catch(e) {
+        console.error("사운드 재생 에러:", e);
+    }
 }
+
+window.playSound = playSound;
+
 
 window.updateOptions = function() { 
     if ($('opt-vol')) {
@@ -874,20 +1009,21 @@ window.applyBuff = function(name, duration, icon, type, val, target = player) {
     if (typeof updateUI === 'function') updateUI(); 
 };
 window.handlePlayerDeath = function() {
-    if (!player || player.isDead) return;
-    
-    player.isDead = true;
-    player.hp = 0;
-    player.autoHunt = false;
-    player.autoPotion = false;
-    player.isMoving = false;
-    player.target = null;
-    updateUI();
+    if (!player || player.isDead) return;
+    
+    player.isDead = true;
+    player.hp = 0;
+    player.autoHunt = false;
+    player.autoPotion = false;
+    player.isMoving = false;
+    player.target = null;
+    updateUI();
 
-    addMessage("💀 사망하셨습니다... 3초 후 안전지대에서 부활합니다.", "#f55");
-    setTimeout(() => {
-        window.respawnPlayer();
-    }, 3000);
+    if (typeof playSound === 'function') playSound('player_dead'); // 💡 남성 사망 소리
+    addMessage("💀 사망하셨습니다... 3초 후 안전지대에서 부활합니다.", "#f55");
+    setTimeout(() => {
+        window.respawnPlayer();
+    }, 3000);
 };
 
 function updateUI() {
@@ -3204,17 +3340,17 @@ window.saveWarehouse = async function() {
 };
 
 window.openWarehouseUI = async function() {
-    await loadWarehouse();
-    let btns = [
-        { text: `💰 아데나 맡기기`, callback: depositAdena },
-        { text: `💰 아데나 찾기`, callback: withdrawAdena },
-        { text: `🎒 아이템 맡기기`, color: '#242', callback: openDepositItemUI },
-        { text: `📦 아이템 찾기 (${sharedWarehouse.items?.length||0}/100)`, color: '#422', callback: openWithdrawItemUI },
-        { text: '닫기', color: '#555', callback: () => {} }
-    ];
-    showCustomPrompt(`[창고지기]\n창고 아데나: ${(sharedWarehouse.adena || 0).toLocaleString()} A\n보관된 아이템: ${sharedWarehouse.items?.length||0}/100 칸`, btns);
+    if (typeof playSound === 'function') playSound('chest'); // 💡 궤짝 열기
+    await loadWarehouse();
+    let btns = [
+        { text: `💰 아데나 맡기기`, callback: depositAdena },
+        { text: `💰 아데나 찾기`, callback: withdrawAdena },
+        { text: `🎒 아이템 맡기기`, color: '#242', callback: openDepositItemUI },
+        { text: `📦 아이템 찾기 (${sharedWarehouse.items?.length||0}/100)`, color: '#422', callback: openWithdrawItemUI },
+        { text: '닫기', color: '#555', callback: () => {} }
+    ];
+    showCustomPrompt(`[창고지기]\n창고 아데나: ${(sharedWarehouse.adena || 0).toLocaleString()} A\n보관된 아이템: ${sharedWarehouse.items?.length||0}/100 칸`, btns);
 };
-
 window.openDepositItemUI = function() {
     if(!sharedWarehouse.items) sharedWarehouse.items = [];
     if(sharedWarehouse.items.length >= 100) return showAlert("창고가 가득 찼습니다. (최대 100칸)");

@@ -4634,9 +4634,14 @@ window.socket.on('monster_hit', (data) => {
     });
 
     window.socket.on('monster_dead', (data) => {
-        let mobIndex = entities.findIndex(e => e.id === data.monsterId);
-        if (mobIndex > -1) { entities[mobIndex].isDead = true; entities[mobIndex].deadTime = performance.now(); }
-    });
+    let mobIndex = entities.findIndex(e => e.id === data.monsterId);
+    if (mobIndex > -1) { 
+        let mob = entities[mobIndex];
+        mob.isDead = true; 
+        mob.deadTime = performance.now(); 
+        if (typeof playSound === 'function') playSound('monster_dead', mob);
+    }
+});
 
     window.socket.on('player_exp_gain', (data) => {
         let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0 && !ent.isDead);
@@ -4687,22 +4692,22 @@ window.socket.on('monster_hit', (data) => {
     });
 
     window.socket.on('item_looted_success', (data) => {
-        let loot = data.item;
-        if (loot.type === 'currency' && loot.name === '아데나') {
-            player.adena += loot.count;
-            if (typeof addMessage === 'function') addMessage(`${loot.count} 아데나 획득`, '#fd0');
-            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${loot.count} 💰`, life: 1.5, color: '#fd0' });
-        } else {
-            let existingIdx = player.inv.findIndex(p => getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
-            if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc'].includes(loot.type)) {
-                player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (loot.count || 1);
-            } else { player.inv.push(JSON.parse(JSON.stringify(loot))); }
-            if (typeof addMessage === 'function') addMessage(`[루팅] ${loot.name} 획득!`, '#af5');
-        }
+    let loot = data.item;
+    if (loot.type === 'currency' && loot.name === '아데나') {
+        player.adena += loot.count;
+        if (typeof addMessage === 'function') addMessage(`${loot.count} 아데나 획득`, '#fd0');
+        if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${loot.count} 💰`, life: 1.5, color: '#fd0' });
+        if (typeof playSound === 'function') playSound('buy'); // 💡 아데나 쏟아지는 소리
+    } else {
+        let existingIdx = player.inv.findIndex(p => getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
+        if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc'].includes(loot.type)) {
+            player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (loot.count || 1);
+        } else { player.inv.push(JSON.parse(JSON.stringify(loot))); }
+        if (typeof addMessage === 'function') addMessage(`[루팅] ${loot.name} 획득!`, '#af5');
         if (typeof playSound === 'function') playSound('click');
-        if (typeof updateUI === 'function') updateUI();
-    });
-
+    }
+    if (typeof updateUI === 'function') updateUI();
+});
     window.socket.on('chat_broadcast', (data) => {
         if (typeof addMessage === 'function') addMessage(`[전체] ${data.name}: ${data.message}`, '#ffffff');
         let targetEnt = null;
@@ -5663,19 +5668,21 @@ window.enterBossRaid = function() {
 
     window.socket.off('raid_battle_start');
     window.socket.on('raid_battle_start', (data) => {
-        let bgTypes = ['lava', 'dungeon', 'tower', 'stone'];
-        let timeSeed = Math.floor(Date.now() / 600000);
-        let randomBg = bgTypes[timeSeed % bgTypes.length];
-        
-        if (maps['boss_raid']) maps['boss_raid'].bg = randomBg;
-        if (generatedMaps['boss_raid']) delete generatedMaps['boss_raid'];
-        
-        changeMap('boss_raid', 2000, 3600);
-        window.spawnRaidBoss(data.tierIndex, 1);
+    let bgTypes = ['lava', 'dungeon', 'tower', 'stone'];
+    let timeSeed = Math.floor(Date.now() / 600000);
+    let randomBg = bgTypes[timeSeed % bgTypes.length];
+    
+    if (maps['boss_raid']) maps['boss_raid'].bg = randomBg;
+    if (generatedMaps['boss_raid']) delete generatedMaps['boss_raid'];
+    
+    changeMap('boss_raid', 2000, 3600);
+    window.spawnRaidBoss(data.tierIndex, 1);
+    
+    if (typeof playSound === 'function') playSound('boss_roar'); // 💡 보스 포효
 
-        raidOverlay.style.opacity = '0';
-        setTimeout(() => raidOverlay.remove(), 400);
-    });
+    raidOverlay.style.opacity = '0';
+    setTimeout(() => raidOverlay.remove(), 400);
+});
 
    // 💡 레이드 2차 종료 시 자동사냥 강제 해제 수신 (정상 정돈)
     window.socket.off('raid_clear_return_town');
