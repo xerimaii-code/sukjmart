@@ -832,13 +832,6 @@ async function executeLogin(slotIndex, charObj, loadedData) {
 // ==========================================
 // [4. UI 메시지, 스탯 계산, 버프]
 // ==========================================
-window.addMessage = function(msg, color='#ddd') {
-    const chat = $('chat-messages'); if(!chat) return;
-    const div = document.createElement('div'); div.style.color = color; div.innerText = msg;
-    chat.appendChild(div);
-    if (chat.childNodes.length > 50) chat.removeChild(chat.firstChild);
-    requestAnimationFrame(() => { if(chat.lastChild) chat.lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' }); });
-};
 
 function recalculateStats() {
     if (!player) return;
@@ -1745,7 +1738,7 @@ window.confirmSellSelectedItems = function() {
         window.isInventorySelectMode = false; 
         
         if (typeof addMessage === 'function') addMessage(`일괄 판매로 ${totalEarned.toLocaleString()} 아데나를 획득했습니다.`, "#fd0");
-        if (typeof playSound === 'function') playSound('buy');
+       // if (typeof playSound === 'function') playSound('buy');
         if (typeof updateUI === 'function') updateUI();
         if (typeof window.renderInventory === 'function') window.renderInventory();
     });
@@ -3936,71 +3929,298 @@ if (mercHudListEl) {
 if (document.readyState === 'loading') { window.addEventListener('DOMContentLoaded', checkAndInitMainMenu); } 
 else { checkAndInitMainMenu(); }
 
+
+
+
 // ==========================================
-// [채팅 입력, 엔터키 토글 & 모바일 전송 버튼 통합]
+// [채팅 엔진, 탭 필터링 및 /명령어 처리기 통합]
 // ==========================================
+window.chatHistory = [];
+window.currentChatTab = 'all';
+window.isAdminAuth = false;
+
+window.switchChatTab = function(tabName) {
+    if (typeof playSound === 'function') playSound('click');
+    window.currentChatTab = tabName;
+    document.querySelectorAll('.chat-tab').forEach(el => {
+        let labelMap = { 'all': '전체', 'chat': '💬대화', 'party': '파티', 'system': '시스템', 'whisper': '귓말' };
+        el.className = el.innerText === labelMap[tabName] ? 'chat-tab active' : 'chat-tab';
+    });
+    renderChatMessages();
+};
+// 2. 대화창 확대/축소 토글
+window.toggleChatExpand = function() {
+    if (typeof playSound === 'function') playSound('click');
+    let chatEl = document.getElementById('ui-chat');
+    let expandBtn = document.getElementById('chat-expand-btn');
+    if (!chatEl) return;
+    
+    chatEl.classList.toggle('expanded');
+    if (expandBtn) {
+        expandBtn.innerText = chatEl.classList.contains('expanded') ? '🔽 접기' : '🔼 펼치기';
+    }
+    requestAnimationFrame(() => {
+        if (typeof renderChatMessages === 'function') renderChatMessages();
+    });
+};
+
+// 3. 메시지 추가 및 렌더링
+window.addMessage = function(msg, color = '#ddd', type = 'system') {
+    window.chatHistory.push({ msg, color, type });
+    if (window.chatHistory.length > 100) window.chatHistory.shift();
+    renderChatMessages();
+};
+
+function renderChatMessages() {
+    const chat = document.getElementById('chat-messages');
+    if (!chat) return;
+    
+    chat.innerHTML = '';
+    window.chatHistory.forEach(c => {
+        // 💡 'chat' 탭에서는 시스템, 파티, 귓말을 제외하고 오직 일반 대화('normal')만 출력합니다.
+        if (window.currentChatTab === 'chat' && c.type !== 'normal') return;
+        if (window.currentChatTab === 'party' && c.type !== 'party') return;
+        if (window.currentChatTab === 'system' && c.type !== 'system') return;
+        if (window.currentChatTab === 'whisper' && c.type !== 'whisper') return;
+        
+        const div = document.createElement('div');
+        div.style.color = c.color;
+        div.style.marginBottom = '2px';
+        div.innerText = c.msg;
+        chat.appendChild(div);
+    });
+    chat.scrollTop = chat.scrollHeight;
+}
+
+// ==========================================
+// [채팅 엔진, 탭 필터링 및 운영자 명령어 통합]
+// ==========================================
+
+// 4. 슬래시(/) 명령어 판별기 및 운영자 전용 툴킷
+function processChatCommand(cmdStr) {
+    let args = cmdStr.trim().split(/\s+/);
+    let cmd = args[0];
+
+    if (cmd === '/?') {
+        addMessage("==== [명령어 목록] ====", '#fd0', 'system');
+        addMessage("/누구 : 현재 접속자 목록 및 위치 확인", '#fff', 'system');
+        addMessage("/귓말 [캐릭터이름] [할말] : 1:1 귓속말", '#fff', 'system');
+        
+        if (window.isAdminAuth) {
+            addMessage("---- [👑 운영자 전용 명령어] ----", '#f55', 'system');
+            addMessage("/공지 [내용] : 전 서버 붉은색 시스템 공지 전송", '#fd0', 'system');
+            addMessage("/모험가생성 : 42명 가상 모험가 DB 자동 주입", '#fd0', 'system');
+            addMessage("/플레이어삭제 [이름] : 지정 캐릭터 DB 영구 삭제", '#fd0', 'system');
+            addMessage("/소환 [몬스터명] [수량] : 내 위치에 몬스터 즉시 소환", '#fd0', 'system');
+            addMessage("/아데나 [수량] : 소지 아데나 즉시 충전", '#fd0', 'system');
+            addMessage("/레벨 [숫자] : 내 캐릭터 레벨 강제 변경", '#fd0', 'system');
+            addMessage("/이동 [맵코드] : 지정 맵으로 강제 텔레포트", '#fd0', 'system');
+            addMessage("/청소 : 현재 맵 바닥의 모든 아이템 즉시 증발", '#fd0', 'system');
+            addMessage("/운영자해제 : 운영자 모드 종료", '#aaa', 'system');
+        } else {
+            addMessage("/운영자 [계정/비번] : 운영자 권한 획득", '#888', 'system');
+        }
+    } 
+    else if (cmd === '/누구') {
+        if (window.socket) window.socket.emit('cmd_who');
+    } 
+    else if (cmd === '/귓말') {
+        if (args.length < 3) return addMessage("사용법: /귓말 [이름] [할말]", '#f55', 'system');
+        let targetName = args[1];
+        let content = args.slice(2).join(' ');
+        if (window.socket) window.socket.emit('cmd_whisper', { targetName, content });
+        addMessage(`[귓말 ➔ ${targetName}]: ${content}`, '#e879f9', 'whisper');
+    } 
+    else if (cmd === '/운영자') {
+        let authStr = args[1];
+        if (authStr === 'admin@gmail.com/90051254') {
+            window.isAdminAuth = true;
+            addMessage("👑 [운영자 권한 승인] 모든 운영자 콘솔 명령어가 활성화되었습니다. (/? 로 확인)", '#fd0', 'system');
+            if (typeof playSound === 'function') playSound('spell');
+        } else {
+            addMessage("인증 실패: 계정 또는 비밀번호가 올바르지 않습니다.", '#f55', 'system');
+        }
+    } 
+    else if (cmd === '/운영자해제') {
+        window.isAdminAuth = false;
+        addMessage("운영자 권한이 안전하게 해제되었습니다.", '#aaa', 'system');
+    }
+
+    // ==========================================
+    // 👑 [운영자 전용 실행 분기]
+    // ==========================================
+    else if (window.isAdminAuth) {
+        if (cmd === '/공지') {
+            if (args.length < 2) return addMessage("사용법: /공지 [내용]", '#f55', 'system');
+            let noticeText = args.slice(1).join(' ');
+            if (window.socket) window.socket.emit('admin_notice', { message: noticeText });
+        }
+        else if (cmd === '/모험가생성' || cmd === '/ai생성') {
+            generateAIAgents();
+        }
+        else if (cmd === '/플레이어삭제') {
+            if (args.length < 2) return addMessage("사용법: /플레이어삭제 [이름]", '#f55', 'system');
+            deletePlayerByAdmin(args[1]);
+        }
+        else if (cmd === '/소환') {
+            if (args.length < 2) return addMessage("사용법: /소환 [몬스터명] [수량(기본1)]", '#f55', 'system');
+            let mobName = args[1];
+            let count = parseInt(args[2]) || 1;
+            if (window.socket) {
+                window.socket.emit('admin_spawn_mob', { mobName, count, x: player.x, y: player.y, map: currentMap });
+            }
+        }
+        else if (cmd === '/아데나') {
+            let amt = parseInt(args[1]);
+            if (isNaN(amt)) return addMessage("사용법: /아데나 [금액]", '#f55', 'system');
+            player.adena = (player.adena || 0) + amt;
+            if (typeof playSound === 'function') playSound('buy');
+            addMessage(`[운영자 치트] 아데나 ${amt.toLocaleString()}원이 지급되었습니다.`, '#5f5', 'system');
+            if (typeof updateUI === 'function') updateUI();
+        }
+        else if (cmd === '/레벨') {
+            let targetLv = parseInt(args[1]);
+            if (isNaN(targetLv) || targetLv < 1) return addMessage("사용법: /레벨 [숫자]", '#f55', 'system');
+            player.level = targetLv;
+            player.exp = 0;
+            addMessage(`[운영자 치트] 캐릭터 레벨이 Lv.${targetLv}로 설정되었습니다.`, '#5f5', 'system');
+            if (typeof updateUI === 'function') updateUI();
+        }
+        else if (cmd === '/이동') {
+            let mapKey = args[1];
+            if (!mapKey || !maps[mapKey]) return addMessage("사용법: /이동 [맵코드 (예: talking_island, gludin 등)]", '#f55', 'system');
+            changeMap(mapKey, 2000, 2000);
+            addMessage(`[운영자 치트] ${mapKey} 좌표로 즉시 이동했습니다.`, '#5f5', 'system');
+        }
+        else if (cmd === '/청소') {
+            if (window.socket) window.socket.emit('admin_clear_floor', { map: currentMap });
+            addMessage("현재 맵 바닥 청소를 서버에 요청했습니다.", '#aaa', 'system');
+        }
+        else {
+            addMessage(`알 수 없는 운영자 명령어입니다: ${cmd} (도움말: /?)`, '#f55', 'system');
+        }
+    }
+    else {
+        addMessage(`알 수 없는 명령어입니다: ${cmd} (도움말: /?)`, '#f55', 'system');
+    }
+}
+
+// 5. 전송 함수
+function sendChatMessage() {
+    const chatInput = document.getElementById('chat-input');
+    if (!chatInput) return;
+    const msg = chatInput.value.trim();
+    
+    if (msg !== '') {
+        if (msg.startsWith('/')) {
+            processChatCommand(msg);
+        } else {
+            player.bubbleText = msg;
+            player.bubbleTimer = Date.now() + 5000; 
+            
+            let isPartyMsg = window.currentChatTab === 'party';
+            let chatType = isPartyMsg ? 'party' : 'normal';
+            
+            // 💡 [수정] 내 화면에 직접 출력하는 로직을 제거하고, 
+            // 서버가 보내주는 브로드캐스트(`chat_broadcast`) 수신 시에만 1번 출력되도록 일원화합니다.
+            if (window.socket && currentUser) {
+                window.socket.emit('chat_message', {
+                    senderId: currentUser.id,
+                    name: player.name,
+                    message: msg,
+                    map: currentMap,
+                    chatType: chatType
+                });
+            }
+        }
+        chatInput.value = '';
+    }
+    chatInput.blur(); 
+}
+
+// 6. 키 입력 및 모바일 전송 리스너 연동
 const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
 
-function sendChatMessage() {
-    if (!chatInput) return;
-    const msg = chatInput.value.trim();
-    if (msg !== '') {
-        player.bubbleText = msg;
-        player.bubbleTimer = Date.now() + 5000; 
-
-        if (typeof addMessage === 'function') {
-            addMessage(`[전체] ${player.name || '플레이어'}: ${msg}`, '#ffffff');
-        }
-        
-        if (window.socket && currentUser) {
-            window.socket.emit('chat_message', {
-                senderId: currentUser.id,
-                name: player.name,
-                message: msg,
-                map: currentMap
-            });
-        }
-        
-        chatInput.value = '';
-    }
-    chatInput.blur(); 
-}
-
 window.addEventListener('keydown', (e) => {
-    if (!chatInput) return;
+    if (!chatInput) return;
 
-    if (e.key === 'Enter') {
-        e.preventDefault(); 
-        
-        if (document.activeElement === chatInput) {
-            sendChatMessage();
-        } else {
-            chatInput.focus(); 
-        }
-        return;
-    }
+    if (e.key === 'Enter') {
+        e.preventDefault(); 
+        if (document.activeElement === chatInput) {
+            sendChatMessage();
+        } else {
+            chatInput.focus(); 
+        }
+        return;
+    }
 
-    if (document.activeElement === chatInput) {
-        e.stopPropagation();
-    }
+    if (document.activeElement === chatInput) {
+        e.stopPropagation();
+    }
 });
 
 if (chatSendBtn) {
-    chatSendBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        sendChatMessage();
-    });
-    chatSendBtn.addEventListener('touchstart', (e) => {
-        e.stopPropagation();
-    });
+    chatSendBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        sendChatMessage();
+    });
+    chatSendBtn.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+    });
 }
 
 if (chatInput) {
-    chatInput.addEventListener('touchstart', (e) => e.stopPropagation());
-    chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+    chatInput.addEventListener('touchstart', (e) => e.stopPropagation());
+    chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
 }
+
+// 7. 관리자 전용 DB 함수 (모험가1 ~ 42 일괄 생성)
+async function deletePlayerByAdmin(charName) {
+    const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+    if (!sb) return;
+    const { error } = await sb.from('characters').delete().eq('name', charName);
+    if (error) addMessage(`삭제 실패: ${error.message}`, '#f55', 'system');
+    else addMessage(`[${charName}] 캐릭터가 DB에서 삭제되었습니다.`, '#fd0', 'system');
+}
+
+async function generateAIAgents() {
+    const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
+    if (!sb || !currentUser) return addMessage("로그인 정보 또는 DB 연결이 유효하지 않습니다.", '#f55', 'system');
+    
+    addMessage("42명의 가상 모험가(모험가1~42) 데이터를 Supabase에 주입합니다...", '#fd0', 'system');
+    
+    let classes = ['knight', 'wizard', 'elf'];
+    let alignments = [30000, 0, -30000]; // 로풀, 뉴트럴, 카오틱
+    let successCount = 0;
+    
+    for (let i = 1; i <= 42; i++) {
+        let cClass = classes[Math.floor(Math.random() * classes.length)];
+        let align = alignments[Math.floor(Math.random() * alignments.length)];
+        
+        let pData = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { hp: 150, maxHp: 150, mp: 30, maxMp: 30, inv: [] };
+        pData.name = `모험가${i}`;
+        pData.charClass = cClass;
+        pData.alignment = align;
+        pData.level = Math.floor(Math.random() * 45) + 5;
+        pData.adena = 200000;
+        
+        const { error } = await sb.from('characters').insert([{
+            user_id: currentUser.id,
+            slot_index: 100 + i, 
+            name: pData.name,
+            class_name: cClass,
+            data: { player: pData, last_sync_time: 0 }
+        }]);
+
+        if (!error) successCount++;
+    }
+    addMessage(`가상 모험가 42명 중 ${successCount}명 생성 완료! (슬롯: 101~142)`, '#5f5', 'system');
+}
+
+
+
 
 // ==========================================
 // [14. 맵 이동 및 포탈 / 텔레포트 관리 함수]
@@ -4668,14 +4888,14 @@ window.showClassPassiveInfo = function() {
               - 마을의 <b>'용병 단장'</b> NPC를 클릭하면 아데나를 지불하고 최대 3명까지 기사, 요정, 마법사 용병을 고용하여 함께 동행할 수 있습니다[cite: 3, 8].<br>
               - 용병은 전투를 자율 보조하며, 마법사 용병은 체력이 부족할 때 아군에게 '그레이트 힐'을 시전해 줍니다[cite: 5, 8].<br>
               - 가방 속 장비나 물약을 용병에게 드래그 앤 드롭하여 장착시키거나 물약(주홍/파란 물약)을 보급해 줄 수 있습니다[cite: 6, 8].<br>
-              - 마을의 '용병 단장'을 통해 현재 동행 중인 용병을 창고에 안전하게 맡겼다가 다른 캐릭터로 찾아 쓸 수 있습니다[cite: 8].<br><br>
+              - 마을의 '용병 단장'을 통해 현재 동행 중인 용병을 창고에 안전하게 맡겼다가 다른 캐릭터로 찾아 쓸 수 있습니다.<br><br>
             • <b>🐾 펫 테이밍 및 관리 (도베르만 길들이기):</b><br>
               - 잡화상인에게서 <b>'고기'</b> 아이템을 구매한 뒤, 사냥터의 '도베르만' 몬스터 근처에서 사용하면 일정 확률로 길들여 내 펫(소환수)으로 삼을 수 있습니다[cite: 1, 3, 6].<br>
               - 소환된 펫을 클릭하면 전용 펫 정보 창이 열려 공격/방어 태세를 설정하거나 아이템을 줄 수 있습니다[cite: 3, 6, 8].<br>
               - 마을의 <b>'펫 관리인'</b> NPC를 통해 키우던 펫을 안전하게 창고에 맡기거나 다른 캐릭터로 찾아 쓸 수 있습니다[cite: 3, 8].<br><br>
             • <b>📦 계정 공용 창고 시스템:</b><br>
               - 마을의 <b>'창고지기'</b> NPC를 통해 아데나와 아이템(최대 100칸)을 안전하게 보관할 수 있습니다[cite: 3, 8].<br>
-              - 이 창고는 계정 내 다른 캐릭터들과 아이템 및 아데나가 완벽하게 공유되므로 부캐릭터 육성 시 매우 유용합니다[cite: 8].
+              - 이 창고는 계정 내 다른 캐릭터들과 아이템 및 아데나가 완벽하게 공유되므로 부캐릭터 육성 시 매우 유용합니다.
         </div>
 
     </div>`;
@@ -4741,33 +4961,38 @@ document.addEventListener('dragstart', (e) => {
 // 윈도우(모달) 전역 드래그 편의성 향상 패치 (버튼/인풋 완벽 제외)
 // ==========================================
 document.addEventListener('mousedown', (e) => {
-    // 💡 버튼, 입력 요소, 리스트를 누른 경우 창 드래그를 즉시 취소하여 버튼 클릭 100% 보장
-    if (e.target.closest('button, input, select, textarea, .confirm-btn, .menu-btn, .btn-close')) return;
-    if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
-
-    let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
-    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN')) {
-        let rect = winEl.getBoundingClientRect();
-        if (e.clientY - rect.top <= 45) {
-            let winId = winEl.id;
-            if (winId && typeof window.startDrag === 'function') {
-                window.startDrag(e, winId);
+    let chatEl = document.getElementById('ui-chat');
+    if (chatEl && chatEl.classList.contains('expanded')) {
+        let tabsEl = document.getElementById('chat-tabs');
+        if (tabsEl && tabsEl.contains(e.target) && !e.target.closest('#chat-expand-btn')) {
+            // 기존 window 드래그 시스템과 연동
+            if (typeof window.startDrag === 'function') {
+                // transform 초기화 후 위치 고정
+                if (chatEl.style.transform && chatEl.style.transform !== 'none') {
+                    let rect = chatEl.getBoundingClientRect();
+                    chatEl.style.setProperty('transform', 'none', 'important');
+                    chatEl.style.left = rect.left + 'px';
+                    chatEl.style.top = rect.top + 'px';
+                }
+                window.startDrag(e, 'ui-chat');
             }
         }
     }
 });
 
 document.addEventListener('touchstart', (e) => {
-    if (e.target.closest('button, input, select, textarea, .confirm-btn, .menu-btn, .btn-close')) return;
-    if (e.target.closest('#shop-list, #inv-list, #magic-list, #teleport-list, #inv-tab-equip')) return;
-
-    let winEl = e.target.closest('.window, .modal-window, [id^="win-"], [id$="-modal"]');
-    if (winEl && (e.target.tagName === 'DIV' || e.target.tagName === 'SPAN')) {
-        let rect = winEl.getBoundingClientRect();
-        if (e.touches[0].clientY - rect.top <= 45) {
-            let winId = winEl.id;
-            if (winId && typeof window.startDrag === 'function') {
-                window.startDrag(e, winId);
+    let chatEl = document.getElementById('ui-chat');
+    if (chatEl && chatEl.classList.contains('expanded')) {
+        let tabsEl = document.getElementById('chat-tabs');
+        if (tabsEl && tabsEl.contains(e.target) && !e.target.closest('#chat-expand-btn')) {
+            if (typeof window.startDrag === 'function') {
+                if (chatEl.style.transform && chatEl.style.transform !== 'none') {
+                    let rect = chatEl.getBoundingClientRect();
+                    chatEl.style.setProperty('transform', 'none', 'important');
+                    chatEl.style.left = rect.left + 'px';
+                    chatEl.style.top = rect.top + 'px';
+                }
+                window.startDrag(e, 'ui-chat');
             }
         }
     }
