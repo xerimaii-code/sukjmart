@@ -22,6 +22,5 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             npm install
-            pm2 delete sukjmart || true
-            pm2 start server.js --name "sukjmart"
+            pm2 startOrReload ecosystem.config.js
             pm2 save
