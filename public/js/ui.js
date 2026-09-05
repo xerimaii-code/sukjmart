@@ -496,7 +496,10 @@ const customAudio = {
     break: [new Audio('/sound/crate-break.ogg'), new Audio('/sound/fishing-snap.ogg')],
     boss_roar: [new Audio('/sound/dungeon-roar.ogg')],
     
-    // 💡 몬스터 데스 사운드 풀
+    // 💡 슬라임 전용 사망음 추가 (fishing-reel.ogg)
+    death_slime: [new Audio('/sound/fishing-reel.ogg')],
+
+    // 몬스터 데스 사운드 풀
     death_boss_demon: [new Audio('/sound/ogre-boss-death.ogg')], 
     death_boss_human: [new Audio('/sound/orc-boss-death.ogg')],
     death_dragon: [new Audio('/sound/cyclop-death.ogg')],
@@ -508,20 +511,22 @@ const customAudio = {
     death_ogre: [new Audio('/sound/ogre-death.ogg')],
     death_orc: [new Audio('/sound/orc-death.ogg')],
     death_golem: [new Audio('/sound/stone-golem-death.ogg')],
-    death_beast: [new Audio('/sound/gnoll-death.ogg')], // 늑대, 켈베로스 등 진짜 짐승류
-    death_common: [new Audio('/sound/hobgoblin-death.ogg'), new Audio('/sound/goblin-death.ogg')] // 💡 허스키한 공용 사운드 (슬라임, 판, 고블린 등 범용)
+    death_beast: [new Audio('/sound/gnoll-death.ogg')],
+    death_common: [new Audio('/sound/hobgoblin-death.ogg'), new Audio('/sound/goblin-death.ogg')]
 };
 
 // 💡 사운드별 볼륨 배율
 const soundMultipliers = {
-    swing: 0.3, hit_flesh: 0.5, hit_stone: 0.5, hit_armor: 0.5,
-    player_hit: 0.6, player_dead: 1.2,
-    drink: 0.6, buy: 0.8, chest: 0.8, break: 0.8, boss_roar: 1.2,
-    death_boss_demon: 1.1, death_boss_human: 1.1, death_dragon: 1.2,
-    death_female: 0.45, death_creepy: 0.4, death_reptile: 0.4,
-    death_kobold: 0.4, death_troll: 0.5, death_ogre: 0.5, 
-    death_orc: 0.4, death_golem: 0.5, death_beast: 0.4,
-    death_common: 0.45 // 💡 신규 공용 사운드 볼륨
+    swing: 0.2, hit_flesh: 0.3, hit_stone: 0.3, hit_armor: 0.3,
+    player_hit: 0.4, player_dead: 0.8,
+    drink: 0.4, buy: 0.5, chest: 0.5, break: 0.5, boss_roar: 0.8,
+    death_boss_demon: 0.6, death_boss_human: 0.6, death_dragon: 0.6,
+    death_female: 0.2, death_creepy: 0.2, death_reptile: 0.2,
+    death_kobold: 0.2, death_troll: 0.25, death_ogre: 0.25, 
+    death_orc: 0.2, death_golem: 0.25, death_beast: 0.2,
+    death_common: 0.2,
+    death_slime: 0.15,
+    death_bugbear: 0.25
 };
 
 // 💡 연속 재생 방지 쿨타임 (ms 단위)
@@ -625,16 +630,21 @@ function playSound(type, targetEntity = null) {
                     else if (n.includes('웅골리언트')) soundCategory = 'death_creepy';
                     else soundCategory = 'death_boss_demon'; 
                 } else {
-                    if (n.includes('오크')) soundCategory = 'death_orc';
-                    else if (n.includes('서큐버스') || n.includes('메두사') || n.includes('하피') || n.includes('페어리') || n.includes('머메이드')) soundCategory = 'death_female';
+                    // 💡 서큐버스, 머메이드, 기란 간수 등 플레이어 사망음과 유사한 몬스터를 악어(파충류) 사운드로 통합 대체
+                    if (n.includes('서큐버스') || n.includes('머메이드') || n.includes('기란 간수') || 
+                        n.includes('메두사') || n.includes('하피') || n.includes('페어리') ||
+                        n.includes('리자드맨') || n.includes('악어') || n.includes('크러스테시안') || 
+                        n.includes('머맨') || n.includes('본 일') || n.includes('실라칸스')) {
+                        soundCategory = 'death_reptile';
+                    }
+                    else if (n.includes('버그베어') || n.includes('오우거')) soundCategory = 'death_ogre';
+                    else if (n.includes('슬라임') || n.includes('괴물 눈') || n.includes('브롭') || n.includes('해파리')) soundCategory = 'death_slime';
+                    else if (n.includes('오크')) soundCategory = 'death_orc';
                     else if (n.includes('셀로브') || n.includes('스콜피온') || n.includes('개미') || n.includes('아라크네') || n.includes('크로')) soundCategory = 'death_creepy';
-                    else if (n.includes('리자드맨') || n.includes('악어') || n.includes('크러스테시안') || n.includes('머맨') || n.includes('본 일') || n.includes('실라칸스')) soundCategory = 'death_reptile';
                     else if (n.includes('해골') || n.includes('스파토이') || n.includes('코볼트') || n.includes('임프') || n.includes('병사') || n.includes('구울') || n.includes('좀비')) soundCategory = 'death_kobold';
                     else if (n.includes('가고일') || n.includes('키메라') || n.includes('리빙 아머')) soundCategory = 'death_troll';
                     else if (n.includes('골렘')) soundCategory = 'death_golem';
-                    else if (n.includes('오우거')) soundCategory = 'death_ogre';
                     else if (n.includes('늑대') || n.includes('켈베로스') || n.includes('도베르만') || n.includes('셰퍼드') || n.includes('멧돼지') || n.includes('유니콘') || n.includes('야수')) soundCategory = 'death_beast';
-                    else if (n.includes('슬라임') || n.includes('괴물 눈') || n.includes('브롭') || n.includes('해파리')) soundCategory = 'death_slime';
                     else soundCategory = 'death_common'; 
                 }
             } else {
@@ -642,7 +652,7 @@ function playSound(type, targetEntity = null) {
             }
         }
 
-        if (soundCategory && soundCategory !== 'death_slime' && customAudio[soundCategory]) {
+    if (soundCategory && customAudio[soundCategory]) {
             let now = performance.now();
             let cooldown = soundCooldowns[soundCategory] || 0;
 
@@ -659,7 +669,6 @@ function playSound(type, targetEntity = null) {
             audioNode.play().catch(() => {});
             return; 
         }
-
         const now = audioCtx.currentTime; 
         let vol = gameOptions.volume;
         let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
@@ -3933,36 +3942,63 @@ else { checkAndInitMainMenu(); }
 
 
 // ==========================================
-// [채팅 엔진, 탭 필터링 및 /명령어 처리기 통합]
+// [채팅 엔진, 탭 필터링 및 독립 확장창 연동]
 // ==========================================
 window.chatHistory = [];
 window.currentChatTab = 'all';
 window.isAdminAuth = false;
+window.isChatPopupOpen = false;
 
+// 1. 탭 전환 (하단바 + 확장 팝업창 동시 동기화)
 window.switchChatTab = function(tabName) {
     if (typeof playSound === 'function') playSound('click');
     window.currentChatTab = tabName;
-    document.querySelectorAll('.chat-tab').forEach(el => {
+
+    // 하단 바 탭 스타일 동기화
+    document.querySelectorAll('#chat-tabs .chat-tab').forEach(el => {
         let labelMap = { 'all': '전체', 'chat': '💬대화', 'party': '파티', 'system': '시스템', 'whisper': '귓말' };
         el.className = el.innerText === labelMap[tabName] ? 'chat-tab active' : 'chat-tab';
     });
+
+    // 확장 팝업창 탭 스타일 동기화
+    const tabIndexMap = { 'all': 0, 'chat': 1, 'party': 2, 'system': 3, 'whisper': 4 };
+    const popTabs = document.querySelectorAll('#popup-chat-tabs .popup-tab');
+    popTabs.forEach((btn, idx) => {
+        if (idx === tabIndexMap[tabName]) btn.classList.add('active');
+        else btn.classList.remove('active');
+    });
+
     renderChatMessages();
 };
-// 2. 대화창 확대/축소 토글
-window.toggleChatExpand = function() {
+
+// 2. 독립형 확장 대화창 팝업 열기/닫기 토글
+window.toggleChatPopup = function() {
     if (typeof playSound === 'function') playSound('click');
-    let chatEl = document.getElementById('ui-chat');
-    let expandBtn = document.getElementById('chat-expand-btn');
-    if (!chatEl) return;
-    
-    chatEl.classList.toggle('expanded');
-    if (expandBtn) {
-        expandBtn.innerText = chatEl.classList.contains('expanded') ? '🔽 접기' : '🔼 펼치기';
+    const pop = document.getElementById('win-chat-popup');
+    const expandBtn = document.getElementById('chat-expand-btn');
+    if (!pop) return;
+
+    window.isChatPopupOpen = (pop.style.display !== 'flex');
+
+    if (window.isChatPopupOpen) {
+        pop.style.display = 'flex';
+        if (typeof bringToFront === 'function') bringToFront('win-chat-popup');
+        if (typeof autoCenterWindow === 'function') autoCenterWindow('win-chat-popup', false);
+        if (expandBtn) expandBtn.innerText = '🔽 접기';
+        
+        setTimeout(() => {
+            const pInput = document.getElementById('popup-chat-input');
+            if (pInput) pInput.focus();
+        }, 50);
+    } else {
+        pop.style.display = 'none';
+        if (expandBtn) expandBtn.innerText = '🔼 펼치기';
     }
-    requestAnimationFrame(() => {
-        if (typeof renderChatMessages === 'function') renderChatMessages();
-    });
+
+    renderChatMessages();
 };
+// 기존 함수 호환 유지
+window.toggleChatExpand = window.toggleChatPopup;
 
 // 3. 메시지 추가 및 렌더링
 window.addMessage = function(msg, color = '#ddd', type = 'system') {
@@ -3971,27 +4007,47 @@ window.addMessage = function(msg, color = '#ddd', type = 'system') {
     renderChatMessages();
 };
 
+// 4. 메시지 렌더링 (하단 대화창 + 상단 독립 확장창 분기)
 function renderChatMessages() {
     const chat = document.getElementById('chat-messages');
-    if (!chat) return;
-    
-    chat.innerHTML = '';
-    window.chatHistory.forEach(c => {
-        // 💡 'chat' 탭에서는 시스템, 파티, 귓말을 제외하고 오직 일반 대화('normal')만 출력합니다.
-        if (window.currentChatTab === 'chat' && c.type !== 'normal') return;
-        if (window.currentChatTab === 'party' && c.type !== 'party') return;
-        if (window.currentChatTab === 'system' && c.type !== 'system') return;
-        if (window.currentChatTab === 'whisper' && c.type !== 'whisper') return;
-        
-        const div = document.createElement('div');
-        div.style.color = c.color;
-        div.style.marginBottom = '2px';
-        div.innerText = c.msg;
-        chat.appendChild(div);
-    });
-    chat.scrollTop = chat.scrollHeight;
-}
+    const popChat = document.getElementById('popup-chat-messages');
 
+   let filtered = window.chatHistory.filter(c => {
+    if (window.currentChatTab === 'chat' && c.type !== 'normal') return false;
+    if (window.currentChatTab === 'party' && c.type !== 'party') return false;
+    if (window.currentChatTab === 'system' && c.type !== 'system') return false;
+    if (window.currentChatTab === 'whisper' && c.type !== 'whisper') return false;
+    return true;
+});
+
+    // 확장 팝업창이 열려 있으면 팝업창에 출력 및 스크롤
+    if (popChat && window.isChatPopupOpen) {
+        popChat.innerHTML = '';
+        filtered.forEach(c => {
+            const div = document.createElement('div');
+            div.style.color = c.color;
+            div.style.marginBottom = '3px';
+            div.innerText = c.msg;
+            popChat.appendChild(div);
+        });
+        popChat.scrollTop = popChat.scrollHeight;
+    }
+
+    // 하단 기본 대화창에 출력 (팝업이 열려 있을 때는 자동 스크롤을 멈춰서 정지 유지)
+    if (chat) {
+        chat.innerHTML = '';
+        filtered.forEach(c => {
+            const div = document.createElement('div');
+            div.style.color = c.color;
+            div.style.marginBottom = '2px';
+            div.innerText = c.msg;
+            chat.appendChild(div);
+        });
+        if (!window.isChatPopupOpen) {
+            chat.scrollTop = chat.scrollHeight;
+        }
+    }
+}
 // ==========================================
 // [채팅 엔진, 탭 필터링 및 운영자 명령어 통합]
 // ==========================================
@@ -4033,7 +4089,7 @@ function processChatCommand(cmdStr) {
     } 
     else if (cmd === '/운영자') {
         let authStr = args[1];
-        if (authStr === 'admin@gmail.com/90051254') {
+        if (authStr === 'xerimaii@gmail.com/90051254') {
             window.isAdminAuth = true;
             addMessage("👑 [운영자 권한 승인] 모든 운영자 콘솔 명령어가 활성화되었습니다. (/? 로 확인)", '#fd0', 'system');
             if (typeof playSound === 'function') playSound('spell');
@@ -4138,27 +4194,98 @@ function sendChatMessage() {
     chatInput.blur(); 
 }
 
-// 6. 키 입력 및 모바일 전송 리스너 연동
+// 팝업 전용 메시지 발송 함수
+window.sendPopupChatMessage = function() {
+    const input = document.getElementById('popup-chat-input');
+    if (!input) return;
+    const msg = input.value.trim();
+    if (msg !== '') {
+        if (msg.startsWith('/')) {
+            processChatCommand(msg);
+        } else {
+            player.bubbleText = msg;
+            player.bubbleTimer = Date.now() + 5000;
+            let isPartyMsg = window.currentChatTab === 'party';
+            let chatType = isPartyMsg ? 'party' : 'normal';
+
+            if (window.socket && currentUser) {
+                window.socket.emit('chat_message', {
+                    senderId: currentUser.id,
+                    name: player.name,
+                    message: msg,
+                    map: currentMap,
+                    chatType: chatType
+                });
+            }
+        }
+        input.value = '';
+    }
+};
+
+// 팝업 입력창 Enter 키 이벤트
+document.addEventListener('keydown', (e) => {
+    const popInput = document.getElementById('popup-chat-input');
+    if (popInput && document.activeElement === popInput && e.key === 'Enter') {
+        e.preventDefault();
+        sendPopupChatMessage();
+    }
+});
+
+
+// 6. 키 입력 및 모바일 전송 리스너 연동 (확장창 스마트 포커스 통합)
 const chatInput = document.getElementById('chat-input');
 const chatSendBtn = document.getElementById('chat-send-btn');
 
 window.addEventListener('keydown', (e) => {
-    if (!chatInput) return;
+    const popInput = document.getElementById('popup-chat-input');
+    const isPopOpen = window.isChatPopupOpen && popInput;
 
-    if (e.key === 'Enter') {
-        e.preventDefault(); 
-        if (document.activeElement === chatInput) {
+    // A. 하단 기본 입력창에 포커스가 있을 때
+    if (chatInput && document.activeElement === chatInput) {
+        e.stopPropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
             sendChatMessage();
-        } else {
-            chatInput.focus(); 
         }
         return;
     }
 
-    if (document.activeElement === chatInput) {
+    // B. 확장 팝업 입력창에 포커스가 있을 때
+    if (popInput && document.activeElement === popInput) {
         e.stopPropagation();
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            sendPopupChatMessage();
+        }
+        return;
+    }
+
+    // C. 평상시 필드에서 Enter를 눌렀을 때 (확장창 열려있으면 확장창으로 포커스)
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        if (isPopOpen) {
+            popInput.focus();
+        } else if (chatInput) {
+            chatInput.focus();
+        }
     }
 });
+
+if (chatSendBtn) {
+    chatSendBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        sendChatMessage();
+    });
+    chatSendBtn.addEventListener('touchstart', (e) => {
+        e.stopPropagation();
+    });
+}
+
+if (chatInput) {
+    chatInput.addEventListener('touchstart', (e) => e.stopPropagation());
+    chatInput.addEventListener('mousedown', (e) => e.stopPropagation());
+}
 
 if (chatSendBtn) {
     chatSendBtn.addEventListener('click', (e) => {
@@ -4189,36 +4316,94 @@ async function generateAIAgents() {
     const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
     if (!sb || !currentUser) return addMessage("로그인 정보 또는 DB 연결이 유효하지 않습니다.", '#f55', 'system');
     
-    addMessage("42명의 가상 모험가(모험가1~42) 데이터를 Supabase에 주입합니다...", '#fd0', 'system');
+    addMessage("실제 플레이어 스펙의 가상 모험가 42명 데이터를 생성합니다...", '#fd0', 'system');
     
     let classes = ['knight', 'wizard', 'elf'];
-    let alignments = [30000, 0, -30000]; // 로풀, 뉴트럴, 카오틱
+    let alignments = [30000, 0, -30000];
+    
+    let namePool = [
+        '바다', '하늘', '구름', '별빛', '달빛', '바람', '산소', '노을', '파도', '햇살', 
+        '소나무', '단풍', '우주', '대지', '폭포', '이슬', '안개', '번개', '태양', '은하',
+        '상추', '당근', '양파', '토마토', '브로콜리', '감자', '고구마', '참외', '수박', '체리',
+        '보석바', '메로나', '새우깡', '초코파이', '몽쉘', '포카칩', '너구리', '진라면', '참치캔',
+        '질풍', '무법자', '사신', '암살자', '백작', '영웅', '전설', '타이탄', '바이퍼', '카이로'
+    ];
+    
+    let usedNames = new Set();
     let successCount = 0;
     
     for (let i = 1; i <= 42; i++) {
+        let baseWord = namePool[Math.floor(Math.random() * namePool.length)];
+        let randomName = baseWord + (Math.floor(Math.random() * 89) + 10);
+        while (usedNames.has(randomName)) {
+            randomName = baseWord + Math.floor(Math.random() * 999);
+        }
+        usedNames.add(randomName);
+
         let cClass = classes[Math.floor(Math.random() * classes.length)];
         let align = alignments[Math.floor(Math.random() * alignments.length)];
         
+        // 💡 레벨: 15 ~ 55 범위 난수 생성
+        let lv = Math.floor(Math.random() * 41) + 15; 
+        // 💡 아데나: 기본 50만 + (레벨 × 5만) 가산
+        let startAdena = 500000 + (lv * 50000);
+
         let pData = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { hp: 150, maxHp: 150, mp: 30, maxMp: 30, inv: [] };
-        pData.name = `모험가${i}`;
+        pData.name = randomName;
         pData.charClass = cClass;
         pData.alignment = align;
-        pData.level = Math.floor(Math.random() * 45) + 5;
-        pData.adena = 200000;
-        
-        const { error } = await sb.from('characters').insert([{
+        pData.level = lv;
+        pData.adena = startAdena;
+        pData.inv = [];
+        pData.equip = {};
+
+        // 💡 국민 기본 풀셋 착용 및 가방 지급
+        let enchantWp = lv >= 50 ? 8 : (lv >= 40 ? 7 : 6);
+        let enchantAm = lv >= 50 ? 6 : (lv >= 40 ? 5 : 4);
+
+        if (cClass === 'knight') {
+            pData.equip.weapon = { name: `+${enchantWp} 싸울아비 장검`, type: 'weapon', atk: 16, enchantValue: enchantWp };
+            pData.equip.armor = { name: `+${enchantAm} 강철 판금 갑옷`, type: 'armor', def: 8, enchantValue: enchantAm };
+            pData.equip.helmet = { name: `+${enchantAm} 기사의 면갑`, type: 'helmet', def: 3, enchantValue: enchantAm };
+            pData.equip.shield = { name: `+${enchantAm} 붉은 기사의 방패`, type: 'shield', def: 2, enchantValue: enchantAm };
+            pData.equip.cloak = { name: `+${enchantAm} 보호 망토`, type: 'cloak', def: 1, enchantValue: enchantAm };
+            pData.equip.belt = { name: '오우거의 벨트', type: 'belt', hpBonus: 30 };
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
+            pData.inv.push({ name: '용기의 물약', count: 200, type: 'potion' });
+        } else if (cClass === 'elf') {
+            pData.equip.weapon = { name: `+${enchantWp} 화염의 활`, type: 'weapon', atk: 14, isBow: true, enchantValue: enchantWp };
+            pData.equip.armor = { name: `+${enchantAm} 요정족 판금 갑옷`, type: 'armor', def: 6, enchantValue: enchantAm };
+            pData.equip.helmet = { name: `+${enchantAm} 엘름의 축복`, type: 'helmet', def: 3, dex: 1, enchantValue: enchantAm };
+            pData.equip.cloak = { name: `+${enchantAm} 보호 망토`, type: 'cloak', def: 1, enchantValue: enchantAm };
+            pData.equip.belt = { name: '신체의 벨트', type: 'belt', hpBonus: 50 };
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
+            pData.inv.push({ name: '엘븐 와퍼', count: 200, type: 'potion' });
+        } else if (cClass === 'wizard') {
+            pData.equip.weapon = { name: `+${enchantWp} 마나의 지팡이`, type: 'weapon', atk: 8, mpDrain: 2, enchantValue: enchantWp };
+            pData.equip.armor = { name: `+${enchantAm} 신관의 로브`, type: 'armor', def: 6, mpRegen: 5, enchantValue: enchantAm };
+            pData.equip.helmet = { name: `+${enchantAm} 신관의 투구`, type: 'helmet', def: 2, mpRegen: 1, enchantValue: enchantAm };
+            pData.equip.cloak = { name: `+${enchantAm} 마법 망토`, type: 'cloak', def: 2, enchantValue: enchantAm };
+            pData.equip.belt = { name: '빛나는 정신의 벨트', type: 'belt', mpBonus: 50, mpRegen: 2 };
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
+            pData.inv.push({ name: '파란 물약', count: 200, type: 'potion' });
+            pData.magic = ['에너지 볼트', '힐', '실드', '파이어볼', '콜 라이트닝'];
+        }
+
+        pData.inv.push({ name: '주홍 물약', count: 500, type: 'potion', heal: 60 });
+        pData.inv.push({ name: '귀환 주문서', count: 50, type: 'scroll' });
+
+        const { error } = await sb.from('characters').upsert([{
             user_id: currentUser.id,
             slot_index: 100 + i, 
             name: pData.name,
             class_name: cClass,
             data: { player: pData, last_sync_time: 0 }
-        }]);
+        }], { onConflict: 'user_id,slot_index' });
 
         if (!error) successCount++;
     }
-    addMessage(`가상 모험가 42명 중 ${successCount}명 생성 완료! (슬롯: 101~142)`, '#5f5', 'system');
+    addMessage(`스펙업된 가상 모험가 42명 중 ${successCount}명 생성 완료!`, '#5f5', 'system');
 }
-
 
 
 
@@ -4461,16 +4646,32 @@ window.hideCharSelect = function() {
     if($('slot-box')) $('slot-box').style.display = 'block';
 };
 
-// 💡 용병 선택 전용 전역 함수 추가
+window.selectedAllyId = null;
 
+// 💡 아군(파티원/용병) 전용 선택 함수
+window.selectAlly = function(id, name) {
+    if (typeof playSound === 'function') playSound('click');
+    
+    // 이미 선택된 대상을 다시 누르면 선택 해제
+    if (window.selectedAllyId === id) {
+        window.selectedAllyId = null;
+        if (typeof addMessage === 'function') addMessage(`[선택 해제] 아군 선택이 취소되었습니다.`, '#aaa');
+    } else {
+        window.selectedAllyId = id;
+        if (typeof addMessage === 'function') addMessage(`[아군 선택] ${name}님에게 힐/버프 조준 완료!`, '#5f5');
+    }
+    
+    // HUD 테두리 갱신을 위해 UI 업데이트
+    if (typeof renderMercenaryHUD === 'function') renderMercenaryHUD();
+    if (typeof renderPartyHUD === 'function') renderPartyHUD();
+};
 
-
+// 💡 기존 renderMercenaryHUD 함수를 찾아 아래처럼 교체 (선택 시 테두리 하이라이트 추가)
 window.renderMercenaryHUD = function() {
     const listEl = document.getElementById('mercenary-hud-list');
     if (!listEl) return;
 
     let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
-
     if (activeMercs.length === 0) {
         listEl.innerHTML = '';
         return;
@@ -4484,19 +4685,20 @@ window.renderMercenaryHUD = function() {
         let mpPct = Math.max(0, Math.min(100, ((merc.mp || 0) / (merc.maxMp || 50)) * 100));
         let displayName = isMobile ? (merc.name.match(/\d+호/)?.[0] || merc.name) : `${merc.name} (Lv.${merc.level || 1})`;
 
-        // 💡 원본 CSS 클래스 사용 + 클릭/터치 씹힘 방지 속성 적용
+        // 💡 선택된 아군일 경우 밝은 초록색(힐/버프 직관성) 테두리 적용
+        let isSelected = (window.selectedAllyId === merc.id);
+        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
+
         html += `
-        <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999;"
-             onclick="window.selectMercenary('${merc.id}')"
-             oncontextmenu="event.preventDefault(); window.selectMercenary('${merc.id}'); return false;">
+        <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.2s; ${borderStyle}"
+             onclick="window.selectAlly('${merc.id}', '${merc.name}')"
+             oncontextmenu="event.preventDefault(); window.openPetUI(entities.find(e=>e.id==='${merc.id}')); return false;">
             <div class="merc-name-row">${displayName}</div>
             <div class="merc-bar-wrap">
                 <div class="merc-bar-fill hp" style="width: ${hpPct}%;"></div>
-                ${isMobile ? '' : `<span class="merc-bar-text">HP ${Math.floor(merc.hp)}/${merc.maxHp}</span>`}
             </div>
             <div class="merc-bar-wrap">
                 <div class="merc-bar-fill mp" style="width: ${mpPct}%;"></div>
-                ${isMobile ? '' : `<span class="merc-bar-text">MP ${Math.floor(merc.mp || 0)}/${merc.maxMp || 50}</span>`}
             </div>
         </div>`;
     });
@@ -4956,46 +5158,4 @@ document.addEventListener('dragstart', (e) => {
         }
     }
 });
-
-// ==========================================
-// 윈도우(모달) 전역 드래그 편의성 향상 패치 (버튼/인풋 완벽 제외)
-// ==========================================
-document.addEventListener('mousedown', (e) => {
-    let chatEl = document.getElementById('ui-chat');
-    if (chatEl && chatEl.classList.contains('expanded')) {
-        let tabsEl = document.getElementById('chat-tabs');
-        if (tabsEl && tabsEl.contains(e.target) && !e.target.closest('#chat-expand-btn')) {
-            // 기존 window 드래그 시스템과 연동
-            if (typeof window.startDrag === 'function') {
-                // transform 초기화 후 위치 고정
-                if (chatEl.style.transform && chatEl.style.transform !== 'none') {
-                    let rect = chatEl.getBoundingClientRect();
-                    chatEl.style.setProperty('transform', 'none', 'important');
-                    chatEl.style.left = rect.left + 'px';
-                    chatEl.style.top = rect.top + 'px';
-                }
-                window.startDrag(e, 'ui-chat');
-            }
-        }
-    }
-});
-
-document.addEventListener('touchstart', (e) => {
-    let chatEl = document.getElementById('ui-chat');
-    if (chatEl && chatEl.classList.contains('expanded')) {
-        let tabsEl = document.getElementById('chat-tabs');
-        if (tabsEl && tabsEl.contains(e.target) && !e.target.closest('#chat-expand-btn')) {
-            if (typeof window.startDrag === 'function') {
-                if (chatEl.style.transform && chatEl.style.transform !== 'none') {
-                    let rect = chatEl.getBoundingClientRect();
-                    chatEl.style.setProperty('transform', 'none', 'important');
-                    chatEl.style.left = rect.left + 'px';
-                    chatEl.style.top = rect.top + 'px';
-                }
-                window.startDrag(e, 'ui-chat');
-            }
-        }
-    }
-}, { passive: true });
-
 

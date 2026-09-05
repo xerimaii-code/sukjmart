@@ -1096,15 +1096,19 @@ function processMonsterAI() {
             }
             
             if (mob.targetId && target) {
-                let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
-                let stopDist = (mob.size || 20) + 40;
+    let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
+    let stopDist = (mob.size || 20) + 40;
 
-                if (dist > stopDist) {
-                    let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
-                    let mSpeed = (mob.isBoss ? 140 : (mob.speed || 90)) * (100 / 1000);
-                    mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
-                    mob.y = Math.max(150, Math.min(3850, mob.y + Math.sin(angle) * mSpeed));
-                    mob.angle = angle;
+    if (dist > stopDist) {
+        let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
+        
+        // 💡 [수정] 몬스터 속도 상한을 둬서 미끄러지지 않고 자연스럽게 걸어오도록 감속 (초당 65~85px)
+        let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
+        let mSpeed = baseMobSpeed * (40 / 1000); // 40ms 틱 주기 반영
+        
+        mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
+        mob.y = Math.max(150, Math.min(3850, mob.y + Math.sin(angle) * mSpeed));
+        mob.angle = angle;
                 } else {
                     let atkDelay = mob.isBoss ? 1200 : 1400;
                     if (now - (mob.lastAttackTime || 0) >= atkDelay) {

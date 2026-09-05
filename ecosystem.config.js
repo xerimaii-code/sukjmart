@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: "sukjmart",
+      name: "lineage-game-server",
       script: "./server.js",
       autorestart: true,
       watch: false

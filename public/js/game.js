@@ -3192,26 +3192,26 @@ function update(timestamp) {
     }
 
     // 1. 엔티티 부드러운 보간 이동 (보스 포함)
-    let moveDelta = Math.min(1.0, (dt / 1000) * 10);
+    let moveDelta = Math.min(1.0, (dt / 1000) * 4.5);
 
-    for (let i = 0; i < entities.length; i++) {
-        let e = entities[i];
-        if (!e) continue;
-        if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
-            let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
-            if (dist > 1.5) {
-                e.x += (e.moveX - e.x) * moveDelta;
-                e.y += (e.moveY - e.y) * moveDelta;
-                e.isMoving = true;
-                e.lastMoveAnimTime = timestamp;
-                e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
-            } else { 
-                if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
-                    e.isMoving = false; 
-                }
+for (let i = 0; i < entities.length; i++) {
+    let e = entities[i];
+    if (!e) continue;
+    if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
+        let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
+        if (dist > 1.5) {
+            e.x += (e.moveX - e.x) * moveDelta;
+            e.y += (e.moveY - e.y) * moveDelta;
+            e.isMoving = true;
+            e.lastMoveAnimTime = timestamp;
+            e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
+        } else { 
+            if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
+                e.isMoving = false; 
             }
         }
     }
+}
     
 
     // 2. 플레이어 자연 회복 (HP / MP)
@@ -4697,7 +4697,7 @@ window.socket.on('monster_hit', (data) => {
         player.adena += loot.count;
         if (typeof addMessage === 'function') addMessage(`${loot.count} 아데나 획득`, '#fd0');
         if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${loot.count} 💰`, life: 1.5, color: '#fd0' });
-        if (typeof playSound === 'function') playSound('buy'); // 💡 아데나 쏟아지는 소리
+        // 💡 아데나 획득음 제거 완료
     } else {
         let existingIdx = player.inv.findIndex(p => getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
         if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc'].includes(loot.type)) {
@@ -4708,8 +4708,10 @@ window.socket.on('monster_hit', (data) => {
     }
     if (typeof updateUI === 'function') updateUI();
 });
+
     window.socket.on('chat_broadcast', (data) => {
-        if (typeof addMessage === 'function') addMessage(`[전체] ${data.name}: ${data.message}`, '#ffffff');
+    let msgType = data.chatType || 'normal';
+    if (typeof addMessage === 'function') addMessage(`[전체] ${data.name}: ${data.message}`, '#ffffff', msgType);
         let targetEnt = null;
         if (data.senderId === currentUser?.id) { targetEnt = player; } 
         else { targetEnt = entities.find(e => e.isPlayer && e.id === data.socketId); }

@@ -16,6 +16,26 @@
     <script src="/socket.io/socket.io.js"></script>
 
 <style>
+.popup-tab {
+    flex: 1;
+    height: 28px;
+    background: #1f1f2a;
+    border: 1px solid #444;
+    color: #aaa;
+    font-size: 11.5px;
+    font-weight: bold;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.popup-tab.active {
+    background: #2a3a5a;
+    color: #fd0;
+    border-color: #5cf;
+}
+
 /* 기본 모바일/반응형 하단 바 */
 #ui-bottom-bar {
     height: 165px;
@@ -187,7 +207,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .stat-val { color: #fff; } .stat-val.gold { color: #fd0; }
 .toggle-btn { padding: 4px 0; background: #33333d; border: 1px outset #555; color: #fd0; font-weight: bold; text-align: center; cursor: pointer; border-radius: 2px; font-size: 11px; }
 
-#ui-center { flex: 1; display: flex; flex-direction: column; border-right: 2px solid #33333d; min-width: 0; }
+#ui-center { flex: 1; display: flex; flex-direction: column; border-right: 2px solid #33333d; min-width: 0; position: relative; }
 #ui-bars { padding: 5px 8px; background: #0c0c10; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid #33333d; }
 .bar-wrap { display: flex; align-items: center; gap: 6px; height: 11px; }
 .bar-label { width: 28px; font-size: 10px; font-weight: bold; color: #ccc; text-align: right; }
@@ -206,6 +226,15 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #chat-input-container { display: flex; gap: 4px; padding: 3px 5px; background: #0c0c12; border-top: 1px solid #444; height: 28px; align-items: center; }
 #chat-input { flex: 1; height: 22px; background: #1a1a26; border: 1px solid #555; color: #fff; padding: 0 6px; font-size: 11px; outline: none; }
 #chat-send-btn { display: none; background: #33333d; color: #fd0; border: 1px solid #555; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer; height: 22px; }
+
+#chat-expand-btn {
+    margin-left: auto;
+    padding: 2px 10px;
+    color: #fd0;
+    cursor: pointer;
+    font-weight: bold;
+    border-left: 1px solid #33333d;
+}
 
 #ui-right { width: 280px; display: flex; flex-direction: column; padding: 8px; gap: 6px; justify-content: center; background: rgba(0,0,0,0.5); }
 #hotkeys { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); gap: 3px; height: 85px; }
@@ -505,7 +534,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         max-width: 50vw !important;
         z-index: 999 !important;
     }
-    
+
     #win-pet .win-content { padding: 6px 8px !important; gap: 3px !important; overflow: hidden !important; }
     #win-pet div[style*="background:#111"] { padding: 4px 6px !important; margin-bottom: 3px !important; }
     #win-pet .menu-btn { height: 26px !important; min-height: 26px !important; font-size: 11px !important; }
@@ -647,6 +676,33 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         </div>
     </div>
 
+    <!-- 📜 독립형 확장 채팅창 팝업 (정상 위치) -->
+    <div class="window" id="win-chat-popup" style="width: 500px; height: 380px; min-width: 320px; min-height: 240px; resize: both; z-index: 2500; display: none;">
+        <div class="win-header" onmousedown="startDrag(event, 'win-chat-popup')" ontouchstart="startDrag(event, 'win-chat-popup')">
+            <span style="font-size: 13px; font-weight: bold; color: #fd0;">📜 전체 대화창 (확장)</span>
+            <span class="win-close" onclick="toggleChatPopup()">X</span>
+        </div>
+        <div class="win-content" style="padding: 6px; display: flex; flex-direction: column; height: calc(100% - 32px); box-sizing: border-box;">
+            <!-- 상단 탭 메뉴 -->
+            <div id="popup-chat-tabs" style="display: flex; gap: 4px; background: #111116; padding: 4px; border-radius: 4px; border: 1px solid #33333d; margin-bottom: 6px; flex-shrink: 0;">
+                <button type="button" class="popup-tab active" onclick="switchChatTab('all')">전체</button>
+                <button type="button" class="popup-tab" onclick="switchChatTab('chat')">💬 일반대화</button>
+                <button type="button" class="popup-tab" onclick="switchChatTab('party')">👥 파티</button>
+                <button type="button" class="popup-tab" onclick="switchChatTab('system')">⚙️ 시스템</button>
+                <button type="button" class="popup-tab" onclick="switchChatTab('whisper')">🔒 귓속말</button>
+            </div>
+            
+            <!-- 메시지 출력창 -->
+            <div id="popup-chat-messages" style="flex: 1; min-height: 0; background: rgba(0, 0, 0, 0.75); border: 1px inset #444; border-radius: 4px; padding: 8px; overflow-y: auto; font-size: 13px; line-height: 1.5; color: #eee;"></div>
+            
+            <!-- 입력창 -->
+            <div style="display: flex; gap: 6px; margin-top: 6px; height: 32px; flex-shrink: 0;">
+                <input type="text" id="popup-chat-input" placeholder="대화 내용을 입력하세요... (Enter)" autocomplete="off" style="flex: 1; height: 100%; background: #1a1a26; border: 1px solid #556; color: #fff; padding: 0 10px; font-size: 12px; border-radius: 4px; outline: none;">
+                <button type="button" class="confirm-btn bg-dark-green" style="height: 100%; padding: 0 14px; font-size: 12px;" onclick="sendPopupChatMessage()">전송</button>
+            </div>
+        </div>
+    </div>
+
     <!-- 인게임 메인 UI -->
     <div id="main-ui" style="display: none;">
         <div id="party-hud-list" style="position: absolute; top: 150px; left: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 350; pointer-events: auto;"></div>
@@ -673,6 +729,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                     <div id="btn-auto-hunt" class="toggle-btn" style="flex:1;" onclick="toggleAutoHunt()">사냥 OFF</div>
                 </div>
             </div>
+
+            <!-- 중앙 바 & 대화창 (정상 복구된 구조) -->
             <div id="ui-center">
                 <div id="ui-bars">
                     <div class="bar-wrap"><span class="bar-label">HP</span><div class="bar-bg"><div class="bar-fill hp" id="hp-bar"></div><span class="bar-text" id="hp-text">0 / 0</span></div></div>
@@ -680,59 +738,26 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                     <div class="bar-wrap"><span class="bar-label">EXP</span><div class="bar-bg"><div class="bar-fill exp" id="exp-bar"></div><span class="bar-text" id="exp-text">0%</span></div></div>
                 </div>
               
-<style>
-    /* 확장된 대화창 스타일 (크기 조절 및 이동 가능) */
-    #ui-chat.expanded {
-        position: fixed !important;
-        top: 15vh !important;
-        left: 50% !important;
-        width: 85vw !important;
-        max-width: 650px !important;
-        height: 60vh !important;
-        min-width: 280px !important;
-        min-height: 200px !important;
-        z-index: 999999 !important;
-        background: rgba(10, 10, 15, 0.95) !important;
-        border: 2px solid #5cf !important;
-        border-radius: 8px !important;
-        resize: both !important; /* 💡 모서리 크기 조절 활성화 */
-        overflow: hidden !important;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.9);
-    }
-    
-    /* 펼쳐졌을 때 상단 탭 영역을 드래그 핸들로 활용 */
-    #ui-chat.expanded #chat-tabs {
-        cursor: move !important;
-    }
-
-    #chat-expand-btn {
-        margin-left: auto;
-        padding: 2px 10px;
-        color: #fd0;
-        cursor: pointer;
-        font-weight: bold;
-        border-left: 1px solid #33333d;
-    }
-</style>
-
-<!-- 2. 대화창 HTML 교체 (#ui-chat 부분 전체 교체) -->
-<div id="chat-tabs" onclick="event.stopPropagation()" ontouchstart="event.stopPropagation()">
-    <div class="chat-tab active" onclick="switchChatTab('all')">전체</div>
-    <div class="chat-tab" onclick="switchChatTab('chat')">💬대화</div>
-    <div class="chat-tab" onclick="switchChatTab('party')">파티</div>
-    <div class="chat-tab" onclick="switchChatTab('system')">시스템</div>
-    <div class="chat-tab" onclick="switchChatTab('whisper')">귓말</div>
-    <div id="chat-expand-btn" onclick="toggleChatExpand()">🔼 펼치기</div>
-</div>
-    
-    <div id="chat-messages"></div>
-    
-    <div id="chat-input-container">
-        <input type="text" id="chat-input" placeholder="대화 또는 /? 명령어 입력..." autocomplete="off">
-        <button id="chat-send-btn">전송</button>
-    </div>
-</div>
+                <div id="ui-chat">
+                    <div id="chat-tabs">
+                        <div class="chat-tab active" onclick="switchChatTab('all')">전체</div>
+                        <div class="chat-tab" onclick="switchChatTab('chat')">💬대화</div>
+                        <div class="chat-tab" onclick="switchChatTab('party')">파티</div>
+                        <div class="chat-tab" onclick="switchChatTab('system')">시스템</div>
+                        <div class="chat-tab" onclick="switchChatTab('whisper')">귓말</div>
+                        <div id="chat-expand-btn" onclick="toggleChatPopup()">🔼 펼치기</div>
+                    </div>
+                    
+                    <div id="chat-messages"></div>
+                    
+                    <div id="chat-input-container">
+                        <input type="text" id="chat-input" placeholder="대화 또는 /? 명령어 입력..." autocomplete="off">
+                        <button id="chat-send-btn">전송</button>
+                    </div>
+                </div>
             </div>
+
+            <!-- 우측 퀵슬롯 & 메뉴 -->
             <div id="ui-right">
                 <div id="hotkeys"></div>
                 <div id="menu-btns">
@@ -742,7 +767,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                 </div>
             </div>
         </div>
-    </div> <!-- 💡 [수정] 누락되었던 main-ui 종료 태그 정상 삽입 -->
+    </div>
 
     <!-- 옵션 창 -->
     <div class="window" id="win-option" style="width: 300px;">
@@ -811,7 +836,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         </div>
         <div class="win-content" style="padding: 0;">
           <div id="inv-tab-bag" style="display: block; padding: 10px; overflow-y: auto; max-height: 300px;">
-                <!-- 💡 다중 선택 모드 토글 버튼 추가 -->
                 <div style="display: flex; gap: 4px; margin-bottom: 8px;">
                     <button id="btn-inv-select" class="confirm-btn bg-dark-gray" style="flex:1; padding:4px 0; font-size:11px;" onclick="toggleInventorySelectMode()">☑️ 선택 모드</button>
                     <button class="confirm-btn bg-dark-gray" style="flex:1; padding:4px 0; font-size:11px;" onclick="sortPlayerInventory()">🔄 정렬</button>
@@ -971,4 +995,3 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     <script src="js/game.js?v=2.0.0"></script>
 </body>
 </html>
-
