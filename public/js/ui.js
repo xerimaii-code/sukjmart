@@ -591,15 +591,40 @@ function initAudio() {
 }
 
 // 💡 전역 playSound 함수
-// 💡 전역 playSound 함수
 function playSound(type, targetEntity = null) {
     try {
         if (!gameStarted || !audioCtx || gameOptions.volume <= 0) return;
         
         let baseVol = gameOptions.volume * 20; 
-        let soundCategory = null;
 
-        if (type === 'swing' || type === 'bow') soundCategory = 'swing';
+        // 💡 [핵심] 내 화면(Viewport)에 보이지 않는 엔티티의 모든 소리를 완벽히 음소거!
+        if (targetEntity && targetEntity !== player) {
+            if (typeof isEntityOnScreen === 'function' && !isEntityOnScreen(targetEntity)) {
+                return; 
+            }
+        }
+
+        let now = audioCtx.currentTime;
+
+        // 💡 [요정 평타 전자음 복구] '뿅뿅' -> 원작 느낌의 짧고 날카로운 '슉!' (0.08초, 볼륨 30%)
+        if (type === 'bow') {
+            const osc = audioCtx.createOscillator(); 
+            let gain = audioCtx.createGain(); 
+            gain.connect(audioCtx.destination);
+            osc.connect(gain); 
+            osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(800, now); 
+            osc.frequency.exponentialRampToValueAtTime(100, now + 0.08); 
+            
+            gain.gain.setValueAtTime(baseVol * 0.3, now); 
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08); 
+            
+            osc.start(now); osc.stop(now + 0.08); 
+            return;
+        }
+
+        let soundCategory = null;
+        if (type === 'swing') soundCategory = 'swing';
         else if (type === 'drink') soundCategory = 'drink';
         else if (type === 'buy' || type === 'loot') soundCategory = 'buy';
         else if (type === 'chest') soundCategory = 'chest';
@@ -607,7 +632,6 @@ function playSound(type, targetEntity = null) {
         else if (type === 'player_hit') soundCategory = 'player_hit';
         else if (type === 'player_dead') soundCategory = 'player_dead';
         else if (type === 'boss_roar') soundCategory = 'boss_roar';
-        
         else if (type === 'monster_hit') {
             if (targetEntity) {
                 let n = targetEntity.name || '';
@@ -618,11 +642,9 @@ function playSound(type, targetEntity = null) {
                 soundCategory = 'hit_flesh';
             }
         }
-        
         else if (type === 'monster_dead') {
             if (targetEntity) {
                 let n = targetEntity.name || '';
-                
                 if (targetEntity.isBoss) {
                     if (n.includes('드래곤') || n.includes('드레이크') || n.includes('안타라스') || n.includes('발라카스')) soundCategory = 'death_dragon';
                     else if (n.includes('여왕') || n.includes('퀸') || n.includes('아이리스') || n.includes('제니스')) soundCategory = 'death_female';
@@ -630,7 +652,6 @@ function playSound(type, targetEntity = null) {
                     else if (n.includes('웅골리언트')) soundCategory = 'death_creepy';
                     else soundCategory = 'death_boss_demon'; 
                 } else {
-                    // 💡 서큐버스, 머메이드, 기란 간수 등 플레이어 사망음과 유사한 몬스터를 악어(파충류) 사운드로 통합 대체
                     if (n.includes('서큐버스') || n.includes('머메이드') || n.includes('기란 간수') || 
                         n.includes('메두사') || n.includes('하피') || n.includes('페어리') ||
                         n.includes('리자드맨') || n.includes('악어') || n.includes('크러스테시안') || 
@@ -652,16 +673,13 @@ function playSound(type, targetEntity = null) {
             }
         }
 
-    if (soundCategory && customAudio[soundCategory]) {
-            let now = performance.now();
+        if (soundCategory && customAudio[soundCategory]) {
             let cooldown = soundCooldowns[soundCategory] || 0;
-
             if (cooldown > 0) {
                 let lastTime = lastSoundPlayTime[soundCategory] || 0;
-                if (now - lastTime < cooldown) return;
-                lastSoundPlayTime[soundCategory] = now;
+                if (performance.now() - lastTime < cooldown) return;
+                lastSoundPlayTime[soundCategory] = performance.now();
             }
-
             let arr = customAudio[soundCategory];
             let audioNode = arr[Math.floor(Math.random() * arr.length)].cloneNode();
             let multiplier = soundMultipliers[soundCategory] || 1.0;
@@ -669,69 +687,22 @@ function playSound(type, targetEntity = null) {
             audioNode.play().catch(() => {});
             return; 
         }
-        const now = audioCtx.currentTime; 
+
+        // 일반 주문음
         let vol = gameOptions.volume;
         let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
 
-        // 💡 어둡고 힘빠진 슬라임 사망음 합성 (경쾌함 완전 제거)
-        if (soundCategory === 'death_slime') {
-            let bufferSize = audioCtx.sampleRate * 0.45; 
-            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            let data = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                data[i] = Math.random() * 2 - 1;
-            }
-            let noise = audioCtx.createBufferSource();
-            noise.buffer = buffer;
-
-            const noiseFilter = audioCtx.createBiquadFilter();
-            noiseFilter.type = 'lowpass';
-            noiseFilter.frequency.setValueAtTime(300, now); 
-            noiseFilter.frequency.exponentialRampToValueAtTime(50, now + 0.45);
-
-            const osc = audioCtx.createOscillator();
-            const lfo = audioCtx.createOscillator(); 
-            const lfoGain = audioCtx.createGain();
-
-            lfo.type = 'sine';
-            lfo.frequency.setValueAtTime(10, now); 
-            lfoGain.gain.setValueAtTime(20, now);  
-            lfo.connect(lfoGain);
-            lfoGain.connect(osc.frequency);
-
-            noise.connect(noiseFilter);
-            noiseFilter.connect(gain);
-            osc.connect(gain);
-            
-            osc.type = 'sine'; 
-            osc.frequency.setValueAtTime(550, now);   
-            osc.frequency.linearRampToValueAtTime(350, now + 0.2);
-            osc.frequency.exponentialRampToValueAtTime(70, now + 0.45); 
-            
-            // 💡 기존 baseVol * 4.0에서 절반인 baseVol * 2.0으로 조정
-            gain.gain.setValueAtTime(baseVol * 2.0, now);
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
-            
-            lfo.start(now);
-            osc.start(now);
-            noise.start(now);
-            lfo.stop(now + 0.45);
-            osc.stop(now + 0.45);
-            noise.stop(now + 0.45);
-        }
-        else if (type === 'fireball') { let bufferSize = audioCtx.sampleRate * 0.5; let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); let data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; let noise = audioCtx.createBufferSource(); noise.buffer = buffer; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
+        if (type === 'fireball') { let bufferSize = audioCtx.sampleRate * 0.5; let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); let data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; let noise = audioCtx.createBufferSource(); noise.buffer = buffer; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
         else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
         else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
         else if (type === 'spell') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+0.3); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
         else if (type === 'click') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
         else if (type === 'disintegrate') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type = 'sine'; osc.frequency.setValueAtTime(2200, now); osc.frequency.exponentialRampToValueAtTime(300, now + 1.2); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2); osc.start(now); osc.stop(now + 1.2); }
-    } catch(e) {
-        console.error("사운드 재생 에러:", e);
-    }
+    } catch(e) {}
 }
 
-window.playSound = playSound;
 
+window.playSound = playSound;
 
 window.updateOptions = function() { 
     if ($('opt-vol')) {
@@ -4771,6 +4742,16 @@ function injectMobileBottomFix() {
 
         @media (max-width: 768px) {
             /* 📱 모바일 버전: 화면 가리지 않게 크기 살짝 축소 */
+
+#win-chat-popup {
+                width: 95vw !important;
+                height: 45vh !important;
+                top: 5vh !important;
+                left: 2.5vw !important;
+            }            #popup-chat-messages {
+                flex-grow: 1 !important;
+                overflow-y: auto !important;
+            }
             #map-name {
                 font-size: 13.5px !important;
                 max-width: calc(100vw - 120px) !important;

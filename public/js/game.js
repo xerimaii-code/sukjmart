@@ -2673,12 +2673,12 @@ if (player && Date.now() < (player.furyUntil || 0)) {
 // [4. 전투 및 이벤트 시스템]
 // ==========================================
 window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName = null) {
-    if (!e || e.isDead) return; 
+    // 💡 [필수 방어 코드] 대상(e)이나 공격자(attacker)가 없으면 함수를 안전하게 종료
+    if (!e || typeof e.x === 'undefined' || typeof e.y === 'undefined' || e.isDead) return; 
+    if (!attacker) return;
 
-    // 💡 [핵심] 내가 공격을 가하는 즉시 클라이언트 몬스터에 피격 타이머 강제 주입
     e.hitTime = performance.now();
     e.angle = Math.atan2(e.y - attacker.y, e.x - attacker.x);
-
     let isMyAttack = (attacker === player) || (attacker && attacker.isSummon && attacker.owner === player);
     if (isMyAttack && !e.isPlayer && !e.isSummon) {
         if (window.socket && currentUser) {
@@ -3477,366 +3477,56 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
             }
         }
     }
-// ========================================================
-// 12. 타겟 추적 이동 및 패시브 공격 실행 (기사/요정 완결판)
-// ========================================================
-if (target && typeof target === 'object' && typeof target.y === 'number' && typeof target.x === 'number' && target.hp > 0 && !target.isDead) {
-    if (target.isSummon && target.owner === player) {
-        player.isMoving = false;
-    } 
-    else if (typeof isInSafeZone === 'function' && isInSafeZone(currentMap, target.x, target.y)) {
-        player.target = null;
-    } else {
-        let dist = Math.hypot(target.x - player.x, target.y - player.y);
-        let isBow = Boolean(player.equip && player.equip.weapon && player.equip.weapon.isBow);
-        let isWizard = player.charClass === 'wizard';
-        let isRangedAttacker = isBow || isWizard;
-        let atkRange = isRangedAttacker ? 280 : ((target.size || 20) + 55);
-        let isManualMoving = performance.now() < (player.manualOverrideUntil || 0);
 
-        // ⚔️ [기사 돌진 패시브]
-        if ((player.charClass === 'knight' || player.charClass === 'royal') && !isManualMoving) {
-            let rushDist = dist;
-            if (rushDist >= 56 && rushDist <= 350 && (!player.lastRushTime || now - player.lastRushTime > 2000)) {
-                player.lastRushTime = now;
-                let rushAngle = Math.atan2(target.y - player.y, target.x - player.x);
-                player.angle = rushAngle;
-                player.x = target.x - Math.cos(rushAngle) * 30;
-                player.y = target.y - Math.sin(rushAngle) * 30;
+// game.js - update() 함수 내부 (삭제된 12, 13번 자리)
 
-                if (typeof particles !== 'undefined') {
-                    particles.push({ x: player.x, y: player.y, life: 0.4, maxLife: 0.4, type: 'haste_tornado', size: 40 });
-                }
-                if (typeof playSound === 'function') playSound('spell');
-                triggerPassiveBroadcast('돌진', target.x, target.y, target.id, 'high');
+if (player.autoHunt || (player.target && !player.target.isDead)) {
+    let atkDelay = player.currentAtkDelay || 800;
+    if (player.buffs && player.buffs['가속(헤이스트)']) atkDelay -= 200;
+    if (player.buffs && player.buffs['용기물약']) atkDelay -= 100;
+    if (player.buffs && player.buffs['엘븐와퍼']) atkDelay -= 100;
+
+    let env = {
+        now: performance.now(),
+        currentMap: currentMap,
+        mapSize: mapSize,
+        entities: entities,
+        items: items,
+        minLootGrade: gameOptions.minLootGrade || 0,
+        atkDelay: atkDelay,
+        party: window.currentPartyData?.party ? {
+            isFocusMode: window.currentPartyData.party.mode === 'focus',
+            leaderId: window.currentPartyData.party.leader,
+            leaderTargetId: window.currentPartyData.party.leaderTargetId,
+            leaderEnt: entities.find(e => e.id === window.currentPartyData.party.leader)
+        } : null,
+        isInSafeZone: isInSafeZone,
+        playSound: playSound,
+        spawnParticle: (x, y, type) => particles.push({ x, y, life: 0.4, maxLife: 0.4, type, size: 40 }),
+        spawnArrow: (from, to, dmg, color) => {
+            if (!isBgTick) particles.push({ x: from.x, y: from.y, speed: 24, life: 1.5, maxLife: 1.5, color, isProj: true, isArrow: true, homing: true, type: 'arrow', target: to, dmg, attacker: from, rollHit: true });
+        },
+        spawnText: (x, y, text, color, size = 13) => {
+            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: x + (Math.random() * 16 - 8), y, text, life: 0.9, color, fontSize: size });
+        },
+        triggerPassiveBroadcast: triggerPassiveBroadcast,
+        damageEntity: damageEntity,
+        castAttackSpell: castAttackSpell,
+        getSmartAutoCombatSpell: window.getSmartAutoCombatSpell,
+        lootItem: (it) => {
+            if (window.socket && currentUser && (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300)) {
+                player.lastLootAttempt = Date.now();
+                window.socket.emit('player_loot_item', { itemId: it.id });
             }
+        },
+        shareTarget: (id) => {
+            if (window.socket && currentUser) window.socket.emit('player_target', { targetId: id });
         }
+    };
 
-        // 🏹 [원거리 카이팅 이동]
-        if (!isManualMoving) {
-            if (isRangedAttacker && dist < 150) {
-                let fleeAngle = Math.atan2(player.y - target.y, player.x - target.x);
-                player.moveX = Math.max(100, Math.min(mapSize - 100, player.x + Math.cos(fleeAngle) * 120));
-                player.moveY = Math.max(100, Math.min(mapSize - 100, player.y + Math.sin(fleeAngle) * 120));
-                player.isMoving = true;
-            } else if (dist > atkRange - 10) {
-                let charAngle = Math.atan2(target.y - player.y, target.x - player.x);
-                player.moveX = target.x - Math.cos(charAngle) * (isRangedAttacker ? 210 : 40);
-                player.moveY = target.y - Math.sin(charAngle) * (isRangedAttacker ? 210 : 40);
-                player.isMoving = true;
-            } else {
-                player.isMoving = false;
-                player.moveX = undefined;
-                player.moveY = undefined;
-            }
-        }
-
-        // 💥 [실제 타격 및 패시브 발동]
-        let timeSinceLastAtk = timestamp - (player.lastAttack || 0);
-
-        if (dist <= atkRange + 30 && timeSinceLastAtk > atkDelay) {
-            player.lastAttack = timestamp;
-            player.angle = Math.atan2(target.y - player.y, target.x - player.x);
-            let baseAtk = player.atk;
-// ⚔️ 기사 타격 (쇼크 스턴 자동 우선 시전 + 광폭화 클리브)
-            if (player.charClass === 'knight' || player.charClass === 'royal') {
-                let now = Date.now();
-                let chosenKnightSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
-
-                if (chosenKnightSpell && typeof castAttackSpell === 'function') {
-                    castAttackSpell(target, chosenKnightSpell, player);
-                } else {
-                    let isFury = now < (player.furyUntil || 0);
-                    let finalDamage = isFury ? Math.floor(baseAtk * 2.0) : baseAtk;
-
-                    if (typeof playSound === 'function') playSound('swing');
-                    damageEntity(target, finalDamage, player, 'physical');
-
-                    if (isFury) {
-                        let splashTargets = entities.filter(e => 
-                            e && e.map === currentMap && !e.isPlayer && !e.isSummon && 
-                            e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 95
-                        );
-                        let totalCleaveDmg = 0;
-
-                        splashTargets.forEach(st => {
-                            if (st.id !== target.id) {
-                                let sDmg = Math.floor(finalDamage * 0.6);
-                                totalCleaveDmg += sDmg;
-                                damageEntity(st, sDmg, player, 'physical');
-                            }
-                        });
-
-                        let healAmount = Math.floor((finalDamage + totalCleaveDmg) * 0.25);
-                        player.hp = Math.min(currentMaxHp, player.hp + healAmount);
-
-                        if (typeof dmgTexts !== 'undefined' && healAmount > 0) {
-                            dmgTexts.push({ 
-                                x: player.x + (Math.random() * 16 - 8), 
-                                y: player.y - 30, 
-                                text: `+${healAmount} 흡혈`, 
-                                life: 0.9, 
-                                color: '#e879f9',
-                                fontSize: 13
-                            });
-                        }
-
-                        if (!player.furyCleavedThisCycle) {
-                            player.furyCleavedThisCycle = true;
-                            triggerPassiveBroadcast('광폭화 클리브', target.x, target.y, target.id, 'ultimate');
-                        }
-                    } else {
-                        player.furyCleavedThisCycle = false;
-                    }
-                }
-            }
-          
-
-
- // 🏹 요정 타격 (평타 5타 적중 시 4초간 실프의 폭풍 발동)
-            else if (player.charClass === 'elf') {
-                let now = Date.now();
-                let isCoolingDown = now < (player.elfFuryCooldownUntil || 0);
-                
-                // 💡 [핵심 추가] 평타 스택 누적 및 광폭화 텍스트 팝업 (기사와 동일한 20px)
-                if (!(now < (player.elfFuryUntil || 0)) && !isCoolingDown) {
-                    player.elfHitCount = (player.elfHitCount || 0) + 1;
-                    if (player.elfHitCount >= 5) {
-                        player.elfHitCount = 0;
-                        player.elfFuryUntil = now + 4000;
-                        player.elfFuryCooldownUntil = now + 6000;
-                        player.elfFuryTextShown = false;
-                        if (typeof dmgTexts !== 'undefined') {
-                            dmgTexts.push({ x: player.x, y: player.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 20 });
-                        }
-                    }
-                }
-
-                let isFury = now < (player.elfFuryUntil || 0);
-                if (typeof playSound === 'function') playSound('bow');
-
-                if (isFury) {
-                    let splashTargets = entities.filter(e => 
-                        e && e.map === currentMap && !e.isPlayer && !e.isSummon && 
-                        e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200
-                    );
-                    
-                    let furyAtk = Math.floor(baseAtk * 1.4);
-                    let totalFuryDamage = 0;
-
-                    splashTargets.forEach(st => {
-                        damageEntity(st, furyAtk, player, 'physical', '실프의 폭풍');
-                        totalFuryDamage += furyAtk;
-
-                        if (!isBgTick && typeof particles !== 'undefined') {
-                            particles.push({ 
-                                x: player.x, y: player.y, speed: 28, life: 1.0, maxLife: 1.0, 
-                                color: '#34d399', isProj: true, isArrow: true, homing: true, 
-                                type: 'arrow', target: st, dmg: furyAtk, attacker: player, rollHit: true 
-                            });
-                        }
-                    });
-
-                    let hpHeal = Math.max(1, Math.floor(totalFuryDamage * 0.02));
-                    let mpGain = Math.max(1, Math.floor(totalFuryDamage * 0.05));
-
-                    player.hp = Math.min(currentMaxHp, player.hp + hpHeal);
-                    player.mp = Math.min(currentMaxMp, player.mp + mpGain);
-
-                    if (typeof dmgTexts !== 'undefined') {
-                        dmgTexts.push({ 
-                            x: player.x + (Math.random() * 16 - 8), 
-                            y: player.y - 35, 
-                            text: `+${hpHeal} HP / +${mpGain} MP`, 
-                            life: 0.9, 
-                            color: '#6ee7b7',
-                            fontSize: 13
-                        });
-                    }
-
-                    if (!player.elfFuryTextShown) {
-                        player.elfFuryTextShown = true;
-                        triggerPassiveBroadcast('실프의 폭풍', target.x, target.y, target.id, 'ultimate');
-                    }
-                } else {
-                    player.elfFuryTextShown = false;
-                    let isEcho = Math.random() < 0.25;
-                    if (isEcho) {
-                        let trueDmg = Math.floor(baseAtk * 1.3);
-                        player.mp = Math.min(currentMaxMp, player.mp + 4);
-                        damageEntity(target, trueDmg, player, 'magic', '에코 오브 실프');
-                        triggerPassiveBroadcast('에코 오브 실프', target.x, target.y, target.id, 'normal');
-                    } else {
-                        if (!isBgTick && typeof particles !== 'undefined') {
-                            particles.push({ 
-                                x: player.x, y: player.y, speed: 24, life: 1.5, maxLife: 1.5, 
-                                color: '#ffffff', isProj: true, isArrow: true, homing: true, 
-                                type: 'arrow', target: target, dmg: baseAtk, attacker: player, rollHit: true 
-                            });
-                        }
-                    }
-                }
-            }
-
-
-
-            // 🔮 마법사 마법 공격
-            else if (isWizard) {
-                let chosenSpell = typeof getSmartAutoCombatSpell === 'function' ? getSmartAutoCombatSpell(target) : null;
-                if (chosenSpell && typeof castAttackSpell === 'function') {
-                    castAttackSpell(target, chosenSpell, player);
-                } else if (player.mp >= 4 && typeof castAttackSpell === 'function') {
-                    castAttackSpell(target, '에너지 볼트', player, true);
-                }
-            }
-        }
-    }
+    SharedAI.processRoutine(player, env);
 }
 
-
-// ========================================================
-    // 13. [자동사냥 & 타겟 탐색 - 파티 점사 완벽 동기화]
-    // ========================================================
-    if (player.autoHunt) {
-        let amIFollower = window.currentPartyData && window.currentPartyData.party && window.socket && window.currentPartyData.party.leader !== window.socket.id;
-        let isFocusMode = window.currentPartyData && window.currentPartyData.party && window.currentPartyData.party.mode === 'focus';
-        let leaderSocketId = window.currentPartyData?.party?.leader;
-        let leaderEnt = amIFollower ? entities.find(e => e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId)) : null;
-        let isManualSteering = performance.now() < (player.manualOverrideUntil || 0);
-
-        if (!isManualSteering) {
-            let skipSearch = false; // 💡 게임 멈춤(루프 종료) 방지용 플래그
-
-            // [A] 아이템 루팅 (비전투 중 최우선)
-            if (!player.target) {
-                let closestItem = null;
-                let minItemDist = Infinity;
-                if (typeof items !== 'undefined' && Array.isArray(items)) {
-                    items.forEach(it => {
-                        if (it && (it.map === currentMap || !it.map)) {
-                            let itemGrade = (typeof it.grade === 'number') ? it.grade : 0;
-                            let isAlwaysLoot = ['scroll', 'book', 'potion', 'currency'].includes(it.type);
-                            let minGrade = (typeof gameOptions !== 'undefined' && gameOptions.minLootGrade) || 0;
-                            let isGradeOk = isAlwaysLoot || (itemGrade >= minGrade);
-                            if (isGradeOk && !isInSafeZone(currentMap, it.x, it.y)) {
-                                let d = Math.hypot(it.x - player.x, it.y - player.y);
-                                if (d < minItemDist) { minItemDist = d; closestItem = it; }
-                            }
-                        }
-                    });
-                }
-
-                if (closestItem && minItemDist < 300) {
-                    player.targetItem = closestItem;
-                    player.moveX = closestItem.x;
-                    player.moveY = closestItem.y;
-                    player.isMoving = true;
-                    if (minItemDist <= 25) {
-                        let itemIdx = items.indexOf(closestItem);
-                        if (itemIdx > -1) {
-                            items.splice(itemIdx, 1);
-                            let existingIdx = player.inv.findIndex(p => typeof getStackKey === 'function' && getStackKey(p) === getStackKey(closestItem) && (!p.magicOptions || p.magicOptions.length === 0));
-                            if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc', 'currency'].includes(closestItem.type || 'etc')) {
-                                player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (closestItem.count || 1);
-                            } else {
-                                player.inv.push(JSON.parse(JSON.stringify(closestItem)));
-                            }
-                            if (typeof playSound === 'function') playSound('click');
-                            if (typeof addMessage === 'function') addMessage(`[루팅] ${closestItem.name} 획득!`, '#af5');
-                            player.targetItem = null;
-                            player.isMoving = false;
-                            if (typeof updateUI === 'function') updateUI();
-                        }
-                    }
-                    skipSearch = true; // 💡 return; 대신 플래그 활성화
-                }
-            }
-
-       // [B] 🎯 파티 점사 모드 (생존/반격/카이팅 최우선 루틴)
-            if (!skipSearch && amIFollower && isFocusMode) {
-                // 💡 [루틴 1순위] 나를 치는 적이 있는지 가장 먼저 스캔합니다.
-                let attackerMob = entities.find(e => 
-                    e && !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.map === currentMap && e.hp > 0 && !e.isDead &&
-                    (e.targetId === player.socketId || e.target === player) &&
-                    Math.hypot(e.x - player.x, e.y - player.y) <= 400
-                );
-
-                let leaderTargetMob = null;
-                if (leaderEnt && leaderEnt.targetId) {
-                    leaderTargetMob = entities.find(e => e && e.id === leaderEnt.targetId && e.hp > 0 && !e.isDead && e.map === currentMap);
-                }
-
-                // 나를 때리는 몹이 있고 그게 파티장의 타겟이 아니라면? -> 즉시 반격 타겟으로 잡음. (원거리면 기존 카이팅 로직으로 자연스럽게 뒷걸음질 침)
-                if (attackerMob && attackerMob.id !== (leaderTargetMob ? leaderTargetMob.id : null)) {
-                    if (!player.target || player.target.id !== attackerMob.id) {
-                        player.target = attackerMob;
-                        player.isMoving = false;
-                        if (typeof addMessage === 'function') {
-                            addMessage(`[생존 우선] 나를 공격하는 ${attackerMob.name} 먼저 반격/카이팅 합니다!`, '#f55');
-                        }
-                    }
-                    skipSearch = true;
-                }
-                // 나를 때리는 적이 없으면 파티장이 점사하는 타겟 같이 때리기
-                else if (leaderTargetMob) {
-                    if (!player.target || player.target.id !== leaderTargetMob.id) {
-                        player.target = leaderTargetMob;
-                        player.isMoving = false;
-                    }
-                    skipSearch = true;
-                } 
-                // 타겟이 아예 없으면 파티장 뒤로 안전하게 이동
-                else if (leaderEnt) {
-                    if (player.target) player.target = null;
-                    let distToLeader = Math.hypot(leaderEnt.x - player.x, leaderEnt.y - player.y);
-                    if (distToLeader > 90) {
-                        let angle = Math.atan2(leaderEnt.y - player.y, leaderEnt.x - player.x);
-                        player.moveX = leaderEnt.x - Math.cos(angle) * 60;
-                        player.moveY = leaderEnt.y - Math.sin(angle) * 60;
-                        player.isMoving = true;
-                    } else {
-                        player.isMoving = false;
-                        player.moveX = undefined;
-                        player.moveY = undefined;
-                    }
-                    skipSearch = true;
-                }
-            }
-
-            // [C] 일반 몬스터 탐색 (자유 사냥 모드 또는 파티장일 때)
-            if (!skipSearch && !player.target) {
-                let closestMob = null;
-                let minMobDist = Infinity;
-                let isIgnoredActive = performance.now() < (player.ignoredUntil || 0);
-
-                entities.forEach(e => {
-                    if (e && typeof e.y === 'number' && e.map === currentMap && !e.isSummon && !e.isPlayer && !e.isOtherMerc && e.hp > 0 && !e.isDead) {
-                        if (typeof isInSafeZone === 'function' && isInSafeZone(currentMap, e.x, e.y)) return;
-                        if (isIgnoredActive && e.id === player.ignoredTargetId) return;
-
-                        let d = Math.hypot(e.x - player.x, e.y - player.y);
-                        if (d < minMobDist) {
-                            minMobDist = d;
-                            closestMob = e;
-                        }
-                    }
-                });
-
-                if (closestMob) {
-                    player.target = closestMob;
-                    if (window.socket && currentUser) {
-                        window.socket.emit('player_target', { targetId: closestMob.id });
-                    }
-                } else if (!player.isMoving || (player.moveX && Math.hypot(player.moveX - player.x, player.moveY - player.y) < 20)) {
-                    let rx = player.x + (Math.random() * 800 - 400);
-                    let ry = player.y + (Math.random() * 800 - 400);
-                    if (!isInSafeZone(currentMap, rx, ry) && rx > 150 && rx < mapSize - 150 && ry > 150 && ry < mapSize - 150) {
-                        player.moveX = rx; player.moveY = ry; player.isMoving = true;
-                    }
-                }
-            }
-        }
-    }
 
 
     // 💡 14. [플레이어 실제 이동 적용] - 누락되었던 핵심 이동 연산 복구!
@@ -4141,8 +3831,20 @@ if (window.socket) {
         } else if (mName.includes('광폭화') || mName === '광폭화 클리브') {
             particles.push({ x: tX, y: tY, life: 0.5, maxLife: 0.5, type: 'explosion', size: 150, color: '#ff2200' });
         } else if (mName === '에너지 볼트') {
-            particles.push({ x: cX, y: cY - 15, speed: 16, life: 1.0, maxLife: 1.0, color: '#88aaff', isProj: true, type: 'energy_bolt', target: { x: tX, y: tY } });
-        } else if (mName === '디스인티그레이트') {
+            let aimAngle = Math.atan2(tY - cY, tX - cX);
+            particles.push({ 
+                x: cX, y: cY - 15, 
+                speed: 16, 
+                life: 1.0, 
+                maxLife: 1.0, 
+                color: '#88aaff', 
+                isProj: true, 
+                homing: true, 
+                type: 'energy_bolt', 
+                angle: aimAngle, 
+                target: { x: tX, y: tY } 
+            });
+        }else if (mName === '디스인티그레이트') {
             particles.push({ x: tX, y: tY, angle: angle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
         } else if (mName === '미티어 스트라이크') {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'meteor', size: 350 });
