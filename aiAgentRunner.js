@@ -1,20 +1,55 @@
-// aiAgentRunner.js (클래스별 지능 분리, 용병 정조준, 단일/광역 마법, 요정 스킬 및 맵 로테이션 완벽 통합본)
+// aiAgentRunner.js (Groq LLM 두뇌 연동, 자율 판단 액션 디스패처, 파티/점사/추적/치유 및 대화 메모리 완벽 통합본)
 require('dotenv').config(); 
 
 const io = require('socket.io-client');
 const { createClient } = require('@supabase/supabase-js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const SharedAI = require('./public/js/sharedAI.js'); 
 const data = require('./public/js/data.js'); 
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://vnagjrhnvtngsomxwair.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'sb_publishable_fo-6ibZ51qwEpX7XYsLyRw_BprsNvR5';
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBmjCuUpWfsJ8cwpKjFwkisirox5LpmlPc';
-const SERVER_URL = 'http://localhost:3000';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-const aiModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+// 💡 실시간 활성 모델 변수
+let currentGroqModel = 'qwen/qwen3.8-27b';
+
+// 부팅 시 계정에서 지원하는 최적의 모델 자동 선별
+async function initGroqModel() {
+    try {
+        const modelList = await groq.models.list();
+        const availableIds = modelList.data.map(m => m.id);
+
+        const priorityPreferences = [
+            'qwen/qwen3.8-27b',
+            'qwen/qwen3.6-27b',
+            'openai/gpt-oss-120b',
+            'openai/gpt-oss-20b',
+            'llama-3.3-70b-versatile',
+            'llama-3.1-8b-instant'
+        ];
+
+        let picked = priorityPreferences.find(mId => availableIds.includes(mId));
+        if (!picked) {
+            picked = availableIds.find(id => 
+                !id.includes('whisper') && 
+                !id.includes('guard') && 
+                !id.includes('compound')
+            );
+        }
+
+        if (picked) {
+            currentGroqModel = picked;
+            console.log(`✔ [Groq 모델 자동 세팅 완료] 활성 모델: ${currentGroqModel}`);
+        }
+    } catch (err) {
+        console.error("[-] Groq 모델 리스트 확인 실패 (기본값 유지):", err.message);
+    }
+}
 
 let activeAgents = []; 
 const MAX_CONCURRENT = 4;
@@ -64,6 +99,31 @@ class AIAgentClient {
         this.worldItems = [];
         this.worldMercs = [];
 
+        // 🧠 [에이전트 인지 및 상호작용 메모리]
+        this.chatHistory = [];             // 세션 종료까지 유지되는 대화 기억 버퍼
+        this.partyData = null;             // 소속된 파티 실시간 데이터
+        this.lastInviterSocketId = null;   // 파티 초대자 소켓 ID
+        this.lastInviterName = null;       // 파티 초대자 이름
+        this.followTarget = null;          // 현재 따라다니는 유저 이름
+        this.followDist = 60;              // 추적 유지 간격
+
+        // 💡 [연속 대화 기억 메모리]
+        this.lastTalkedUser = null;
+        this.lastTalkTime = 0;
+
+        // 고유 성격(페르소나) 할당
+        const personalities = [
+            "말수가 적고 'ㅇㅇ', 'ㄱㅅ', 'ㅈㅅ' 등 단답형 초성체를 자주 쓰는 묵묵한 게이머",
+            "친절하고 뉴비를 잘 챙겨주며 정중한 존댓말을 쓰는 게이머",
+            "오직 사냥 효율과 보스 탐, 득템에만 집중하는 실용주의 게이머",
+            "경상도 사투리를 구수하게 섞어 쓰고 정이 넘치는 아재 감성 게이머",
+            "농담과 장난을 좋아하고 ㅋㅋㅋ를 자주 붙이는 활발한 수다쟁이 게이머",
+            "승부욕이 강하고 사냥 방해에 민감한 호전적인 게이머"
+        ];
+        let hash = 0;
+        for (let i = 0; i < this.charData.name.length; i++) hash += this.charData.name.charCodeAt(i);
+        this.personality = personalities[hash % personalities.length];
+
         this.learnMagicForLevel(); 
         this.connect();
     }
@@ -72,7 +132,7 @@ class AIAgentClient {
         this.socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
         this.socket.on('connect', () => {
             this.charData.id = this.socket.id; 
-            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass})`);
+            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass}) - 성격: ${this.personality.slice(0, 15)}...`);
             
             let startMap = this.determineBestMap();
             this.charData.map = startMap;
@@ -123,9 +183,58 @@ class AIAgentClient {
             this.checkLevelUp();
         });
 
+        // 💬 [핵심 수정] 귓속말, 파티 채팅, 일반 대화 모두 감지 및 60초 연속 메모리 반응
         this.socket.on('chat_broadcast', async (packet) => {
             if (packet.socketId === this.socket.id) return;
-            if (packet.message.includes(this.charData.name)) await this.handleChatMessage(packet.name, packet.message);
+            
+            let baseName = this.charData.name.replace(/[0-9]/g, '');
+            let isAddressedToMe = packet.message.includes(this.charData.name) || 
+                                 (baseName && packet.message.includes(baseName));
+            
+            // 이름 생략 연속 대화 허용 (마지막 대화 후 60초 이내)
+            if (!isAddressedToMe && this.lastTalkedUser === packet.name && (Date.now() - this.lastTalkTime < 60000)) {
+                isAddressedToMe = true; 
+            }
+            
+            let isWhisperToMe = packet.isWhisper && packet.targetName === this.charData.name;
+
+            // 파티 채팅이거나 나를 지목한 일반 대화, 또는 나에게 온 귓말일 때 두뇌 처리
+            if (packet.chatType === 'party' || isAddressedToMe || isWhisperToMe) {
+                this.lastTalkedUser = packet.name; // 최근 대화자 기억
+                this.lastTalkTime = Date.now();
+                await this.handleChatMessage(packet.name, packet.message, packet.chatType, packet.isWhisper);
+            }
+        });
+
+        // 👥 [파티 시스템 리스너]
+        this.socket.on('party_invite_received', (packet) => {
+            this.lastInviterSocketId = packet.inviterSocketId;
+            this.lastInviterName = packet.inviterName;
+        });
+
+        this.socket.on('party_update', (packet) => {
+            const prevParty = this.partyData;
+            this.partyData = packet.party;
+
+            // 파티가 해산되었거나 추방당했을 때
+            if (prevParty && !packet.party) {
+                this.followTarget = null;
+                this.charData.target = null;
+                this.socket.emit('chat_message', { 
+                    message: "파티 사냥 수고하셨습니다! 득템하세요~", 
+                    chatType: 'normal' 
+                });
+            }
+        });
+
+        // 🎯 파티장이 몬스터를 점사 지정하면 즉시 타겟 동기화
+        this.socket.on('party_target_shared', (packet) => {
+            if (!packet || !packet.targetId) return;
+            const sharedMob = this.worldMonsters.find(m => m.id === packet.targetId && m.hp > 0 && !m.isDead);
+            if (sharedMob) {
+                this.charData.target = sharedMob;
+                this.charData.isMoving = false;
+            }
         });
     }
 
@@ -186,8 +295,10 @@ class AIAgentClient {
 
     startLoop() {
         this.loopTimer = setInterval(() => {
+            // 접속 시간 종료 시 정중한 파티 탈퇴 및 작별 인사 후 로그아웃
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
-                this.logout(); return;
+                this.gracefulLogout(); 
+                return;
             }
 
             let now = Date.now();
@@ -198,6 +309,12 @@ class AIAgentClient {
             }
 
             this.processAutoBuffs(); 
+
+            // 💡 추적(FOLLOW) 대상이 있으면 해당 유저에게 보폭 맞추기
+            if (this.followTarget && this.state !== 'SHOPPING') {
+                this.executeFollowMovement();
+            }
+
             this.executeSharedAILoop();
             this.tryRush(this.charData, this.charData.target, now);
             this.updateMovement(100); 
@@ -218,6 +335,20 @@ class AIAgentClient {
                 mercs: this.charData.mercs || [] 
             });
         }, 100); 
+    }
+
+    // 유저 따라가기 위치 보정
+    executeFollowMovement() {
+        let leader = this.worldPlayers.find(p => p.name === this.followTarget);
+        if (leader) {
+            let dist = Math.hypot(leader.x - this.charData.x, leader.y - this.charData.y);
+            if (dist > this.followDist + 30) {
+                let angle = Math.atan2(leader.y - this.charData.y, leader.x - this.charData.x);
+                this.charData.moveX = leader.x - Math.cos(angle) * this.followDist;
+                this.charData.moveY = leader.y - Math.sin(angle) * this.followDist;
+                this.charData.isMoving = true;
+            }
+        }
     }
 
     tryRush(entity, target, now) {
@@ -361,26 +492,16 @@ class AIAgentClient {
                     
                     if (!target || typeof target.x === 'undefined') return;
 
-                    // 💡 [정조준 강화] 시전 순간의 타겟 좌표와 각도를 정확히 고정
                     let aimAngle = Math.atan2(target.y - this.charData.y, target.x - this.charData.x);
                     this.charData.angle = aimAngle; 
 
                     this.socket.emit('player_magic_action', { 
-                        magicName: spellName, 
-                        targetX: target.x, 
-                        targetY: target.y, 
-                        targetId: target.id, 
-                        casterX: this.charData.x, 
-                        casterY: this.charData.y, 
-                        casterId: this.socket.id 
+                        magicName: spellName, targetX: target.x, targetY: target.y, targetId: target.id, 
+                        casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id 
                     });
-                    
                     this.socket.emit('player_attack_request', { 
-                        targetId: target.id, 
-                        attackerId: this.socket.id, 
-                        attackType: 'magic', 
-                        calculatedDmg: mData.dmg || 150, 
-                        magicName: spellName 
+                        targetId: target.id, attackerId: this.socket.id, attackType: 'magic', 
+                        calculatedDmg: mData.dmg || 150, magicName: spellName 
                     });
                 }
             },
@@ -393,7 +514,6 @@ class AIAgentClient {
                     if (magics.includes('트리플 애로우') && this.charData.mp >= 15) return '트리플 애로우';
                     return null;
                 }
-                
                 if (cls === 'knight') {
                     if (target.isBoss && magics.includes('쇼크 스턴') && this.charData.mp >= 15) return '쇼크 스턴';
                     return null;
@@ -401,22 +521,17 @@ class AIAgentClient {
 
                 let available = magics.map(m => ({name: m, data: data.magicDb[m]}))
                     .filter(m => m.data && (m.data.type === 'attack' || m.data.dmg) && this.charData.mp >= m.data.mp);
-                    
                 if (available.length === 0) return null;
                 
-                if (target.isBoss) {
-                    return available.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
-                }
+                if (target.isBoss) return available.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
                 
                 let nearby = this.worldMonsters.filter(m => m.hp > 0 && !m.isDead && Math.hypot(m.x - target.x, m.y - target.y) <= 180);
                 if (nearby.length >= 3) {
                     let aoe = available.filter(m => m.data.aoe);
                     if (aoe.length > 0) return aoe.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
                 }
-                
                 let single = available.filter(m => !m.data.aoe);
                 if (single.length > 0) return single.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
-                
                 return available.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
             },
             lootItem: (it) => this.socket.emit('player_loot_item', { itemId: it.id }),
@@ -462,6 +577,9 @@ class AIAgentClient {
     }
 
     checkSmartMapNavigation() {
+        // 추적 중이거나 파티 중일 때는 맵 강제 이동 방지
+        if (this.followTarget || this.partyData) return;
+
         if (Date.now() - this.lastMapCheckTime > 180000) { 
             this.lastMapCheckTime = Date.now();
             if (!this.charData.target && this.state === 'HUNTING') {
@@ -615,9 +733,7 @@ class AIAgentClient {
                 }
             });
 
-            if (target && this.tryRush(m, target, now)) {
-                continue; 
-            }
+            if (target && this.tryRush(m, target, now)) continue; 
 
             if (target) {
                 let tDist = Math.hypot(target.x - m.x, target.y - m.y);
@@ -663,9 +779,7 @@ class AIAgentClient {
                             }
                         }
                         else if (m.mercType === 'wizard') {
-                            // 💡 [최적화] 마법사 용병이 레벨과 주변 적 수에 맞춰 단일/광역 마법을 완벽히 선택하도록 보완
                             let nearbyCount = this.worldMonsters.filter(mob => mob.hp > 0 && Math.hypot(mob.x - target.x, mob.y - target.y) <= 180).length;
-                            
                             let wizardSkills = ['에너지 볼트', '파이어볼', '이럽션', '선버스트', '블리자드', '라이트닝 스톰'].filter(sName => {
                                 let mData = data.magicDb[sName];
                                 return mData && m.mp >= mData.mp;
@@ -697,23 +811,8 @@ class AIAgentClient {
                             }
 
                             m.mp -= (data.magicDb[spellName]?.mp || 1);
-
-                            this.socket.emit('player_magic_action', { 
-                                magicName: spellName, 
-                                targetX: target.x, 
-                                targetY: target.y, 
-                                targetId: target.id, 
-                                casterX: m.x, 
-                                casterY: m.y, 
-                                casterId: m.id 
-                            });
-                            this.socket.emit('player_attack_request', { 
-                                targetId: target.id, 
-                                attackerId: m.id, 
-                                attackType: 'magic', 
-                                calculatedDmg: (data.magicDb[spellName]?.dmg || 15) + Math.floor((m.level || 1) * 2), 
-                                magicName: spellName 
-                            });
+                            this.socket.emit('player_magic_action', { magicName: spellName, targetX: target.x, targetY: target.y, targetId: target.id, casterX: m.x, casterY: m.y, casterId: m.id });
+                            this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'magic', calculatedDmg: (data.magicDb[spellName]?.dmg || 15) + Math.floor((m.level || 1) * 2), magicName: spellName });
                         }
                         else {
                             this.socket.emit('player_attack_action', { casterId: m.id, angle: m.angle, targetId: target.id, targetX: target.x, targetY: target.y, isBow: false, actionType: 'slash' });
@@ -739,15 +838,153 @@ class AIAgentClient {
         }
     }
 
-    async handleChatMessage(senderName, userMessage) {
-        if (Date.now() - this.lastAiCallTime < 3000) return;
+    // =========================================================================
+    // 🧠 [LLM 지능형 대화 & 인게임 실시간 자율 행동 디스패처]
+    // =========================================================================
+    async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
+        if (Date.now() - this.lastAiCallTime < 2500) return;
         this.lastAiCallTime = Date.now();
+
         try {
-            const prompt = `당신은 리니지 유저 '${this.charData.name}'입니다. 상대 '${senderName}'의 말에 친근하게 답장하는 1문장 JSON을 출력하세요: {"reply": "..."}`;
-            const result = await aiModel.generateContent(prompt);
-            let parsed = JSON.parse(result.response.text().replace(/```json|```/g, '').trim());
-            this.socket.emit('chat_message', { message: parsed.reply, chatType: 'normal' });
-        } catch(e) {}
+            const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');
+            const availableSpells = (this.charData.magic || []).join(', ');
+            const isParty = Boolean(this.partyData);
+            const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
+            const contextType = isWhisper ? `[${senderName}]님이 귓속말을 보냈습니다.` : (isParty ? `[파티 대화]` : `[일반 대화]`);
+
+            const situationContext = `
+[내 실시간 상태]
+- 캐릭터명: ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass})
+- 체력: ${this.charData.hp}/${this.charData.maxHp}, 마나: ${this.charData.mp}/${this.charData.maxMp}
+- 현재 위치: ${data.maps[this.charData.map]?.name || this.charData.map} (코드: ${this.charData.map})
+- 파티 상태: ${isParty ? `참여 중 (파티장: ${leaderName})` : '파티 없음'}
+- 나에게 온 파티 초대: ${this.lastInviterName ? `${this.lastInviterName}님의 초대 대기 중` : '없음'}
+- 습득 마법: [${availableSpells}]
+- 성격/말투: ${this.personality}
+- 이동 가능 사냥터 목록: [${mapNames}]`;
+
+            this.chatHistory.push({ role: "user", content: `${contextType} ${senderName}: ${userMessage}` });
+            if (this.chatHistory.length > 6) this.chatHistory.shift();
+
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: `당신은 MMORPG 게임을 플레이하고 있는 한국인 유저입니다. 
+당신은 로봇이 아니라 컴퓨터 앞에 앉은 사람입니다. 일상 대화와 게임 대화를 모두 자연스럽게 받아칩니다.
+
+${situationContext}
+
+상대방('${senderName}')의 말과 대화 맥락을 읽고, 반드시 아래 JSON 포맷으로 응답하세요:
+{
+  "reply": "성격에 맞는 자연스러운 게이머 말투의 1~2문장 대답",
+  "action": "NONE" | "FOLLOW" | "STOP_FOLLOW" | "TELEPORT" | "PARTY_ACCEPT" | "PARTY_LEAVE" | "HEAL_TARGET" | "BUFF_TARGET" | "GO_TOWN" | "LOGOUT",
+  "target": "행동 대상 이름 (FOLLOW, HEAL, BUFF 시)",
+  "map": "이동할 맵 코드 (TELEPORT 시)",
+  "spell": "시전할 마법명 (HEAL, BUFF 시)"
+}`
+                    },
+                    ...this.chatHistory
+                ],
+                model: currentGroqModel,
+                response_format: { type: "json_object" },
+                max_tokens: 100,
+                temperature: 0.8
+            });
+
+            const decision = JSON.parse(completion.choices[0]?.message?.content || '{}');
+            const replyText = decision.reply?.trim();
+            const action = decision.action || 'NONE';
+
+            if (replyText) {
+                if (isWhisper) {
+                    this.socket.emit('cmd_whisper', { targetName: senderName, content: replyText });
+                } else {
+                    this.socket.emit('chat_message', { 
+                        message: replyText, 
+                        chatType: this.partyData ? 'party' : 'normal' 
+                    });
+                }
+                this.chatHistory.push({ role: "assistant", content: replyText });
+            }
+
+            this.executeAction(action, decision, senderName);
+
+        } catch(e) {
+            console.error(`[-] [${this.charData.name}] 대화 오류:`, e.message);
+        }
+    }
+
+    executeAction(action, decision, senderName) {
+        if (!action || action === 'NONE') return;
+
+        const targetPlayerName = decision.target || senderName;
+        const targetPl = this.worldPlayers.find(p => p.name === targetPlayerName);
+
+        switch (action) {
+            case 'PARTY_ACCEPT':
+                if (this.lastInviterSocketId) {
+                    this.socket.emit('party_accept', { inviterSocketId: this.lastInviterSocketId });
+                    this.lastInviterSocketId = null;
+                    this.lastInviterName = null;
+                }
+                break;
+            case 'PARTY_LEAVE':
+                if (this.partyData) {
+                    this.socket.emit('party_leave');
+                    this.partyData = null;
+                    this.followTarget = null;
+                }
+                break;
+            case 'FOLLOW':
+                this.followTarget = targetPlayerName;
+                this.followDist = this.charData.charClass === 'knight' ? 60 : 160;
+                if (targetPl) {
+                    this.charData.moveX = targetPl.x;
+                    this.charData.moveY = targetPl.y;
+                    this.charData.isMoving = true;
+                }
+                break;
+            case 'STOP_FOLLOW':
+                this.followTarget = null;
+                this.charData.isMoving = false;
+                break;
+            case 'TELEPORT':
+                if (decision.map && data.maps[decision.map]) {
+                    this.teleport(decision.map, 2000, 2000);
+                }
+                break;
+            case 'HEAL_TARGET':
+                if (targetPl && (this.charData.charClass === 'wizard' || this.charData.charClass === 'elf')) {
+                    const healSpell = (this.charData.magic.includes('그레이트 힐')) ? '그레이트 힐' : '힐';
+                    if (this.charData.mp >= (data.magicDb[healSpell]?.mp || 5)) {
+                        this.charData.mp -= (data.magicDb[healSpell]?.mp || 5);
+                        this.socket.emit('player_magic_action', {
+                            magicName: healSpell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                        });
+                    }
+                }
+                break;
+            case 'BUFF_TARGET':
+                if (targetPl && decision.spell && this.charData.magic.includes(decision.spell)) {
+                    const sCost = data.magicDb[decision.spell]?.mp || 10;
+                    if (this.charData.mp >= sCost) {
+                        this.charData.mp -= sCost;
+                        this.socket.emit('player_magic_action', {
+                            magicName: decision.spell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                        });
+                    }
+                }
+                break;
+            case 'GO_TOWN':
+                this.routineShopping();
+                break;
+            case 'LOGOUT':
+                setTimeout(() => this.gracefulLogout(), 2000);
+                break;
+        }
     }
 
     teleport(mapCode, x = 2000, y = 2000) {
@@ -755,6 +992,14 @@ class AIAgentClient {
         this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
         this.charData.target = null; this.charData.isMoving = false;
         this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false });
+    }
+
+    async gracefulLogout() {
+        if (this.partyData) {
+            this.socket.emit('chat_message', { message: "사냥 수고하셨습니다! 먼저 가볼게요~", chatType: 'party' });
+            this.socket.emit('party_leave');
+        }
+        setTimeout(async () => { await this.logout(); }, 1500);
     }
 
     async logout() {
@@ -778,6 +1023,10 @@ async function manageAgentRotation() {
     }
 }
 
-setInterval(manageAgentRotation, 15000);
-manageAgentRotation();
-console.log('🚀 [외부 AI Agent Runner 가동 완료 - 서버 독립형 사냥 봇]');
+async function startRunner() {
+    await initGroqModel();
+    setInterval(manageAgentRotation, 15000);
+    manageAgentRotation();
+    console.log('🚀 [외부 AI Agent Runner 가동 완료 - 서버 독립형 사냥 봇]');
+}
+startRunner();

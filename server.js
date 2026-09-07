@@ -1,4 +1,10 @@
 // server.js (최종 통합 버전)
+
+require('dotenv').config();
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const PORT = process.env.PORT || 3000;
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');

@@ -4,13 +4,21 @@ module.exports = {
       name: "lineage-game-server",
       script: "./server.js",
       autorestart: true,
-      watch: false
+      watch: false,
+      env: {
+        NODE_ENV: "production"
+      }
     },
     {
       name: "ai-agent-runner",
       script: "./aiAgentRunner.js",
       autorestart: true,
-      watch: false
+      watch: false,
+    
+      env: {
+        NODE_ENV: "production",
+        DOTENV_CONFIG_PATH: "./.env"
+      }
     }
   ]
 };

@@ -4412,13 +4412,35 @@ window.socket.on('monster_hit', (data) => {
 });
 
     window.socket.on('chat_broadcast', (data) => {
-    let msgType = data.chatType || 'normal';
-    if (typeof addMessage === 'function') addMessage(`[전체] ${data.name}: ${data.message}`, '#ffffff', msgType);
+        let msgType = data.chatType || 'normal';
+        
+        // 💡 나에게 귓말이 왔다면 즉시 귓속말 답장 대상(/r) 갱신
+        if (data.isWhisper && data.targetName === player.name) {
+            window.lastWhisperTarget = data.name; 
+        }
+
+        // 💡 귓말, 파티, 전체 채팅을 구분해서 화면에 출력
+        let prefix = msgType === 'whisper' ? '귓말' : (msgType === 'party' ? '파티' : '전체');
+        let color = msgType === 'whisper' ? '#e879f9' : (msgType === 'party' ? '#5cf' : '#ffffff');
+        
+        if (typeof addMessage === 'function') {
+            addMessage(`[${prefix}] ${data.name}: ${data.message}`, color, msgType);
+        }
+
+        // 💡 캐릭터 머리 위 말풍선 띄우기 처리
         let targetEnt = null;
-        if (data.senderId === currentUser?.id) { targetEnt = player; } 
-        else { targetEnt = entities.find(e => e.isPlayer && e.id === data.socketId); }
-        if (targetEnt) { targetEnt.bubbleText = data.message; targetEnt.bubbleTimer = Date.now() + 5000; }
+        if (data.senderId === currentUser?.id) { 
+            targetEnt = player; 
+        } else { 
+            targetEnt = entities.find(e => e.isPlayer && e.id === data.socketId); 
+        }
+        
+        if (targetEnt) { 
+            targetEnt.bubbleText = data.message; 
+            targetEnt.bubbleTimer = Date.now() + 5000; 
+        }
     });
+
 
     window.socket.on('party_invite_received', (data) => {
         showConfirm(`${data.inviterName}님께서 파티 초대를 보냈습니다.\n수락하시겠습니까?`, () => {

@@ -394,22 +394,35 @@ window.openCreateCharModal = function(slotIndex) {
 };
 
 window.deleteCharacter = function(slotIndex, charName) {
-    showConfirm(`정말 [${charName}] 캐릭터를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`, async () => {
-        const sb = getSupabaseClient();
-        
-        const { error } = await sb.from('characters').delete()
-            .eq('user_id', currentUser.id)
-            .eq('slot_index', slotIndex);
-        
-        if (error) {
-            showAlert("캐릭터 삭제 실패: " + error.message);
-        } else {
-            localStorage.removeItem('lineage_saved_id');
-            showAlert(`${charName} 캐릭터가 영구적으로 삭제되었습니다.`);
-            await fetchCharacterList(); 
-        }
-    });
+    // 1단계: 먼저 기존 확인 팝업창을 띄우거나, 혹은 텍스트 입력 프롬프트를 띄웁니다.
+    showPrompt(`정말 [${charName}] 캐릭터를 영구 삭제하시겠습니까?\n\n확인을 위해 아래 칸에 정확히 <span style="color:#f55; font-weight:bold;">"삭제"</span> 라고 입력해주세요:`, "", 10, (userInput) => {
+        // 2단계: 사용자가 입력한 글자가 "삭제"와 일치하는지 검사
+        if (userInput !== "삭제") {
+            return showAlert("입력한 글자가 일치하지 않습니다. 캐릭터 삭제가 취소되었습니다.");
+        }
+
+        // 3단계: 일치할 경우 실제 DB 삭제 실행
+        executeCharacterDeletion(slotIndex, charName);
+    }, true); // 마지막 인자 true는 텍스트 입력 모드 활성화
 };
+
+// 실제 DB 삭제 처리 함수
+async function executeCharacterDeletion(slotIndex, charName) {
+    const sb = getSupabaseClient();
+    if (!sb || !currentUser) return;
+
+    const { error } = await sb.from('characters').delete()
+        .eq('user_id', currentUser.id)
+        .eq('slot_index', slotIndex);
+    
+    if (error) {
+        showAlert("캐릭터 삭제 실패: " + error.message);
+    } else {
+        localStorage.removeItem('lineage_saved_id');
+        showAlert(`${charName} 캐릭터가 영구적으로 삭제되었습니다.`);
+        await fetchCharacterList(); 
+    }
+}
 
 function sanitizeMercenaryData(merc) {
     if (!merc) return null;
@@ -3925,13 +3938,13 @@ window.switchChatTab = function(tabName) {
     if (typeof playSound === 'function') playSound('click');
     window.currentChatTab = tabName;
 
-    // 하단 바 탭 스타일 동기화
+    // 1. 하단 바 탭 스타일 동기화
     document.querySelectorAll('#chat-tabs .chat-tab').forEach(el => {
         let labelMap = { 'all': '전체', 'chat': '💬대화', 'party': '파티', 'system': '시스템', 'whisper': '귓말' };
         el.className = el.innerText === labelMap[tabName] ? 'chat-tab active' : 'chat-tab';
     });
 
-    // 확장 팝업창 탭 스타일 동기화
+    // 2. 확장 팝업창 탭 스타일 동기화
     const tabIndexMap = { 'all': 0, 'chat': 1, 'party': 2, 'system': 3, 'whisper': 4 };
     const popTabs = document.querySelectorAll('#popup-chat-tabs .popup-tab');
     popTabs.forEach((btn, idx) => {
@@ -3939,6 +3952,30 @@ window.switchChatTab = function(tabName) {
         else btn.classList.remove('active');
     });
 
+    // 💡 3. [추가] 탭별 입력창 팁(Placeholder) 동적 변경
+    const chatInput = document.getElementById('chat-input');
+    const popInput = document.getElementById('popup-chat-input');
+    
+    let tipText = "대화 입력 (명령어 도움말: /?)";
+    if (tabName === 'whisper') {
+        tipText = "귓말: /귓말 [이름] [할말] | 답장: /r | 종료: /귓말종료";
+        
+        // 💡 귓말 탭 진입 시, 귓말 히스토리가 하나도 없으면 안내 텍스트 출력
+        let whisperLogs = window.chatHistory.filter(c => c.type === 'whisper');
+        if (whisperLogs.length === 0) {
+            addMessage("💡 [귓말 팁] 처음엔 '/귓말 대상이름 할말'로 시작하세요.", '#88aaff', 'whisper');
+            addMessage("💡 이후 '/r 할말'을 치면 마지막 대상에게 즉시 답장됩니다.", '#88aaff', 'whisper');
+        }
+    } else if (tabName === 'system') {
+        tipText = "시스템 탭 (명령어 도움말: /?)";
+    } else if (tabName === 'party') {
+        tipText = "파티원에게 대화 전송...";
+    }
+
+    if (chatInput) chatInput.placeholder = tipText;
+    if (popInput) popInput.placeholder = tipText;
+
+    // 4. 메시지 다시 그리기
     renderChatMessages();
 };
 
@@ -3954,7 +3991,12 @@ window.toggleChatPopup = function() {
     if (window.isChatPopupOpen) {
         pop.style.display = 'flex';
         if (typeof bringToFront === 'function') bringToFront('win-chat-popup');
-        if (typeof autoCenterWindow === 'function') autoCenterWindow('win-chat-popup', false);
+        
+        // 💡 [핵심] 창이 열리는 순간 화면 정중앙 좌표로 강제 재배치
+        if (typeof autoCenterWindow === 'function') {
+            autoCenterWindow('win-chat-popup', true);
+        }
+
         if (expandBtn) expandBtn.innerText = '🔽 접기';
         
         setTimeout(() => {
@@ -4024,113 +4066,109 @@ function renderChatMessages() {
 // ==========================================
 
 // 4. 슬래시(/) 명령어 판별기 및 운영자 전용 툴킷
+window.lastWhisperTarget = null;
 function processChatCommand(cmdStr) {
     let args = cmdStr.trim().split(/\s+/);
     let cmd = args[0];
 
-    if (cmd === '/?') {
+    // 💡 [도움말] /? 또는 /help
+    if (cmd === '/?' || cmd === '/help') {
         addMessage("==== [명령어 목록] ====", '#fd0', 'system');
-        addMessage("/누구 : 현재 접속자 목록 및 위치 확인", '#fff', 'system');
-        addMessage("/귓말 [캐릭터이름] [할말] : 1:1 귓속말", '#fff', 'system');
+        addMessage("/누구 또는 /who : 접속자 목록 확인", '#fff', 'system');
+        addMessage("/귓말 [이름] [할말] : 1:1 귓속말", '#fff', 'system');
+        addMessage("/r [할말] : 마지막 귓속말 대상에게 빠른 답장", '#5cf', 'system');
+        addMessage("/귓말종료 : 귓속말 고정(답장) 대상 해제", '#aaa', 'system');
         
         if (window.isAdminAuth) {
-            addMessage("---- [👑 운영자 전용 명령어] ----", '#f55', 'system');
-            addMessage("/공지 [내용] : 전 서버 붉은색 시스템 공지 전송", '#fd0', 'system');
-            addMessage("/모험가생성 : 42명 가상 모험가 DB 자동 주입", '#fd0', 'system');
-            addMessage("/플레이어삭제 [이름] : 지정 캐릭터 DB 영구 삭제", '#fd0', 'system');
-            addMessage("/소환 [몬스터명] [수량] : 내 위치에 몬스터 즉시 소환", '#fd0', 'system');
-            addMessage("/아데나 [수량] : 소지 아데나 즉시 충전", '#fd0', 'system');
-            addMessage("/레벨 [숫자] : 내 캐릭터 레벨 강제 변경", '#fd0', 'system');
-            addMessage("/이동 [맵코드] : 지정 맵으로 강제 텔레포트", '#fd0', 'system');
-            addMessage("/청소 : 현재 맵 바닥의 모든 아이템 즉시 증발", '#fd0', 'system');
-            addMessage("/운영자해제 : 운영자 모드 종료", '#aaa', 'system');
+            addMessage("---- [👑 운영자 명령어] ----", '#f55', 'system');
+            addMessage("/공지, /소환, /아데나, /레벨, /이동, /청소", '#fd0', 'system');
+            addMessage("/운영자종료 : 운영자 권한 해제", '#aaa', 'system');
         } else {
             addMessage("/운영자 [계정/비번] : 운영자 권한 획득", '#888', 'system');
         }
     } 
-    else if (cmd === '/누구') {
+    // 💡 [누구] /who 호환
+    else if (cmd === '/누구' || cmd === '/who') {
         if (window.socket) window.socket.emit('cmd_who');
     } 
+    // 💡 [귓말 답장]
+    else if (cmd === '/r' || cmd === '/ㄱ') {
+        if (!window.lastWhisperTarget) return addMessage("최근에 대화한 대상이 없습니다.", '#f55', 'system');
+        let content = args.slice(1).join(' ');
+        if (!content) return addMessage("사용법: /r [할말]", '#f55', 'system');
+        if (window.socket) window.socket.emit('cmd_whisper', { targetName: window.lastWhisperTarget, content });
+        addMessage(`[귓말 ➔ ${window.lastWhisperTarget}]: ${content}`, '#e879f9', 'whisper');
+    }
+    // 💡 [귓말 보내기]
     else if (cmd === '/귓말') {
         if (args.length < 3) return addMessage("사용법: /귓말 [이름] [할말]", '#f55', 'system');
         let targetName = args[1];
         let content = args.slice(2).join(' ');
+        window.lastWhisperTarget = targetName; 
         if (window.socket) window.socket.emit('cmd_whisper', { targetName, content });
         addMessage(`[귓말 ➔ ${targetName}]: ${content}`, '#e879f9', 'whisper');
     } 
+    // 💡 [귓말 종료]
+    else if (cmd === '/귓말종료' || cmd === '/귓말해제') {
+        window.lastWhisperTarget = null;
+        addMessage("귓속말 답장 대상이 성공적으로 해제되었습니다.", '#aaa', 'system');
+    }
+    // 💡 [운영자 인증]
     else if (cmd === '/운영자') {
         let authStr = args[1];
         if (authStr === 'xerimaii@gmail.com/90051254') {
             window.isAdminAuth = true;
-            addMessage("👑 [운영자 권한 승인] 모든 운영자 콘솔 명령어가 활성화되었습니다. (/? 로 확인)", '#fd0', 'system');
-            if (typeof playSound === 'function') playSound('spell');
+            addMessage("👑 [운영자 권한 승인] 콘솔 명령어가 활성화되었습니다. (/? 확인)", '#fd0', 'system');
         } else {
-            addMessage("인증 실패: 계정 또는 비밀번호가 올바르지 않습니다.", '#f55', 'system');
+            addMessage("인증 실패: 계정 또는 비밀번호 오류", '#f55', 'system');
         }
     } 
-    else if (cmd === '/운영자해제') {
+    // 💡 [운영자 종료]
+    else if (cmd === '/운영자해제' || cmd === '/운영자종료') {
         window.isAdminAuth = false;
         addMessage("운영자 권한이 안전하게 해제되었습니다.", '#aaa', 'system');
     }
-
-    // ==========================================
-    // 👑 [운영자 전용 실행 분기]
-    // ==========================================
+    // 운영자 전용 액션들
     else if (window.isAdminAuth) {
         if (cmd === '/공지') {
-            if (args.length < 2) return addMessage("사용법: /공지 [내용]", '#f55', 'system');
             let noticeText = args.slice(1).join(' ');
-            if (window.socket) window.socket.emit('admin_notice', { message: noticeText });
+            if (window.socket && noticeText) window.socket.emit('admin_notice', { message: noticeText });
         }
         else if (cmd === '/모험가생성' || cmd === '/ai생성') {
             generateAIAgents();
         }
         else if (cmd === '/플레이어삭제') {
-            if (args.length < 2) return addMessage("사용법: /플레이어삭제 [이름]", '#f55', 'system');
-            deletePlayerByAdmin(args[1]);
+            if (args[1]) deletePlayerByAdmin(args[1]);
         }
         else if (cmd === '/소환') {
-            if (args.length < 2) return addMessage("사용법: /소환 [몬스터명] [수량(기본1)]", '#f55', 'system');
-            let mobName = args[1];
-            let count = parseInt(args[2]) || 1;
-            if (window.socket) {
-                window.socket.emit('admin_spawn_mob', { mobName, count, x: player.x, y: player.y, map: currentMap });
-            }
+            if (window.socket && args[1]) window.socket.emit('admin_spawn_mob', { mobName: args[1], count: parseInt(args[2]) || 1, x: player.x, y: player.y, map: currentMap });
         }
         else if (cmd === '/아데나') {
-            let amt = parseInt(args[1]);
-            if (isNaN(amt)) return addMessage("사용법: /아데나 [금액]", '#f55', 'system');
-            player.adena = (player.adena || 0) + amt;
-            if (typeof playSound === 'function') playSound('buy');
-            addMessage(`[운영자 치트] 아데나 ${amt.toLocaleString()}원이 지급되었습니다.`, '#5f5', 'system');
-            if (typeof updateUI === 'function') updateUI();
+            player.adena = (player.adena || 0) + (parseInt(args[1]) || 0);
+            updateUI();
+            addMessage(`[치트] 아데나 지급 완료.`, '#5f5', 'system');
         }
         else if (cmd === '/레벨') {
-            let targetLv = parseInt(args[1]);
-            if (isNaN(targetLv) || targetLv < 1) return addMessage("사용법: /레벨 [숫자]", '#f55', 'system');
-            player.level = targetLv;
+            player.level = parseInt(args[1]) || player.level;
             player.exp = 0;
-            addMessage(`[운영자 치트] 캐릭터 레벨이 Lv.${targetLv}로 설정되었습니다.`, '#5f5', 'system');
-            if (typeof updateUI === 'function') updateUI();
+            updateUI();
+            addMessage(`[치트] 레벨 변경 완료.`, '#5f5', 'system');
         }
         else if (cmd === '/이동') {
-            let mapKey = args[1];
-            if (!mapKey || !maps[mapKey]) return addMessage("사용법: /이동 [맵코드 (예: talking_island, gludin 등)]", '#f55', 'system');
-            changeMap(mapKey, 2000, 2000);
-            addMessage(`[운영자 치트] ${mapKey} 좌표로 즉시 이동했습니다.`, '#5f5', 'system');
+            if (args[1] && maps[args[1]]) changeMap(args[1], 2000, 2000);
         }
         else if (cmd === '/청소') {
             if (window.socket) window.socket.emit('admin_clear_floor', { map: currentMap });
-            addMessage("현재 맵 바닥 청소를 서버에 요청했습니다.", '#aaa', 'system');
         }
         else {
-            addMessage(`알 수 없는 운영자 명령어입니다: ${cmd} (도움말: /?)`, '#f55', 'system');
+            addMessage(`알 수 없는 운영자 명령어입니다: ${cmd}`, '#f55', 'system');
         }
     }
     else {
         addMessage(`알 수 없는 명령어입니다: ${cmd} (도움말: /?)`, '#f55', 'system');
     }
 }
+
 
 // 5. 전송 함수
 function sendChatMessage() {
@@ -4837,6 +4875,53 @@ function injectMobileBottomFix() {
 
 // 💡 함수 실행
 injectMobileBottomFix();
+
+function initMobileChatResizer() {
+    const pop = document.getElementById('win-chat-popup');
+    if(!pop) return;
+    
+    // 우측 하단 모서리에 드래그 전용 손잡이 삽입
+    let resizer = document.createElement('div');
+    resizer.style.cssText = 'position:absolute; right:0; bottom:0; width:35px; height:35px; cursor:se-resize; z-index:10; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,0.3) 50%); border-bottom-right-radius: 6px;';
+    pop.appendChild(resizer);
+
+    let isResizing = false, startX, startY, startW, startH;
+    
+    const startResize = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        isResizing = true;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+        startY = e.touches ? e.touches[0].clientY : e.clientY;
+        startW = pop.offsetWidth;
+        startH = pop.offsetHeight;
+        document.addEventListener('touchmove', doResize, {passive:false});
+        document.addEventListener('touchend', stopResize);
+    };
+    
+    const doResize = (e) => {
+        if(!isResizing) return;
+        e.preventDefault();
+        let cx = e.touches ? e.touches[0].clientX : e.clientX;
+        let cy = e.touches ? e.touches[0].clientY : e.clientY;
+        
+        // 최소 크기 보장 (너비 280, 높이 200)
+        pop.style.width = Math.max(280, startW + (cx - startX)) + 'px';
+        pop.style.height = Math.max(200, startH + (cy - startY)) + 'px';
+    };
+    
+    const stopResize = () => {
+        isResizing = false;
+        document.removeEventListener('touchmove', doResize);
+        document.removeEventListener('touchend', stopResize);
+    };
+    
+    resizer.addEventListener('touchstart', startResize, {passive:false});
+}
+
+// 스크립트 로드 시 리사이저 즉시 부착
+document.addEventListener('DOMContentLoaded', () => {
+    initMobileChatResizer();
+});
 
 // ==========================================
 // 💡 [인챈트 모드 시 십자 커서 전역 유지 스타일 주입]
