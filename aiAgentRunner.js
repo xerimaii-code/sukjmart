@@ -1,6 +1,5 @@
 // aiAgentRunner.js (Groq LLM 두뇌 연동, 자율 판단 액션 디스패처, 파티/점사/추적/치유 및 대화 메모리 완벽 통합본)
-require('dotenv').config(); 
-
+require('dotenv').config();
 const io = require('socket.io-client');
 const { createClient } = require('@supabase/supabase-js');
 const Groq = require('groq-sdk');
@@ -8,17 +7,17 @@ const SharedAI = require('./public/js/sharedAI.js');
 const data = require('./public/js/data.js'); 
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_KEY = process.env.SUPABASE_KEY; 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
-// 💡 실시간 활성 모델 변수
 let currentGroqModel = 'qwen/qwen3.8-27b';
 
-// 부팅 시 계정에서 지원하는 최적의 모델 자동 선별
+
 async function initGroqModel() {
     try {
         const modelList = await groq.models.list();
