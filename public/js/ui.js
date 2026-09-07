@@ -4781,12 +4781,9 @@ function injectMobileBottomFix() {
         @media (max-width: 768px) {
             /* 📱 모바일 버전: 화면 가리지 않게 크기 살짝 축소 */
 
-#win-chat-popup {
-                width: 95vw !important;
-                height: 45vh !important;
-                top: 5vh !important;
-                left: 2.5vw !important;
-            }            #popup-chat-messages {
+            /* 💡 문제의 원인이었던 #win-chat-popup 의 강제 !important 크기 덮어쓰기 구문 완전히 제거 완료 */
+            
+            #popup-chat-messages {
                 flex-grow: 1 !important;
                 overflow-y: auto !important;
             }
