@@ -41,9 +41,7 @@
                     let minMobDist = Infinity;
 
                     env.entities.forEach(e => {
-                        // 💡 [버그 해결] 이제 aiAgentRunner가 map과 플래그를 정상 주입하므로 정확히 몬스터만 찾습니다.
                         if (e && e.map === env.currentMap && !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.hp > 0 && !e.isDead) {
-                            // 몬스터가 안전지대에 있으면 무시
                             if (env.isInSafeZone && env.isInSafeZone(env.currentMap, e.x, e.y)) return;
 
                             let d = Math.hypot(e.x - entity.x, e.y - entity.y);
@@ -58,13 +56,11 @@
                         entity.target = closestMob;
                         if (typeof env.shareTarget === 'function') env.shareTarget(closestMob.id);
                     } else {
-                        // 💡 [치명적 버그 해결] 주변에 몬스터가 없으면 넓게 무작위 정찰 이동 (안전지대 탈출)
                         if (!entity.isMoving || (entity.moveX && Math.hypot(entity.moveX - entity.x, entity.moveY - entity.y) < 25)) {
                             let rx = entity.x + (Math.random() * 800 - 400); 
                             let ry = entity.y + (Math.random() * 800 - 400);
                             let maxMap = env.mapSize || 4000;
                             if (rx > 100 && rx < maxMap - 100 && ry > 100 && ry < maxMap - 100) {
-                                // 기존에는 여기서 return해버려서 함수 전체가 멈췄음. 이제는 무시하고 다음 틱을 기다리게 수정.
                                 if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, rx, ry))) {
                                     entity.moveX = rx; 
                                     entity.moveY = ry; 
@@ -82,19 +78,76 @@
                 let dist = Math.hypot(target.x - entity.x, target.y - entity.y);
                 let isBow = Boolean(entity.equip && entity.equip.weapon && (entity.equip.weapon.isBow || (entity.equip.weapon.name && entity.equip.weapon.name.includes('활'))));
                 let isWizard = entity.charClass === 'wizard';
-                let isRangedAttacker = isBow || isWizard;
+                
+                // 💡 [요청 반영] 칼든 요정 및 근접 무기를 장착한 엘프/캐릭터는 원거리 카이팅 대상에서 제외
+                let weaponName = (entity.equip && entity.equip.weapon && entity.equip.weapon.name) || '';
+                let isMeleeWeapon = weaponName.includes('검') || weaponName.includes('도') || weaponName.includes('단검') || weaponName.includes('창') || weaponName.includes('대검');
+                let isRangedAttacker = (isBow || isWizard) && !isMeleeWeapon;
+                
                 let atkRange = isRangedAttacker ? 320 : ((target.size || 20) + 55);
 
                 if (!isManualMoving) {
-                    if (dist > atkRange) {
-                        let charAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
-                        entity.moveX = target.x - Math.cos(charAngle) * (isRangedAttacker ? 200 : 30);
-                        entity.moveY = target.y - Math.sin(charAngle) * (isRangedAttacker ? 200 : 30);
-                        entity.isMoving = true;
+                    let maxMap = env.mapSize || 4000;
+                    let margin = 150; // 코너 및 벽 가장자리에 갇히지 않도록 유지할 최소 여백
+
+                    if (isRangedAttacker) {
+                        let closeThreshold = 200; // 몬스터가 이 거리 안으로 접근하면 긴급 카이팅 및 회피 발동
+                        let idealRange = 260;    // 사거리 내에서 유지할 최적의 거리
+
+                        // 💡 [요청 반영] 아군(플레이어/용병/소환수) 중심점 계산 (아군이 있는 곳을 중심으로 협동 전투 및 원형 궤도 회피)
+                        let allySumX = entity.x, allySumY = entity.y, allyCount = 1;
+                        if (env.entities) {
+                            env.entities.forEach(e => {
+                                if (e && e.map === env.currentMap && (e.isPlayer || e.isSummon || e.isOtherMerc) && e.hp > 0) {
+                                    allySumX += e.x;
+                                    allySumY += e.y;
+                                    allyCount++;
+                                }
+                            });
+                        }
+                        let allyCenterX = allySumX / allyCount;
+                        let allyCenterY = allySumY / allyCount;
+
+                        if (dist < closeThreshold || dist > atkRange + 40) {
+                            // 몬스터가 너무 가까우거나 사거리 밖일 때: 몬스터 반대 방향 + 큰 원형 궤도(Orbit) + 아군 중심점 조합
+                            let angleToMob = Math.atan2(target.y - entity.y, target.x - entity.x);
+                            
+                            // 시간에 따라 시계/반시계 방향을 교대로 전환하며 큰 원을 그리며 회피하도록 탄젠트 요소 부여
+                            let orbitSign = (Math.floor(env.now / 3500) % 2 === 0) ? 1 : -1;
+                            let evadeAngle = angleToMob + Math.PI + (1.4 * orbitSign);
+
+                            let targetX = target.x + Math.cos(evadeAngle) * idealRange;
+                            let targetY = target.y + Math.sin(evadeAngle) * idealRange;
+
+                            // 아군 진형 중심 쪽으로 밸런스를 잡아주어 아군 공격 사거리 내에 머물도록 유도
+                            targetX = targetX * 0.6 + allyCenterX * 0.4;
+                            targetY = targetY * 0.6 + allyCenterY * 0.4;
+
+                            // 💡 [요청 반영] 맵 가장자리나 코너에 박히지 않도록 경계선 안쪽으로 강제 클램프(Clamp) 처리
+                            targetX = Math.max(margin, Math.min(maxMap - margin, targetX));
+                            targetY = Math.max(margin, Math.min(maxMap - margin, targetY));
+
+                            entity.moveX = targetX;
+                            entity.moveY = targetY;
+                            entity.isMoving = true;
+                        } else {
+                            // 적당한 사거리 내에서 안정적으로 자리를 잡고 공격할 때
+                            entity.isMoving = false;
+                            entity.moveX = undefined;
+                            entity.moveY = undefined;
+                        }
                     } else {
-                        entity.isMoving = false; 
-                        entity.moveX = undefined; 
-                        entity.moveY = undefined;
+                        // 근접 클래스 및 칼든 요정 이동 로직
+                        if (dist > atkRange) {
+                            let charAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
+                            entity.moveX = target.x - Math.cos(charAngle) * 30;
+                            entity.moveY = target.y - Math.sin(charAngle) * 30;
+                            entity.isMoving = true;
+                        } else {
+                            entity.isMoving = false; 
+                            entity.moveX = undefined; 
+                            entity.moveY = undefined;
+                        }
                     }
                 }
 
@@ -117,7 +170,7 @@
                             if (typeof env.spawnArrow === 'function') env.spawnArrow(entity, target, baseAtk, '#ffffff');
                             else if (typeof env.damageEntity === 'function') env.damageEntity(target, baseAtk, entity, 'physical');
                         } else {
-                            if (typeof env.playSound === 'function') env.playSound('swing');
+                            if (typeof env.playSound === 'function') env.playSound('playSound') || env.playSound('swing');
                             if (typeof env.damageEntity === 'function') env.damageEntity(target, baseAtk, entity, 'physical');
                         }
                     }
