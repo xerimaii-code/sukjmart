@@ -376,13 +376,17 @@ io.on('connection', (socket) => {
         }
 
         if (p.map !== payload.map && payload.map) {
-            let prevMap = p.map;
-            socket.leave(prevMap); 
-            socket.join(payload.map); 
-            p.map = payload.map;
-            if (!mapsState[p.map]) {
-                mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
-            }
+            let prevMap = p.map;
+            socket.leave(prevMap); 
+            socket.join(payload.map); 
+            p.map = payload.map;
+            
+        
+            p.targetId = null;
+            
+            if (!mapsState[p.map]) {
+                mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
+            }
             if (prevMap === 'boss_raid') {
                 let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid' && pl.socketId !== socket.id);
                 if (remainingPlayers.length === 0) {
@@ -403,6 +407,12 @@ io.on('connection', (socket) => {
         p.charClass = payload.charClass || p.charClass;
         if (payload.x !== undefined) p.x = payload.x; 
         if (payload.y !== undefined) p.y = payload.y; 
+
+
+        if (payload.targetId !== undefined) {
+            p.targetId = payload.targetId;
+        }
+
         if (payload.hp !== undefined && payload.hp > p.hp) p.hp = payload.hp; 
         p.maxHp = payload.maxHp !== undefined ? payload.maxHp : p.maxHp;
         p.atk = payload.atk || p.atk || 20;

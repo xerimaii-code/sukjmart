@@ -2121,14 +2121,30 @@ if (player && Date.now() < (player.furyUntil || 0)) {
 
             if (p.isArrow) {
                 ctx.rotate(p.angle || 0);
-                ctx.fillStyle = '#fde047'; ctx.fillRect(-12, -1.5, 20, 3); 
-                ctx.fillStyle = '#ffffff'; ctx.beginPath(); 
-                ctx.moveTo(8, -4); ctx.lineTo(16, 0); ctx.lineTo(8, 4); ctx.fill(); 
                 
-                let trailGrad = ctx.createLinearGradient(-30, 0, -12, 0);
+                // 💡 [수정] 화살 가시성 대폭 상향 및 스킬 화살 색상 차별화
+                let isSkill = p.color && p.color !== '#ffffff';
+                let mainColor = isSkill ? p.color : '#fde047'; // 스킬은 고유색(파랑/초록 등), 일반은 황금색
+                let glowColor = isSkill ? p.color : '#ffaa00';
+                
+                ctx.shadowBlur = isSkill ? 15 : 8;
+                ctx.shadowColor = glowColor;
+
+                // 화살 몸통 (더 굵게)
+                ctx.fillStyle = mainColor; 
+                ctx.fillRect(-14, -2, 22, isSkill ? 4 : 3); 
+                
+                // 화살 촉 (더 크고 뚜렷하게)
+                ctx.fillStyle = '#ffffff'; 
+                ctx.beginPath(); 
+                ctx.moveTo(8, -5); ctx.lineTo(18, 0); ctx.lineTo(8, 5); ctx.fill(); 
+                
+                // 화살 잔상 꼬리 (더 길고 밝게)
+                let trailGrad = ctx.createLinearGradient(-35, 0, -14, 0);
                 trailGrad.addColorStop(0, 'rgba(255,255,255,0)');
-                trailGrad.addColorStop(1, 'rgba(255,255,255,0.6)');
-                ctx.fillStyle = trailGrad; ctx.fillRect(-30, -2, 18, 4);
+                trailGrad.addColorStop(1, isSkill ? p.color : 'rgba(255,255,255,0.7)');
+                ctx.fillStyle = trailGrad; 
+                ctx.fillRect(-35, -2.5, 21, isSkill ? 5 : 4);
             }
 
 
@@ -2733,14 +2749,28 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
     if (!magicName || typeof magicDb === 'undefined' || !magicDb[magicName]) return;
     let mData = magicDb[magicName];
 
+    // 💡 1. 쿨타임 검증 및 오염된 데이터(Date.now) 강제 리셋 방어
+    let now = performance.now();
+    caster.spellCooldowns = caster.spellCooldowns || {};
+    
+    if (caster.spellCooldowns[magicName] > now + 10000) {
+        caster.spellCooldowns[magicName] = 0; // 세이브 파일의 비정상 쿨타임 강제 파기
+    }
+
+    let spellCd = mData.cd || 0;
+    if (spellCd > 0 && now - (caster.spellCooldowns[magicName] || 0) < spellCd) {
+        return; // 쿨타임 대기 중
+    }
+
     if (caster === player && !ignoreLearnCheck && (!player.magic || !player.magic.includes(magicName))) {
         if (typeof addMessage === 'function') addMessage("습득하지 않은 마법입니다.", '#f55');
         return;
     }
-
+    // 2. 특수 마법: 서먼 몬스터
     if (magicName === '서먼 몬스터') {
         if (caster.mp >= mData.mp) {
             caster.mp -= mData.mp;
+            caster.spellCooldowns[magicName] = performance.now();
             if (window.socket && currentUser) {
                 window.socket.emit('player_summon_monster', { level: caster.level || 1 });
             }
@@ -2753,10 +2783,12 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return;
     }
 
+    // 3. 힐 및 회복 마법
     let isHealSpell = mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프';
     if (isHealSpell) {
         if (caster.mp >= mData.mp) {
             caster.mp -= mData.mp;
+            caster.spellCooldowns[magicName] = performance.now();
             let healAmt = mData.heal || 40;
             let actualTarget = target || caster;
             
@@ -2777,10 +2809,12 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return;
     }
 
+    // 4. 보조 및 버프 마법
     let isBuffSpell = mData.type === 'buff' || magicName === '가속' || magicName === '가속(헤이스트)' || magicName === '윈드 워크' || magicName === '실드';
     if (isBuffSpell) {
         if (caster.mp >= mData.mp) {
             caster.mp -= mData.mp;
+            caster.spellCooldowns[magicName] = performance.now();
             let actualTarget = target || caster;
             
             if (window.socket && currentUser) {
@@ -2799,6 +2833,7 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return;
     }
 
+    // 5. 공격 마법 유효성 검사 (안전지대 및 아군 타겟 방어)
     let isAttackMagic = mData.type === 'attack' || mData.dmg;
     if (isAttackMagic) {
         if (typeof isInSafeZone === 'function' && (isInSafeZone(currentMap, caster.x, caster.y) || (target && isInSafeZone(currentMap, target.x, target.y)))) { 
@@ -2823,8 +2858,10 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return; 
     }
     
+    // 6. 최종 공격 마법 시전 집행
     if (caster.mp >= mData.mp) {
         caster.mp -= mData.mp; 
+        caster.spellCooldowns[magicName] = performance.now(); // 쿨타임 갱신
         if (caster === player) lastSpellCastTime = performance.now();
 
         if (caster === player) {
@@ -2863,18 +2900,16 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             }
         }
 
-        // 💡 이곳에 있던 수백 줄의 파티클 코드가 완벽히 삭제되어 엔진 꼬임을 방지합니다.
-
         if (magicName === '트리플 애로우') {
-            let now = Date.now();
-            let isCoolingDown = now < (caster.elfFuryCooldownUntil || 0);
+            let nowTime = Date.now();
+            let isCoolingDown = nowTime < (caster.elfFuryCooldownUntil || 0);
 
-            if (caster === player && !(now < (caster.elfFuryUntil || 0)) && !isCoolingDown) {
+            if (caster === player && !(nowTime < (caster.elfFuryUntil || 0)) && !isCoolingDown) {
                 caster.elfHitCount = (caster.elfHitCount || 0) + 3; 
                 if (caster.elfHitCount >= 5) {
                     caster.elfHitCount = 0;
-                    caster.elfFuryUntil = now + 4000;
-                    caster.elfFuryCooldownUntil = now + 6000;
+                    caster.elfFuryUntil = nowTime + 4000;
+                    caster.elfFuryCooldownUntil = nowTime + 6000;
                     if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 25});
                 }
             }
@@ -2883,6 +2918,13 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
 
             for (let i = 0; i < 3; i++) {
                 setTimeout(() => {
+                     if (!isBgTick && typeof particles !== 'undefined') {
+                        particles.push({ 
+                            x: caster.x, y: caster.y, speed: 28, life: 1.5, maxLife: 1.5, 
+                            color: '#38bdf8', isProj: true, isArrow: true, homing: true, 
+                            type: 'arrow', target: target, dmg: Math.floor(finalDmg / 3), attacker: caster, rollHit: true 
+                        });
+                    }
                     if (target && target.hp > 0 && target.map === currentMap) {
                         if (isFury) {
                             let splashTargets = entities.filter(e => e && e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200);
@@ -2927,8 +2969,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55'); 
     }
 }
-
-
 
 function getWorldPos(cx, cy) {
     let uiBar = document.getElementById('ui-bottom-bar'); let uiHeight = uiBar ? uiBar.offsetHeight : 165;
@@ -3192,7 +3232,7 @@ function update(timestamp) {
     }
 
     // 1. 엔티티 부드러운 보간 이동 (보스 포함)
-    let moveDelta = Math.min(1.0, (dt / 1000) * 4.5);
+    let moveDelta = Math.min(1.0, (dt / 1000) * 3.2);
 
 for (let i = 0; i < entities.length; i++) {
     let e = entities[i];
@@ -3440,9 +3480,9 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
 }
 
     // 버프에 따른 속도 및 공격 딜레이 보정
-    let pSpeed = player.currentSpeed || 180;
-    let atkDelay = player.currentAtkDelay || 800;
-    if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 100; atkDelay -= 200; }
+    let pSpeed = player.currentSpeed || 130;
+let atkDelay = player.currentAtkDelay || 800;
+if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 50; atkDelay -= 150; }
     if (player.buffs && player.buffs['용기물약']) atkDelay -= 100;
     if (player.buffs && player.buffs['엘븐와퍼']) atkDelay -= 100;
 
@@ -3504,7 +3544,28 @@ if (player.autoHunt || (player.target && !player.target.isDead)) {
         playSound: playSound,
         spawnParticle: (x, y, type) => particles.push({ x, y, life: 0.4, maxLife: 0.4, type, size: 40 }),
         spawnArrow: (from, to, dmg, color) => {
-            if (!isBgTick) particles.push({ x: from.x, y: from.y, speed: 24, life: 1.5, maxLife: 1.5, color, isProj: true, isArrow: true, homing: true, type: 'arrow', target: to, dmg, attacker: from, rollHit: true });
+            if (!isBgTick) {
+                particles.push({ 
+                    x: from.x, y: from.y, speed: 28, life: 1.5, maxLife: 1.5, 
+                    color: color || '#ffffff', isProj: true, isArrow: true, homing: true, 
+                    type: 'arrow', target: to, dmg: dmg, attacker: from, rollHit: true 
+                });
+            }
+            
+            // 💡 [추가] 다른 사람들에게도 내 평타 화살(및 특수 색상)이 실시간으로 날아가도록 소켓 전송
+            if (window.socket && currentUser && from === player) {
+                let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
+                window.socket.emit('player_attack_action', {
+                    casterId: window.socket.id,
+                    angle: aimAngle,
+                    targetId: to.id,
+                    targetX: to.x,
+                    targetY: to.y,
+                    isBow: true,
+                    actionType: 'shoot',
+                    color: color || '#ffffff' // 화살 색상 데이터 포함
+                });
+            }
         },
         spawnText: (x, y, text, color, size = 13) => {
             if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: x + (Math.random() * 16 - 8), y, text, life: 0.9, color, fontSize: size });
@@ -3769,12 +3830,13 @@ if (window.socket) {
         let calcAngle = Math.atan2(ty - p.y, tx - p.x);
 
         if (data.isBow || (p.equip && p.equip.weapon && p.equip.weapon.isBow)) {
+            let arrowColor = data.color || '#ffffff'; // 💡 상대방이 보낸 특수 색상 적용
             let shootArrow = (delay = 0) => {
                 setTimeout(() => {
                     if (typeof particles !== 'undefined') {
                         particles.push({
-                            x: p.x, y: p.y, speed: 22, life: 1.5, maxLife: 1.5,
-                            color: '#ffffff', isProj: true, isArrow: true, homing: true,
+                            x: p.x, y: p.y, speed: 28, life: 1.5, maxLife: 1.5,
+                            color: arrowColor, isProj: true, isArrow: true, homing: true,
                             type: 'arrow', angle: calcAngle, target: targetEnt || { x: tx, y: ty }
                         });
                     }
@@ -3830,6 +3892,22 @@ if (window.socket) {
             particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'storm_blade_ring', size: 250 });
         } else if (mName.includes('광폭화') || mName === '광폭화 클리브') {
             particles.push({ x: tX, y: tY, life: 0.5, maxLife: 0.5, type: 'explosion', size: 150, color: '#ff2200' });
+        } else if (mName === '트리플 애로우') {
+            // 💡 [추가] 다른 유저가 트리플 애로우 시전 시 내 화면에도 푸른 화살 3연발 렌더링
+            let shootTriple = (delay) => {
+                setTimeout(() => {
+                    if (typeof particles !== 'undefined' && !window.isBgTick) {
+                        particles.push({ 
+                            x: cX, y: cY, speed: 28, life: 1.5, maxLife: 1.5, 
+                            color: '#38bdf8', isProj: true, isArrow: true, homing: true, 
+                            type: 'arrow', angle: angle, target: { x: tX, y: tY } 
+                        });
+                    }
+                }, delay);
+            };
+            shootTriple(0);
+            shootTriple(90);
+            shootTriple(180);
         } else if (mName === '에너지 볼트') {
             let aimAngle = Math.atan2(tY - cY, tX - cX);
             particles.push({ 
@@ -3988,13 +4066,22 @@ if (window.socket) {
     });
 
     window.socket.on('system_message', (data) => {
-        if (typeof addMessage === 'function') addMessage(data.message, data.color || '#fd0');
-    });
-
+  
+    let msgType = data.message.includes('[현재 월드 접속자]') ? 'normal' : 'system';
+    if (typeof addMessage === 'function') addMessage(data.message, data.color || '#fd0', msgType);
+});
     window.socket.on('sync_map_state', (data) => {
-        entities = entities.filter(e => e.isSummon);
+        // 💡 배열 재할당(=)을 하면 전역 window.entities 참조가 끊겨 용병이 맵 이동 시 사라짐. splice로 원본 배열 수정!
+        for (let i = entities.length - 1; i >= 0; i--) {
+            if (!entities[i].isSummon) entities.splice(i, 1);
+        }
         data.monsters.forEach(m => { entities.push({ ...m, map: currentMap, size: 20 }); });
-        items = data.items.filter(it => it.map === currentMap);
+        
+        for (let i = items.length - 1; i >= 0; i--) {
+            items.splice(i, 1);
+        }
+        data.items.filter(it => it.map === currentMap).forEach(it => items.push(it));
+        
         if (typeof updateUI === 'function') updateUI();
     });
 
@@ -4646,24 +4733,50 @@ window.addEventListener('contextmenu', function (e) {
     return false;
 }, { passive: false });
 
-// ==========================================
-// 🧠 [궁극의 고지능 용병 AI 시스템] (원형 카이팅, 마나 관리, 스마트 마법)
-// ==========================================
+
+
+
+
+// 1. 기사 용병 전용 돌진 패시브 함수
+function tryMercenaryRush(entity, target, now) {
+    let eClass = entity.charClass || entity.mercType;
+    if (eClass !== 'knight' || !target) return false;
+    
+    let dist = Math.hypot(target.x - entity.x, target.y - entity.y);
+    if (dist > 55 && dist <= 350 && (now - (entity.lastRushTime || 0) > 2000)) {
+        entity.lastRushTime = now;
+        let rushAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
+        
+        entity.x = target.x - Math.cos(rushAngle) * 30;
+        entity.y = target.y - Math.sin(rushAngle) * 30;
+        entity.angle = rushAngle;
+        entity.isMoving = false;
+
+        if (typeof particles !== 'undefined') {
+            particles.push({ x: entity.x, y: entity.y, life: 0.4, maxLife: 0.4, type: 'haste_tornado', size: 40 });
+        }
+        if (typeof playSound === 'function') playSound('spell');
+        if (typeof triggerPassiveBroadcast === 'function') {
+            triggerPassiveBroadcast("⚡ RUSH!", target.x, target.y, target.id, 'high', entity, 16);
+        }
+        return true;
+    }
+    return false;
+}
+
+// 2. 전역 등록형 고지능 용병 AI 엔진
 window.updateMercenaryAI = function() {
     if (!gameStarted || !player) return;
-    const now = performance.now();
-    
-    if (!window._lastMercAiTime) window._lastMercAiTime = now;
-    const dt = Math.min(70, Math.max(1, now - window._lastMercAiTime));
-    window._lastMercAiTime = now;
+    let now = performance.now();
+    let dt = 16.6; 
 
-    const activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0 && !ent.isDead);
+    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0 && !ent.isDead);
     if (activeMercs.length === 0) return;
 
-    const playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
-    const baseSpeed = player.currentSpeed || 180;
-    const followSpeed = (baseSpeed + (playerHasHaste ? 100 : 0)) * (dt / 1000);
-    const combatApproachSpeed = (baseSpeed * 0.95 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
+    let playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
+    let baseSpeed = player.currentSpeed || 180;
+    let followSpeed = (baseSpeed + (playerHasHaste ? 100 : 0)) * (dt / 1000);
+    let combatApproachSpeed = (baseSpeed * 0.95 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
 
     const executeMercAttack = (e, chosenSpell) => {
         e.lastAttack = now;
@@ -4672,11 +4785,9 @@ window.updateMercenaryAI = function() {
                 castAttackSpell(e.target, chosenSpell, e, true);
             }
         } else {
-            // 💡 마법사 용병은 마나가 없어도 절대 지팡이로 맞짱을 뜨지 않고 대기/도주
             if (e.mercType === 'wizard') return; 
-
-            const totalAtk = typeof getEntityTotalAtk === 'function' ? getEntityTotalAtk(e) : (e.atk || 15);
-            const isBow = Boolean(e.equip?.weapon?.isBow);
+            let totalAtk = typeof getEntityTotalAtk === 'function' ? getEntityTotalAtk(e) : (e.atk || 15);
+            let isBow = Boolean(e.equip?.weapon?.isBow);
             if (typeof playSound === 'function') playSound(isBow ? 'bow' : 'swing');
             if (typeof damageEntity === 'function') {
                 damageEntity(e.target, Math.max(1, totalAtk - (e.target.def || 0)), e, 'physical');
@@ -4685,168 +4796,125 @@ window.updateMercenaryAI = function() {
     };
 
     activeMercs.forEach(e => {
+        // 💡 [에러 해결] 스코프 내부에 공격 딜레이 선언
+        let mercAtkDelay = (e.mercType === 'wizard' || e.mercType === 'elf') ? 700 : 450;
+        if (playerHasHaste) mercAtkDelay = Math.max(300, mercAtkDelay - 150);
+
         if (e.maxMp === undefined || isNaN(e.maxMp)) e.maxMp = (e.level || 1) * 50 + 100;
         if (e.mp === undefined || isNaN(e.mp)) e.mp = e.maxMp;
-        const expectedMaxExp = typeof getExpRequiredForLevel === 'function' ? getExpRequiredForLevel(e.level || 1) : 100;
-        if (!e.maxExp || e.maxExp < expectedMaxExp) e.maxExp = expectedMaxExp;
-        if (e.exp === undefined || isNaN(e.exp)) e.exp = 0;
 
-        const inSafeZone = typeof isInSafeZone === 'function' && (isInSafeZone(currentMap, player.x, player.y) || isInSafeZone(currentMap, e.x, e.y));
+        let inSafeZone = typeof isInSafeZone === 'function' && (isInSafeZone(currentMap, player.x, player.y) || isInSafeZone(currentMap, e.x, e.y));
 
         if (now - (e.lastRegen || 0) > 2000) {
             e.lastRegen = now;
             let hpRegenAmt = 3 + Math.floor((e.level || 1) / 2);
             let mpRegenAmt = 2 + Math.floor((e.level || 1) / 3);
-
-            if (e.equip) {
-                hpRegenAmt += (e.equip.armor?.hpRegen || 0) + (e.equip.weapon?.hpRegen || 0);
-                mpRegenAmt += (e.equip.armor?.mpRegen || 0) + (e.equip.weapon?.mpRegen || 0);
-            }
-
             if (inSafeZone) { hpRegenAmt *= 3; mpRegenAmt *= 3; }
-
             if (e.hp < e.maxHp) e.hp = Math.min(e.maxHp, e.hp + hpRegenAmt);
             if (e.mp < e.maxMp) e.mp = Math.min(e.maxMp, e.mp + mpRegenAmt);
         }
 
         if (inSafeZone) {
             e.target = null;
-            e.aggro = false;
-            const pDist = Math.hypot(player.x - e.x, player.y - e.y);
+            let pDist = Math.hypot(player.x - e.x, player.y - e.y);
             if (pDist > 50) {
-                const angle = Math.atan2(player.y - e.y, player.x - e.x);
+                let angle = Math.atan2(player.y - e.y, player.x - e.x);
                 e.x += Math.cos(angle) * followSpeed;
                 e.y += Math.sin(angle) * followSpeed;
                 e.isMoving = true;
-                e.angle = angle;
+            } else { e.isMoving = false; }
+            return;
+        }
+
+        let currentTarget = e.target;
+        let isCurrentTargetAlive = currentTarget && currentTarget.hp > 0 && !currentTarget.isDead && currentTarget.map === currentMap;
+
+        let nearbyDangerMob = entities.find(m => 
+            m && !m.isSummon && !m.isPlayer && m.hp > 0 && !m.isDead && m.map === currentMap &&
+            Math.hypot(m.x - e.x, m.y - e.y) < 140
+        );
+
+        if (!isCurrentTargetAlive) {
+            let candidates = entities.filter(m => m && !m.isSummon && !m.isPlayer && m.hp > 0 && !m.isDead && m.map === currentMap && Math.hypot(m.x - e.x, m.y - e.y) < 400);
+            if (candidates.length > 0) {
+                candidates.sort((a, b) => Math.hypot(a.x - e.x, a.y - e.y) - Math.hypot(b.x - e.x, b.y - e.y));
+                e.target = candidates[0];
             } else {
-                e.isMoving = false;
+                e.target = null;
             }
-            return;
+        } else {
+            if (isCurrentTargetAlive && currentTarget.isBoss && nearbyDangerMob && !nearbyDangerMob.isBoss) {
+                e.target = nearbyDangerMob;
+            }
         }
 
-        if (e.stance === 'rest') {
-            e.target = null;
-            e.isMoving = false;
-            return;
+       let target = e.target;
+        let isLowMpMode = (e.mp / e.maxMp) < 0.10;
+
+        // 💡 [버그 픽스] 용병의 스킬 배열이 비어있으면 현재 레벨에 맞춰 즉시 스킬을 지급합니다.
+        if (!e.skills || e.skills.length === 0) {
+            let raceKey = e.mercType || 'knight';
+            e.skills = typeof getSkillsForMercenary === 'function' ? getSkillsForMercenary(raceKey, e.level || 1) : ['에너지 볼트', '파이어볼', '이럽션'];
         }
 
-        const pDist = Math.hypot(player.x - e.x, player.y - e.y);
-        if (pDist > 600) {
-            e.x = player.x + (Math.random() * 40 - 20);
-            e.y = player.y + (Math.random() * 40 - 20);
-            e.target = null;
+        let chosenSpell = null;
+        if (!isLowMpMode && target) {
+            if (e.mercType === 'wizard') {
+                if (target.isBoss) {
+                    let bossSpells = ['디스인티그레이트', '저지먼트', '블리자드', '선버스트', '이럽션', '파이어볼', '에너지 볼트'];
+                    let validSpell = bossSpells.find(s => magicDb?.[s] && e.mp >= magicDb[s].mp && e.skills.includes(s));
+                    chosenSpell = validSpell || '에너지 볼트';
+                } else {
+                    let nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - target.x, en.y - target.y) <= 180).length;
+                    chosenSpell = typeof selectOptimalSpell === 'function' ? selectOptimalSpell(e, nearbyCount, target) : '에너지 볼트';
+                }
+            } else {
+                let nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - target.x, en.y - target.y) <= 180).length;
+                chosenSpell = typeof selectOptimalSpell === 'function' ? selectOptimalSpell(e, nearbyCount, target) : null;
+            }
         }
 
         let pushX = 0, pushY = 0;
         activeMercs.forEach(other => {
             if (other !== e) {
-                const d = Math.hypot(e.x - other.x, e.y - other.y);
+                let d = Math.hypot(e.x - other.x, e.y - other.y);
                 if (d < 45 && d > 0) {
-                    const factor = 0.8 * (dt / 16.6);
+                    let factor = 0.15 * (dt / 16.6);
                     pushX += ((e.x - other.x) / d) * factor;
                     pushY += ((e.y - other.y) / d) * factor;
                 }
             }
         });
 
-        if (typeof e.mercHpPotionCount === 'undefined') e.mercHpPotionCount = 100;
-        if (typeof e.mercMpPotionCount === 'undefined') e.mercMpPotionCount = 50;
-
-        // [물약 보급 자율 복용] HP 60% 미만 주홍물약 / MP 20% 미만 파란물약
-        if (e.hp < e.maxHp * 0.60 && e.mercHpPotionCount > 0 && now - (e.lastMercHpPotTime || 0) > 800) {
-            e.lastMercHpPotTime = now;
-            e.mercHpPotionCount--;
-            e.hp = Math.min(e.maxHp, e.hp + Math.floor(e.maxHp * 0.35));
-        }
-
-        if (e.mp < e.maxMp * 0.20 && e.mercMpPotionCount > 0 && now - (e.lastMercMpPotTime || 0) > 800) {
-            e.lastMercMpPotTime = now;
-            e.mercMpPotionCount--;
-            e.mp = Math.min(e.maxMp, e.mp + 50);
-        }
-
-        const raceKey = e.mercType || 'knight';
-        if (typeof getSkillsForMercenary === 'function') {
-            e.skills = getSkillsForMercenary(raceKey, e.level || 1);
-        }
-
-        // [힐러 모드] MP 10% 이하 시 마법 공격을 멈추고 힐 전념
-        let isLowMpMode = (e.mp / e.maxMp) < 0.10;
-
-        if (e.mercType === 'wizard' && now - (e.lastHealTime || 0) > 4000) {
-            const woundedAllies = [player, ...activeMercs].filter(a => a && a.hp > 0 && !a.isDead && (a.hp / (a.maxHp || currentMaxHp)) <= 0.45);
-            if (woundedAllies.length > 0 && e.mp >= 20) {
-                woundedAllies.sort((a, b) => (a.hp / (a.maxHp || currentMaxHp)) - (b.hp / (b.maxHp || currentMaxHp)));
-                const targetWounded = woundedAllies[0];
-                e.lastHealTime = now;
-                e.mp -= 15;
-                let healAmt = 50 + ((e.level || 1) * 10);
-                targetWounded.hp = Math.min(targetWounded.maxHp || currentMaxHp, targetWounded.hp + healAmt);
-                
-                if (window.socket && currentUser) {
-                    window.socket.emit('player_magic_action', {
-                        magicName: '힐', targetX: targetWounded.x, targetY: targetWounded.y, targetId: targetWounded.id || window.socket.id,
-                        casterX: e.x, casterY: e.y, casterId: e.id, map: currentMap
-                    });
-                }
-                if (typeof particles !== 'undefined') particles.push({ x: targetWounded.x, y: targetWounded.y, life: 1.0, maxLife: 1.0, type: 'classic_heal' });
-                if (typeof addSkillText === 'function') addSkillText(e.x, e.y, `[그레이트 힐]`, 'buff');
-                if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: targetWounded.x, y: targetWounded.y - 30, text: `+${healAmt} 힐!`, life: 1.2, color: '#5f5' });
-                if (typeof playSound === 'function') playSound('heal');
+        if (target && target.hp > 0 && !target.isDead) {
+            if ((e.mercType === 'knight' || e.charClass === 'knight') && tryMercenaryRush(e, target, now)) {
                 return;
             }
-        }
 
-        const isPlayerEnemyTarget = player.target && typeof player.target.y === 'number' &&
-            player.target.hp > 0 && !player.target.isDead && player.target !== player &&
-            !(player.target.isSummon && player.target.owner === player) && player.target.map === currentMap;
-
-        const enemyAttackingUs = entities.find(m =>
-            m && !m.isSummon && !m.isPlayer && m.hp > 0 && !m.isDead && m.map === currentMap &&
-            (Math.hypot(m.x - e.x, m.y - e.y) < 150 || Math.hypot(m.x - player.x, m.y - player.y) < 150)
-        );
-
-        e.target = isPlayerEnemyTarget ? player.target : (enemyAttackingUs || null);
-
-        let mercAtkDelay = (e.mercType === 'wizard' || e.mercType === 'elf') ? 700 : 450;
-        if (playerHasHaste) mercAtkDelay = Math.max(300, mercAtkDelay - 150);
-
-        if (e.target && e.target.hp > 0 && !e.target.isDead) {
-            const distToEnemy = Math.hypot(e.target.x - e.x, e.target.y - e.y);
-            const isRanged = e.mercType === 'wizard' || (e.mercType === 'elf' && e.equip?.weapon?.isBow !== false);
-            const maxAttackRange = isRanged ? 280 : 55;
-
-            // [생존 최우선] 체력 25% 이하인데 물약도 없으면 전력 도주
-            const isFleeing = (e.hp / e.maxHp) <= 0.25 && e.mercHpPotionCount <= 0;
-
-            const nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - e.target.x, en.y - e.target.y) < 250).length;
-            const chosenSpell = isLowMpMode && e.mercType === 'wizard' ? null : (typeof selectOptimalSpell === 'function' ? selectOptimalSpell(e, nearbyCount, e.target) : null);
-
-            const kiteDistance = isRanged ? 220 : 0;
+            let distToEnemy = Math.hypot(target.x - e.x, target.y - e.y);
+            let isRanged = e.mercType === 'wizard' || (e.mercType === 'elf' && e.equip?.weapon?.isBow !== false);
+            let maxAttackRange = isRanged ? 280 : 55;
+            let isFleeing = (e.hp / e.maxHp) <= 0.25 && (e.mercHpPotionCount || 0) <= 0;
 
             if (isFleeing) {
                 e.isMoving = true;
-                const fleeAngle = Math.atan2(player.y - e.y, player.x - e.x);
+                let fleeAngle = Math.atan2(player.y - e.y, player.x - e.x);
                 e.x += Math.cos(fleeAngle) * combatApproachSpeed * 1.2 + pushX;
                 e.y += Math.sin(fleeAngle) * combatApproachSpeed * 1.2 + pushY;
                 e.angle = fleeAngle;
             } 
-            else if (isRanged && distToEnemy < kiteDistance) {
-                // 💡 [완성된 강강술래 원형 오르빗 카이팅]
-                // 플레이어를 중심축으로 삼아 큰 원을 그리며 돌면서 적을 사격합니다.
+            else if (isRanged && (distToEnemy < 180 || (nearbyDangerMob && Math.hypot(nearbyDangerMob.x - e.x, nearbyDangerMob.y - e.y) < 120))) {
                 e.isMoving = true;
-                const orbitRadius = 220;
-                e.orbitAngle = (e.orbitAngle || Math.atan2(e.y - player.y, e.x - player.x)) + (0.02 * (dt / 16));
+                let orbitRadius = 240;
+                e.orbitAngle = (e.orbitAngle || Math.atan2(e.y - player.y, e.x - player.x)) + (0.015 * (dt / 16));
                 
-                const targetSpotX = player.x + Math.cos(e.orbitAngle) * orbitRadius;
-                const targetSpotY = player.y + Math.sin(e.orbitAngle) * orbitRadius;
-                const moveAngle = Math.atan2(targetSpotY - e.y, targetSpotX - e.x);
+                let safeSpotX = player.x + Math.cos(e.orbitAngle) * orbitRadius;
+                let safeSpotY = player.y + Math.sin(e.orbitAngle) * orbitRadius;
+                let moveAngle = Math.atan2(safeSpotY - e.y, safeSpotX - e.x);
 
-                const mapLimit = typeof mapSize !== 'undefined' ? mapSize : 2000;
-                e.x = Math.max(60, Math.min(mapLimit - 60, e.x + Math.cos(moveAngle) * combatApproachSpeed * 1.1 + pushX));
-                e.y = Math.max(60, Math.min(mapLimit - 60, e.y + Math.sin(moveAngle) * combatApproachSpeed * 1.1 + pushY));
-                e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x); // 시선은 항상 적 고정
+                e.x += Math.cos(moveAngle) * combatApproachSpeed * 0.9 + pushX;
+                e.y += Math.sin(moveAngle) * combatApproachSpeed * 0.9 + pushY;
+                e.angle = Math.atan2(target.y - e.y, target.x - e.x);
 
                 if (now - (e.lastAttack || 0) >= mercAtkDelay && distToEnemy <= maxAttackRange) {
                     executeMercAttack(e, chosenSpell);
@@ -4854,24 +4922,22 @@ window.updateMercenaryAI = function() {
             } 
             else if (distToEnemy > maxAttackRange) {
                 e.isMoving = true;
-                const moveAngle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
+                let moveAngle = Math.atan2(target.y - e.y, target.x - e.x);
                 e.x += Math.cos(moveAngle) * combatApproachSpeed + pushX;
                 e.y += Math.sin(moveAngle) * combatApproachSpeed + pushY;
                 e.angle = moveAngle;
             } 
             else {
                 e.isMoving = false;
-                e.angle = Math.atan2(e.target.y - e.y, e.target.x - e.x);
+                e.angle = Math.atan2(target.y - e.y, target.x - e.x);
                 if (now - (e.lastAttack || 0) >= mercAtkDelay) {
                     executeMercAttack(e, chosenSpell);
                 }
             }
         } else {
-            const followDistLimit = isPlayerEnemyTarget ? 40 : 75;
-            const minThreshold = e.isMoving ? Math.max(35, followDistLimit - 20) : (followDistLimit + 15);
-
-            if (pDist > minThreshold) {
-                const angle = Math.atan2(player.y - e.y, player.x - e.x);
+            let pDist = Math.hypot(player.x - e.x, player.y - e.y);
+            if (pDist > 75) {
+                let angle = Math.atan2(player.y - e.y, player.x - e.x);
                 e.x += Math.cos(angle) * followSpeed + pushX;
                 e.y += Math.sin(angle) * followSpeed + pushY;
                 e.angle = angle;
@@ -4884,56 +4950,30 @@ window.updateMercenaryAI = function() {
         }
     });
 };
-
 // ==========================================
 // 🧠 [스마트 마법 선택 엔진] (단일/광역, 보스 집중)
 // ==========================================
 window.selectOptimalSpell = function(unit, nearbyEnemiesCount, target) {
     if (!unit.skills || unit.skills.length === 0) return null;
 
-    let availableSkills = unit.skills.map(sName => {
-        return { name: sName, data: magicDb[sName] };
-    }).filter(item => item.data && unit.mp >= item.data.mp);
-
-    if (availableSkills.length === 0) return null;
-
-    let attackSpells = availableSkills.filter(item => item.data.type === 'attack' || item.data.dmg);
-    if (attackSpells.length === 0) return null;
-
-    // 1. 보스 집중 공격: 단일/광역 따지지 않고 가장 센 대미지 마법
-    if (target && target.isBoss) {
-        return attackSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
-    }
-
-    // 2. 3마리 이상 뭉쳐있을 때: 광역 마법(AoE) 우선
-    if (nearbyEnemiesCount >= 3) {
-        let aoeSpells = attackSpells.filter(item => Boolean(item.data.aoe));
-        if (aoeSpells.length > 0) {
-            return aoeSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
-        }
-    }
-
-    // 3. 1~2마리 단일 몹: 단일 마법 우선
-    let singleSpells = attackSpells.filter(item => !item.data.aoe);
-    if (singleSpells.length > 0) {
-        return singleSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
-    }
-
-    return attackSpells.sort((a, b) => (b.data.dmg || 0) - (a.data.dmg || 0))[0].name;
-};
-
-function selectOptimalSpell(unit, nearbyEnemiesCount, target) {
-    if (!unit.skills || unit.skills.length === 0) return null;
+    let now = performance.now();
+    unit.spellCooldowns = unit.spellCooldowns || {};
 
     let availableSkills = unit.skills.map(sName => {
         return { name: sName, data: magicDb[sName] };
-    }).filter(item => item.data && unit.mp >= item.data.mp);
+    }).filter(item => {
+        if (!item.data) return false;
+        let hasMp = unit.mp >= item.data.mp;
+        let cdTime = item.data.cd || 0;
+        let lastCast = unit.spellCooldowns[item.name] || 0;
+        let isReady = (cdTime === 0 || now - lastCast >= cdTime);
+        return hasMp && isReady;
+    });
 
     if (availableSkills.length === 0) return null;
 
     let mpRatio = unit.mp / unit.maxMp;
 
-    // 💡 [수정] 본인 체력이 35% 이하로 극도로 위험할 때만 자가 치유 (평소엔 공격 우선)
     if ((unit.hp / unit.maxHp) <= 0.35 && unit.mp >= 20) {
         let healSpells = availableSkills.filter(item => item.data.heal > 0);
         if (healSpells.length > 0) return healSpells.sort((a, b) => b.data.heal - a.data.heal)[0].name;
@@ -4945,7 +4985,6 @@ function selectOptimalSpell(unit, nearbyEnemiesCount, target) {
     let isStrongTarget = target && (target.isBoss || (target.maxHp && target.maxHp > 250));
     let wantAoe = nearbyEnemiesCount >= 3;
 
-    // MP 60% 이상 또는 보스전 -> 강력한 공격 마법 우선
     if (isStrongTarget || mpRatio >= 0.60) {
         let matchedAttacks = attackSpells.filter(item => wantAoe ? Boolean(item.data.aoe) : !Boolean(item.data.aoe));
         if (matchedAttacks.length === 0) matchedAttacks = attackSpells;
@@ -4953,7 +4992,6 @@ function selectOptimalSpell(unit, nearbyEnemiesCount, target) {
         return matchedAttacks[0].name;
     }
 
-    // MP 25% ~ 60% -> 효율형 공격 마법
     if (mpRatio >= 0.25) {
         let matchedAttacks = attackSpells.filter(item => wantAoe ? Boolean(item.data.aoe) : !Boolean(item.data.aoe));
         if (matchedAttacks.length === 0) matchedAttacks = attackSpells;
@@ -4961,10 +4999,12 @@ function selectOptimalSpell(unit, nearbyEnemiesCount, target) {
         return matchedAttacks[0].name;
     }
 
-    // MP 25% 미만 -> 최저 MP 공격 마법 사용
     let lowestMpSpells = [...attackSpells].sort((a, b) => (a.data.mp || 0) - (b.data.mp || 0));
     return lowestMpSpells[0] ? lowestMpSpells[0].name : null;
-}
+};
+
+
+
 window.handlePartyHudClick = function(socketId, name) {
     // 💡 [안전 장치 강화]: 화면에 엔티티가 없어도 소켓 ID와 이름으로 즉시 모달 객체 구성
     let target = entities.find(e => e.isPlayer && (e.id === socketId || e.socketId === socketId));
@@ -5060,28 +5100,37 @@ window.getSmartAutoCombatSpell = function(target) {
     if (!player || !target) return null;
     if (!player.activeSpellSlots || player.activeSpellSlots.length === 0) return null;
 
-    // 퀵슬롯에 등록된 공격 마법 중 MP가 충분한 마법 필터링
+    let now = performance.now();
+    player.spellCooldowns = player.spellCooldowns || {};
+
+    // 💡 퀵슬롯에 등록된 공격 마법 중 "MP가 충분하고 쿨타임이 완전히 끝난" 마법만 필터링! (캐릭터 굳음 방지)
     let availableSpells = player.activeSpellSlots
         .map(idx => hotkeys[idx])
         .filter(hk => hk && hk.type === 'magic' && magicDb[hk.id])
         .map(hk => ({ id: hk.id, ...magicDb[hk.id] }))
-        .filter(s => (s.type === 'attack' || s.dmg > 0) && player.mp >= s.mp);
+        .filter(s => {
+            let isAttack = s.type === 'attack' || s.dmg > 0;
+            let hasMp = player.mp >= s.mp;
+            let cdTime = s.cd || 0;
+            let lastCast = player.spellCooldowns[s.id] || 0;
+            let isReady = (cdTime === 0 || now - lastCast >= cdTime);
+            return isAttack && hasMp && isReady;
+        });
 
     if (availableSpells.length === 0) return null;
 
-    // 1. 보스 몬스터 상대 시: 가장 대미지가 강한 마법 선택
+    // 1. 보스 상대: 가장 강력한 대미지 마법
     if (target.isBoss) {
         availableSpells.sort((a, b) => (b.dmg || 0) - (a.dmg || 0));
         return availableSpells[0].id;
     }
 
-    // 2. 타겟 주변 180px 내의 생존 몬스터 수 계산
+    // 2. 광역/단일 판단
     let nearbyEnemies = entities.filter(e => 
         e && e.map === currentMap && !e.isSummon && !e.isPlayer && 
         e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 180
     );
 
-    // 3. 2마리 이상: 광역 마법(aoe) 우선 시전
     if (nearbyEnemies.length >= 2) {
         let aoeSpells = availableSpells.filter(s => Boolean(s.aoe));
         if (aoeSpells.length > 0) {
@@ -5090,18 +5139,15 @@ window.getSmartAutoCombatSpell = function(target) {
         }
     }
 
-    // 4. 1마리(단일몹): 단일 공격 마법 우선 시전
     let singleSpells = availableSpells.filter(s => !s.aoe);
     if (singleSpells.length > 0) {
         singleSpells.sort((a, b) => (b.dmg || 0) - (a.dmg || 0));
         return singleSpells[0].id;
     }
 
-    // 조건에 딱 맞는 게 없으면 가장 강한 마법 사용
     availableSpells.sort((a, b) => (b.dmg || 0) - (a.dmg || 0));
     return availableSpells[0].id;
 };
-
 
 
 

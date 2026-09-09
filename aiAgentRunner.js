@@ -58,6 +58,16 @@ class AIAgentClient {
         this.dbRow = dbRow;
         this.charData = dbRow.data.player || dbRow.data;
         
+
+         this.charData.target = null;
+        this.charData.targetId = null;
+        this.charData.isMoving = false;
+        this.charData.moveX = undefined;
+        this.charData.moveY = undefined;
+        this.charData.ignoredTargetId = null;
+        this.charData.ignoredUntil = 0;
+
+
         if (!this.charData.charClass) {
             let nameLower = (this.charData.name || '').toLowerCase();
             this.charData.charClass = nameLower.includes('wiz') ? 'wizard' : (nameLower.includes('elf') ? 'elf' : 'knight');
@@ -182,7 +192,7 @@ class AIAgentClient {
             this.checkLevelUp();
         });
 
-        // 💬 [핵심 수정] 귓속말, 파티 채팅, 일반 대화 모두 감지 및 60초 연속 메모리 반응
+        // 💬 귓속말, 파티 채팅, 일반 대화 모두 감지 및 60초 연속 메모리 반응
         this.socket.on('chat_broadcast', async (packet) => {
             if (packet.socketId === this.socket.id) return;
             
@@ -423,8 +433,9 @@ class AIAgentClient {
     updateMovement(dtMs) {
         if (this.charData.isMoving && this.charData.moveX !== undefined && this.charData.moveY !== undefined) {
             let dist = Math.hypot(this.charData.moveX - this.charData.x, this.charData.moveY - this.charData.y);
-            let speed = 180 * (dtMs / 1000); 
-            if (this.charData.buffs && this.charData.buffs.haste && this.charData.buffs.haste > Date.now()) speed += 100;
+            // 💡 dt 대신 전달받은 dtMs를 활용해 묵직한 130px 속도 적용
+            let speed = 130 * (dtMs / 1000); 
+            if (this.charData.buffs && this.charData.buffs.haste && this.charData.buffs.haste > Date.now()) speed += 50;
 
             if (dist <= speed) {
                 this.charData.x = this.charData.moveX;
@@ -442,22 +453,15 @@ class AIAgentClient {
     executeSharedAILoop() {
         if (this.state === 'SHOPPING') return;
 
-        if (this.charData.target) {
-            let liveTarget = this.worldMonsters.find(m => m.id === this.charData.target.id && m.hp > 0 && !m.isDead);
-            if (!liveTarget || Math.hypot(liveTarget.x - this.charData.x, liveTarget.y - this.charData.y) > 700) {
-                this.charData.target = null;
-                this.charData.isMoving = false;
-            } else {
-                this.charData.target = liveTarget;
-            }
-        }
-
         let atkDelay = this.charData.charClass === 'knight' ? 700 : 900;
         if (this.charData.buffs) {
             let now = Date.now();
             if (this.charData.buffs.haste > now) atkDelay -= 150;
             if (this.charData.buffs.brave > now || this.charData.buffs.wafer > now) atkDelay -= 100;
         }
+
+        // 💡 [핵심] 파티 리더의 상태를 완벽히 SharedAI의 env로 넘겨주어 동기화 수행
+        let leaderEnt = this.partyData ? this.worldPlayers.find(p => p.id === this.partyData.leader || p.socketId === this.partyData.leader) : null;
 
         let env = {
             now: Date.now(),
@@ -467,6 +471,11 @@ class AIAgentClient {
             items: this.worldItems,
             minLootGrade: 0,
             atkDelay: atkDelay,
+            party: this.partyData ? {
+                isFocusMode: this.partyData.mode === 'focus',
+                leaderId: this.partyData.leader,
+                leaderTargetId: leaderEnt ? leaderEnt.targetId : null
+            } : null,
             isInSafeZone: (m, x, y) => data.isInSafeZone(m, x, y),
             playSound: () => {}, 
             spawnParticle: () => {}, 
@@ -487,7 +496,16 @@ class AIAgentClient {
             castAttackSpell: (target, spellName) => {
                 let mData = data.magicDb[spellName];
                 if (mData && this.charData.mp >= mData.mp) {
+                    
+                    // 에이전트 마법 쿨타임 검사 로직
+                    this.charData.spellCooldowns = this.charData.spellCooldowns || {};
+                    let spellCd = mData.cd || 0;
+                    if (spellCd > 0 && Date.now() - (this.charData.spellCooldowns[spellName] || 0) < spellCd) {
+                        return; // 쿨타임 대기 중
+                    }
+
                     this.charData.mp -= mData.mp;
+                    this.charData.spellCooldowns[spellName] = Date.now();
                     
                     if (!target || typeof target.x === 'undefined') return;
 
@@ -518,11 +536,16 @@ class AIAgentClient {
                     return null;
                 }
 
+                // 💡 [보스전 예외] 에이전트 마법사도 보스를 만나면 무조건 최상위 궁극기 폭격
+                if (target.isBoss) {
+                    let bossPriority = ['디스인티그레이트', '저지먼트', '블리자드', '선버스트', '이럽션', '파이어볼', '에너지 볼트'];
+                    let bestBossSpell = bossPriority.find(sName => magics.includes(sName) && this.charData.mp >= (data.magicDb[sName]?.mp || 0));
+                    if (bestBossSpell) return bestBossSpell;
+                }
+
                 let available = magics.map(m => ({name: m, data: data.magicDb[m]}))
                     .filter(m => m.data && (m.data.type === 'attack' || m.data.dmg) && this.charData.mp >= m.data.mp);
                 if (available.length === 0) return null;
-                
-                if (target.isBoss) return available.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
                 
                 let nearby = this.worldMonsters.filter(m => m.hp > 0 && !m.isDead && Math.hypot(m.x - target.x, m.y - target.y) <= 180);
                 if (nearby.length >= 3) {
@@ -677,7 +700,7 @@ class AIAgentClient {
 
     manageMercenaries(dtMs) {
         let now = Date.now();
-        let baseSpeed = 150;
+        let baseSpeed = 120;
         
         for (let i = this.charData.mercs.length - 1; i >= 0; i--) {
             let m = this.charData.mercs[i];
@@ -689,7 +712,7 @@ class AIAgentClient {
                 if (other !== m) {
                     let d = Math.hypot(m.x - other.x, m.y - other.y);
                     if (d < 45 && d > 0.1) {
-                        let factor = (45 - d) / 45 * 2.5; 
+                        let factor = (45 - d) / 45 * 0.3; 
                         pushX += ((m.x - other.x) / d) * factor * (dtMs/16.6);
                         pushY += ((m.y - other.y) / d) * factor * (dtMs/16.6);
                     }
@@ -708,7 +731,7 @@ class AIAgentClient {
             if (m.mercType === 'knight') useMercPot('용기의 물약', 'brave');
             if (m.mercType === 'elf') useMercPot('엘븐 와퍼', 'wafer');
 
-            let speed = (baseSpeed + (m.buffs.haste > now ? 100 : 0)) * (dtMs / 1000);
+            let speed = (baseSpeed + (m.buffs.haste > now ? 40 : 0)) * (dtMs / 1000);
             let mercAtkDelay = (m.mercType === 'wizard' || m.mercType === 'elf') ? 700 : 450;
             if (m.buffs.haste > now) mercAtkDelay -= 150;
             if (m.buffs.brave > now || m.buffs.wafer > now) mercAtkDelay -= 100;
@@ -874,7 +897,9 @@ class AIAgentClient {
 
 ${situationContext}
 
-상대방('${senderName}')의 말과 대화 맥락을 읽고, 반드시 아래 JSON 포맷으로 응답하세요:
+상대방('${senderName}')의 말과 대화 맥락을 읽고, 반드시 아래 JSON 포맷으로만 응답하세요.
+**주의: 마크다운 코드 블록(\`\`\`json 또는 \`\`\`)을 절대 사용하지 말고, 오직 순수 JSON 문자열만 출력하세요.**
+
 {
   "reply": "성격에 맞는 자연스러운 게이머 말투의 1~2문장 대답",
   "action": "NONE" | "FOLLOW" | "STOP_FOLLOW" | "TELEPORT" | "PARTY_ACCEPT" | "PARTY_LEAVE" | "HEAL_TARGET" | "BUFF_TARGET" | "GO_TOWN" | "LOGOUT",
@@ -891,7 +916,11 @@ ${situationContext}
                 temperature: 0.8
             });
 
-            const decision = JSON.parse(completion.choices[0]?.message?.content || '{}');
+            // 💡 마크다운 백틱이나 불필요한 공백이 포함되어 들어올 경우를 대비한 안전 정제
+            let rawContent = completion.choices[0]?.message?.content || '{}';
+            rawContent = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+            
+            const decision = JSON.parse(rawContent);
             const replyText = decision.reply?.trim();
             const action = decision.action || 'NONE';
 
