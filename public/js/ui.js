@@ -498,7 +498,7 @@ function startSessionCheckTimer() {
 // ==========================================
 // [3. 기본 상태 변수 및 오디오 시스템]
 // ==========================================
-const gameOptions = { volume: 0.025, showDamage: true, showNames: true, minLootGrade: 0, isSystemHidden: false, currentChatTab: 'all' };
+const gameOptions = { volume: 0.025, bgmVolume: 0.2, showDamage: true, showNames: true, minLootGrade: 0, isSystemHidden: false, currentChatTab: 'all' };
 let gameStarted = false;
 let lastSpellCastTime = 0;
 let activeEnchantScrollKey = null;
@@ -512,63 +512,7 @@ let confirmCallback = null;
 let hotkeys = new Array(8).fill(null);
 window.hotkeys = hotkeys;
 
-
-// 🔊 [오디오 에셋 사전 로드]
-const customAudio = {
-    swing: [new Audio('/sound/sword-miss3.ogg'), new Audio('/sound/fishing-cast.ogg')],
-    hit_flesh: [new Audio('/sound/sword-flesh3.ogg'), new Audio('/sound/sword-flesh4.ogg')],
-    hit_stone: [new Audio('/sound/sword-stone.ogg')],
-    hit_armor: [new Audio('/sound/sword-leather.ogg')],
-    player_hit: [new Audio('/sound/player-hurt-male.ogg')],
-    player_dead: [new Audio('/sound/player-death-male.ogg')],
-    drink: [new Audio('/sound/fishing-plop.ogg')],
-    buy: [new Audio('/sound/coin-spill.ogg')],
-    chest: [new Audio('/sound/chest-open.ogg')],
-    break: [new Audio('/sound/crate-break.ogg'), new Audio('/sound/fishing-snap.ogg')],
-    boss_roar: [new Audio('/sound/dungeon-roar.ogg')],
-    
-    // 💡 슬라임 전용 사망음 추가 (fishing-reel.ogg)
-    death_slime: [new Audio('/sound/fishing-reel.ogg')],
-
-    // 몬스터 데스 사운드 풀
-    death_boss_demon: [new Audio('/sound/ogre-boss-death.ogg')], 
-    death_boss_human: [new Audio('/sound/orc-boss-death.ogg')],
-    death_dragon: [new Audio('/sound/cyclop-death.ogg')],
-    death_female: [new Audio('/sound/orc-female-death.ogg')],
-    death_creepy: [new Audio('/sound/scp939-death.ogg')],
-    death_reptile: [new Audio('/sound/lizardfolk-death.ogg')],
-    death_kobold: [new Audio('/sound/kobold-death.ogg')],
-    death_troll: [new Audio('/sound/troll-death.ogg')],
-    death_ogre: [new Audio('/sound/ogre-death.ogg')],
-    death_orc: [new Audio('/sound/orc-death.ogg')],
-    death_golem: [new Audio('/sound/stone-golem-death.ogg')],
-    death_beast: [new Audio('/sound/gnoll-death.ogg')],
-    death_common: [new Audio('/sound/hobgoblin-death.ogg'), new Audio('/sound/goblin-death.ogg')]
-};
-
-// 💡 사운드별 볼륨 배율
-const soundMultipliers = {
-    swing: 0.2, hit_flesh: 0.3, hit_stone: 0.3, hit_armor: 0.3,
-    player_hit: 0.4, player_dead: 0.8,
-    drink: 0.4, buy: 0.5, chest: 0.5, break: 0.5, boss_roar: 0.8,
-    death_boss_demon: 0.6, death_boss_human: 0.6, death_dragon: 0.6,
-    death_female: 0.2, death_creepy: 0.2, death_reptile: 0.2,
-    death_kobold: 0.2, death_troll: 0.25, death_ogre: 0.25, 
-    death_orc: 0.2, death_golem: 0.25, death_beast: 0.2,
-    death_common: 0.2,
-    death_slime: 0.15,
-    death_bugbear: 0.25
-};
-
-// 💡 연속 재생 방지 쿨타임 (ms 단위)
-const soundCooldowns = {
-    player_hit: 450, hit_flesh: 120, hit_stone: 150, hit_armor: 150,
-    swing: 100, drink: 300, 
-    death_female: 150, death_creepy: 150, death_reptile: 150,
-    death_kobold: 150, death_beast: 150, death_common: 120, death_orc: 120
-};
-
-
+// 💡 [복구 완료] 날아갔던 캐릭터 및 게임 핵심 상태 변수
 const getInitialPlayer = () => ({
     name: '리니지 마스터', 
     charClass: 'knight', 
@@ -576,11 +520,8 @@ const getInitialPlayer = () => ({
     hp: 150, maxHp: 150, mp: 10, maxMp: 10, atk: 3, def: 0, level: 1, exp: 0, maxExp: 100, 
     adena: 500000,
     alignment: 0, str: 18, dex: 14, int: 8, 
-    
-    // ⚔️ [기사 고유 패시브 상태값]
-    knightHitStack: 0,        // 누적 피격 카운트 (3회 누적 시 광폭화)
-    furyUntil: 0,             // 2배 데미지 버프 지속 만료 시간
-    
+    knightHitStack: 0,
+    furyUntil: 0,
     equip: { 
         helmet: null, tshirt: null, armor: null, cloak: null, 
         weapon: null, shield: null, gloves: null, boots: null, 
@@ -596,7 +537,6 @@ const getInitialPlayer = () => ({
     selectedManualSpell: null
 });
 
-
 let player = getInitialPlayer();
 let camera = { x: 2000, y: 2000 };
 let currentMap = 'talking_island';
@@ -610,25 +550,179 @@ window.entities = entities;
 window.items = items;
 window.particles = particles;
 window.dmgTexts = dmgTexts;
+// ==========================================
+// 🔊 [오디오 에셋 사전 로드 및 BGM 설정]
+// ==========================================
+let bgmAudio = new Audio();
+bgmAudio.loop = true;
+bgmAudio.volume = 0; 
+let fadeInterval = null; 
 
-const lastSoundPlayTime = {};
+// 💡 맵 데이터 기반 4종 배경음악 1:1 완벽 매핑
+const mapBgmList = {
+    // 🏡 1. 안전지대 마을 (Where the Path Divides)
+    // 모험의 쉼터, 정비 구역
+    'silver_knight_town': '/sound/Where_the_Path_Divides.mp3',
+    'talking_island': '/sound/Where_the_Path_Divides.mp3',
+    'gludin': '/sound/Where_the_Path_Divides.mp3',
+    'oren': '/sound/Where_the_Path_Divides.mp3',
+    'aden': '/sound/Where_the_Path_Divides.mp3',
+
+    // 🌲 2. 활기찬 야외 필드 및 자연 구역 (Beyond the Village Gate)
+    // 초원, 숲, 사막 등 야외 탐험 필드
+    'elven_forest': '/sound/Beyond_the_Village_Gate.mp3',
+    'elven_forest_deep': '/sound/Beyond_the_Village_Gate.mp3',
+    'dream_island': '/sound/Beyond_the_Village_Gate.mp3',
+    'forgotten_island': '/sound/Beyond_the_Village_Gate.mp3',
+    'dragon_valley': '/sound/Beyond_the_Village_Gate.mp3',
+
+    // 🕯️ 3. 어두운 중/상급 던전 및 미궁 (When the Lanterns Go Out)
+    // 좁고 축축한 지하 동굴, 감옥, 수중 던전
+    'ti_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'ti_dungeon2': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'gludio_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'ant_cave': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'giran_dungeon_1': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'giran_dungeon_4': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'eva_kingdom': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'heine': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'ivory_tower': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'dv_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'dragon_valley_deep': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'tower_of_insolence_1': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'tower_of_insolence_10': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'tower_of_insolence_30': '/sound/When_the_Lanterns_Go_Out.mp3',
+    'tower_of_insolence_50': '/sound/When_the_Lanterns_Go_Out.mp3',
+
+    // 🔥 4. 고난도 탑 정상, 화룡 둥지, 보스 레이드 (Beneath the Iron Gate)
+    // 극적인 긴장감과 압도적인 전투 분위기
+    'tower_of_insolence_70': '/sound/Beneath_the_Iron_Gate.mp3',
+    'tower_of_insolence_100': '/sound/Beneath_the_Iron_Gate.mp3',
+    'tower_of_dominance': '/sound/Beneath_the_Iron_Gate.mp3',
+    'lastebad': '/sound/Beneath_the_Iron_Gate.mp3',
+    'fire_dragon_nest': '/sound/Beneath_the_Iron_Gate.mp3',
+    'boss_raid': '/sound/Beneath_the_Iron_Gate.mp3'
+};
+
+function fadeInBgm(targetVolume) {
+    if (fadeInterval) clearInterval(fadeInterval);
+    if (!bgmAudio.src) return;
+
+    bgmAudio.volume = 0;
+    let playPromise = bgmAudio.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(() => {});
+    }
+
+    let vol = 0;
+    let step = Math.max(0.01, targetVolume / 15); 
+
+    fadeInterval = setInterval(() => {
+        vol += step;
+        if (vol >= targetVolume) {
+            bgmAudio.volume = targetVolume;
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+        } else {
+            bgmAudio.volume = vol;
+        }
+    }, 80);
+}
+
+// 💡 맵 이동 시 음악 교체 & 부드러운 전환 처리
+window.changeBGM = function(mapId) {
+    if (!bgmAudio) return;
+
+    let newSrc = mapBgmList[mapId] || '/sound/Where_the_Path_Divides.mp3';
+
+    // 파일 이름만 추출하여 비교 (경로 표기 차이 방지)
+    let currentFileName = bgmAudio.src ? decodeURI(bgmAudio.src.split('/').pop()) : '';
+    let targetFileName = decodeURI(newSrc.split('/').pop());
+
+    // 동일한 곡이 이미 재생 중인 경우 리로드 방지
+    if (currentFileName === targetFileName && !bgmAudio.paused) {
+        return; 
+    }
+
+    if (fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
+    }
+
+    bgmAudio.pause();
+    bgmAudio.src = newSrc;
+    bgmAudio.load();
+
+    if (gameOptions.bgmVolume > 0 && gameStarted) {
+        fadeInBgm(gameOptions.bgmVolume);
+    }
+};
+
+
+const customAudio = {
+    swing: [new Audio('/sound/sword-miss3.ogg'), new Audio('/sound/fishing-cast.ogg')],
+    hit_flesh: [new Audio('/sound/sword-flesh3.ogg'), new Audio('/sound/sword-flesh4.ogg')],
+    hit_stone: [new Audio('/sound/sword-stone.ogg')],
+    hit_armor: [new Audio('/sound/sword-leather.ogg')],
+    player_hit: [new Audio('/sound/player-hurt-male.ogg')],
+    player_dead: [new Audio('/sound/player-death-male.ogg')],
+    drink: [new Audio('/sound/fishing-plop.ogg')],
+    buy: [new Audio('/sound/coin-spill.ogg')],
+    chest: [new Audio('/sound/chest-open.ogg')],
+    break: [new Audio('/sound/crate-break.ogg'), new Audio('/sound/fishing-snap.ogg')],
+    boss_roar: [new Audio('/sound/dungeon-roar.ogg')],
+    death_slime: [new Audio('/sound/fishing-reel.ogg')],
+    death_boss_demon: [new Audio('/sound/ogre-boss-death.ogg')], 
+    death_boss_human: [new Audio('/sound/orc-boss-death.ogg')],
+    death_dragon: [new Audio('/sound/cyclop-death.ogg')],
+    death_female: [new Audio('/sound/orc-female-death.ogg')],
+    death_creepy: [new Audio('/sound/scp939-death.ogg')],
+    death_reptile: [new Audio('/sound/lizardfolk-death.ogg')],
+    death_kobold: [new Audio('/sound/kobold-death.ogg')],
+    death_troll: [new Audio('/sound/troll-death.ogg')],
+    death_ogre: [new Audio('/sound/ogre-death.ogg')],
+    death_orc: [new Audio('/sound/orc-death.ogg')],
+    death_golem: [new Audio('/sound/stone-golem-death.ogg')],
+    death_beast: [new Audio('/sound/gnoll-death.ogg')],
+    death_common: [new Audio('/sound/hobgoblin-death.ogg'), new Audio('/sound/goblin-death.ogg')]
+};
+
+const soundMultipliers = {
+    swing: 0.2, hit_flesh: 0.3, hit_stone: 0.3, hit_armor: 0.3,
+    player_hit: 0.4, player_dead: 0.8,
+    drink: 0.4, buy: 0.5, chest: 0.5, break: 0.5, boss_roar: 0.8,
+    death_boss_demon: 0.6, death_boss_human: 0.6, death_dragon: 0.6,
+    death_female: 0.2, death_creepy: 0.2, death_reptile: 0.2,
+    death_kobold: 0.2, death_troll: 0.25, death_ogre: 0.25, 
+    death_orc: 0.2, death_golem: 0.25, death_beast: 0.2,
+    death_common: 0.2, death_slime: 0.15, death_bugbear: 0.25
+};
+
+const soundCooldowns = {
+    player_hit: 450, hit_flesh: 120, hit_stone: 150, hit_armor: 150,
+    swing: 100, drink: 300, 
+    death_female: 150, death_creepy: 150, death_reptile: 150,
+    death_kobold: 150, death_beast: 150, death_common: 120, death_orc: 120
+};
+
 let audioCtx = null;
+const lastSoundPlayTime = {};
 
 function initAudio() { 
     if(!audioCtx) { 
         const AudioContext = window.AudioContext || window.webkitAudioContext; 
         if(AudioContext) audioCtx = new AudioContext(); 
     } 
+    if (bgmAudio.paused && gameOptions.bgmVolume > 0) {
+        fadeInBgm(gameOptions.bgmVolume);
+    }
 }
 
-// 💡 전역 playSound 함수
 function playSound(type, targetEntity = null) {
     try {
         if (!gameStarted || !audioCtx || gameOptions.volume <= 0) return;
-        
         let baseVol = gameOptions.volume * 20; 
 
-        // 💡 [핵심] 내 화면(Viewport)에 보이지 않는 엔티티의 모든 소리를 완벽히 음소거!
         if (targetEntity && targetEntity !== player) {
             if (typeof isEntityOnScreen === 'function' && !isEntityOnScreen(targetEntity)) {
                 return; 
@@ -637,7 +731,6 @@ function playSound(type, targetEntity = null) {
 
         let now = audioCtx.currentTime;
 
-        // 💡 [요정 평타 전자음 복구] '뿅뿅' -> 원작 느낌의 짧고 날카로운 '슉!' (0.08초, 볼륨 30%)
         if (type === 'bow') {
             const osc = audioCtx.createOscillator(); 
             let gain = audioCtx.createGain(); 
@@ -646,10 +739,8 @@ function playSound(type, targetEntity = null) {
             osc.type = 'sine'; 
             osc.frequency.setValueAtTime(800, now); 
             osc.frequency.exponentialRampToValueAtTime(100, now + 0.08); 
-            
-            gain.gain.setValueAtTime(baseVol * 0.3, now); 
-            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08); 
-            
+            gain.gain.setValueAtTime(baseVol * 0.04, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08); 
             osc.start(now); osc.stop(now + 0.08); 
             return;
         }
@@ -713,25 +804,74 @@ function playSound(type, targetEntity = null) {
             }
             let arr = customAudio[soundCategory];
             let audioNode = arr[Math.floor(Math.random() * arr.length)].cloneNode();
-            let multiplier = soundMultipliers[soundCategory] || 1.0;
+            
+            let multiplier = soundMultipliers[soundCategory] || 0.6;
             audioNode.volume = Math.min(1.0, baseVol * multiplier);
             audioNode.play().catch(() => {});
             return; 
         }
 
-        // 일반 주문음
         let vol = gameOptions.volume;
         let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
 
-        if (type === 'fireball') { let bufferSize = audioCtx.sampleRate * 0.5; let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); let data = buffer.getChannelData(0); for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; let noise = audioCtx.createBufferSource(); noise.buffer = buffer; let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; filter.frequency.setValueAtTime(800, now); filter.frequency.exponentialRampToValueAtTime(100, now + 0.5); noise.connect(filter).connect(gain); gain.gain.setValueAtTime(vol * 3.5, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5); noise.start(now); }
-        else if (type === 'lightning') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(600,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.25); gain.gain.setValueAtTime(vol*2.5,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.25); osc.start(now); osc.stop(now+0.25); }
-        else if (type === 'heal') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; osc.frequency.setValueAtTime(500,now); osc.frequency.linearRampToValueAtTime(1000,now+0.4); gain.gain.setValueAtTime(vol,now); gain.gain.linearRampToValueAtTime(0.01,now+0.5); osc.start(now); osc.stop(now+0.5); }
-        else if (type === 'spell') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(150,now+0.3); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.3); osc.start(now); osc.stop(now+0.3); }
-        else if (type === 'click') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; osc.frequency.setValueAtTime(900,now); gain.gain.setValueAtTime(vol,now); gain.gain.exponentialRampToValueAtTime(0.01,now+0.05); osc.start(now); osc.stop(now+0.05); }
-        else if (type === 'disintegrate') { const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type = 'sine'; osc.frequency.setValueAtTime(2200, now); osc.frequency.exponentialRampToValueAtTime(300, now + 1.2); gain.gain.setValueAtTime(vol * 5.0, now); gain.gain.exponentialRampToValueAtTime(0.01, now + 1.2); osc.start(now); osc.stop(now + 1.2); }
+        if (type === 'fireball') { 
+            let bufferSize = audioCtx.sampleRate * 0.4; 
+            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); 
+            let data = buffer.getChannelData(0); 
+            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; 
+            let noise = audioCtx.createBufferSource(); noise.buffer = buffer; 
+            let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; 
+            filter.frequency.setValueAtTime(400, now); 
+            filter.frequency.exponentialRampToValueAtTime(100, now + 0.4); 
+            noise.connect(filter).connect(gain); 
+            gain.gain.setValueAtTime(vol * 0.3, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); 
+            noise.start(now); 
+        }
+        else if (type === 'lightning') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; 
+            osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.2); 
+            gain.gain.setValueAtTime(vol * 0.2, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001,now+0.2); 
+            osc.start(now); osc.stop(now+0.2); 
+        }
+        else if (type === 'heal') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; 
+            osc.frequency.setValueAtTime(400,now); osc.frequency.linearRampToValueAtTime(800,now+0.3); 
+            gain.gain.setValueAtTime(vol * 0.2, now); 
+            gain.gain.linearRampToValueAtTime(0.001,now+0.4); 
+            osc.start(now); osc.stop(now+0.4); 
+        }
+        else if (type === 'spell') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine';
+            osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(100,now+0.25); 
+            gain.gain.setValueAtTime(vol * 0.15, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001,now+0.25); 
+            osc.start(now); osc.stop(now+0.25); 
+        }
+        else if (type === 'energy_bolt') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; 
+            osc.frequency.setValueAtTime(500, now); osc.frequency.exponentialRampToValueAtTime(200, now+0.15); 
+            gain.gain.setValueAtTime(vol * 0.1, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now+0.15); 
+            osc.start(now); osc.stop(now+0.15); 
+        }
+        else if (type === 'click') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; 
+            osc.frequency.setValueAtTime(800,now); 
+            gain.gain.setValueAtTime(vol * 0.1, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001,now+0.05); 
+            osc.start(now); osc.stop(now+0.05); 
+        }
+        else if (type === 'disintegrate') { 
+            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(1800, now); osc.frequency.exponentialRampToValueAtTime(200, now + 1.0); 
+            gain.gain.setValueAtTime(vol * 0.5, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0); 
+            osc.start(now); osc.stop(now + 1.0); 
+        }
     } catch(e) {}
 }
-
 
 window.playSound = playSound;
 
@@ -739,12 +879,29 @@ window.updateOptions = function() {
     if ($('opt-vol')) {
         let vol = $('opt-vol').value; 
         gameOptions.volume = (vol / 100) * 0.05; 
-        gameOptions.showDamage = $('opt-dmg').checked; 
-        gameOptions.showNames = $('opt-names').checked; 
-        // 💡 루팅 등급 선택값 숫자로 변환하여 gameOptions에 저장
-        gameOptions.minLootGrade = parseInt($('opt-loot-grade').value) || 0; 
-        if (gameOptions.volume > 0 && gameStarted) playSound('click');
     }
+    
+    if ($('opt-bgm-vol')) {
+        let bgmVol = $('opt-bgm-vol').value;
+        gameOptions.bgmVolume = (bgmVol / 100) * 0.5; 
+        
+        if (gameOptions.bgmVolume === 0) {
+            if (fadeInterval) { clearInterval(fadeInterval); fadeInterval = null; }
+            bgmAudio.pause(); 
+            bgmAudio.volume = 0;
+        } else {
+            if (!fadeInterval) {
+                bgmAudio.volume = gameOptions.bgmVolume;
+            }
+            if (bgmAudio.paused && gameStarted) fadeInBgm(gameOptions.bgmVolume);
+        }
+    }
+
+    gameOptions.showDamage = $('opt-dmg') ? $('opt-dmg').checked : true; 
+    gameOptions.showNames = $('opt-names') ? $('opt-names').checked : true; 
+    gameOptions.minLootGrade = parseInt($('opt-loot-grade')?.value) || 0; 
+    
+    if (gameOptions.volume > 0 && gameStarted) playSound('click');
 };
 
 window.addEventListener('click', initAudio, {once:true});
@@ -774,6 +931,8 @@ async function executeLogin(slotIndex, charObj, loadedData) {
         if (loadedData.options) {
             Object.assign(gameOptions, loadedData.options);
             if ($('opt-vol')) $('opt-vol').value = Math.floor((gameOptions.volume / 0.05) * 100);
+            if ($('opt-dmg')) $('opt-dmg').checked = gameOptions.showDamage;
+            if ($('opt-bgm-vol')) $('opt-bgm-vol').value = Math.floor((gameOptions.bgmVolume / 0.5) * 100);
             if ($('opt-dmg')) $('opt-dmg').checked = gameOptions.showDamage;
             if ($('opt-names')) $('opt-names').checked = gameOptions.showNames;
             if ($('opt-loot-grade')) $('opt-loot-grade').value = gameOptions.minLootGrade || 0;
@@ -1324,12 +1483,12 @@ function getItemDetailsHTML(it, isEq) {
     
     let html = `<b class="tooltip-title" style="color:${titleColor}">${dName}</b><span style="font-size:12px; color:#aaa; margin-left:5px;">[${gradeNames[gIdx]}]</span><br>`; 
     
-    if (it.type === 'book') {
-        let mName = it.magicName || it.name.replace(/.*\(|\).*/g, '').trim();
-        let tier = (typeof getMagicLevelTier === 'function') ? getMagicLevelTier(mName) : 1;
-        let reqLv = tier === 4 ? 45 : (tier === 3 ? 30 : (tier === 2 ? 15 : 1));
-        html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
-    }
+   if (it.type === 'book') {
+    let mName = it.magicName || it.name.replace(/.*\(|\).*/g, '').trim();
+    let tier = (typeof getMagicLevelTier === 'function') ? getMagicLevelTier(mName) : 1;
+    let reqLv = tier === 4 ? 45 : (tier === 3 ? 30 : (tier === 2 ? 15 : 1));
+    html += `<span style="color:#fd0; font-weight:bold;">요구 레벨: Lv.${reqLv} 이상</span><br>`;
+}
 
     if(it.atk) html += `공격력: ${it.atk}<br>`; 
     if(it.def) html += `방어력: ${it.def}<br>`;
@@ -2497,23 +2656,44 @@ window.useItem = function(stackKey) {
         if (it.count > 1) it.count--; else player.inv.splice(idx, 1);
     }
     else if (it.type === 'book') {
-        if (it.name.includes('정령의 수정') && player.charClass !== 'elf') return showAlert("요정 클래스만 학습할 수 있는 정령의 수정입니다.");
-        if (it.name.includes('기술서') && player.charClass !== 'knight') return showAlert("기사 클래스만 학습할 수 있는 기술서입니다.");
-        if (it.name.includes('마법서') && player.charClass !== 'wizard') return showAlert("마법사 클래스만 학습할 수 있는 마법서입니다.");
+        // 1. 클래스 제한 검증
+        if (it.name.includes('정령의 수정') && player.charClass !== 'elf') {
+            return showAlert("요정 클래스만 학습할 수 있는 정령의 수정입니다.");
+        }
+        if (it.name.includes('기술서') && player.charClass !== 'knight' && player.charClass !== 'royal') {
+            return showAlert("기사/군주 클래스만 학습할 수 있는 기술서입니다.");
+        }
+        if (it.name.includes('마법서') && player.charClass !== 'wizard') {
+            return showAlert("마법사 클래스만 학습할 수 있는 마법서입니다.");
+        }
 
-        let requiredLv = (it.grade || 0) * 15 + 1;
-        if ((player.level || 1) < requiredLv) return showAlert(`레벨이 부족하여 학습할 수 없습니다. (요청 레벨: Lv.${requiredLv})`);
-
-        player.magicLevels = player.magicLevels || {}; 
-        if (player.magic.includes(it.magicName)) return showAlert("이미 습득한 마법입니다.");
-
-        playSound('spell');
-        player.magic.push(it.magicName);
-        player.magicLevels[it.magicName] = 1; 
-        addMessage(`[${it.magicName}] 마법을 습득했습니다!`, '#af5');
+        // 2. 마법 이름 및 서클 티어(1~4서클) 산출
+        let mName = it.magicName || it.name.replace(/.*\(|\).*/g, '').trim();
+        let tier = (typeof getMagicLevelTier === 'function') ? getMagicLevelTier(mName) : (it.grade || 1);
         
-        if (it.count > 1) it.count--; else player.inv.splice(idx, 1);
-    } 
+        // 3. 서클별 요구 레벨 적용 (1서클: 1, 2서클: 15, 3서클: 30, 4서클: 45)
+        let requiredLv = tier === 4 ? 45 : (tier === 3 ? 30 : (tier === 2 ? 15 : 1));
+
+        if ((player.level || 1) < requiredLv) {
+            return showAlert(`레벨이 부족하여 학습할 수 없습니다. (요구 레벨: Lv.${requiredLv} 이상)`);
+        }
+
+        // 4. 중복 습득 검증
+        player.magic = player.magic || [];
+        player.magicLevels = player.magicLevels || {}; 
+        if (player.magic.includes(mName)) {
+            return showAlert("이미 습득한 마법입니다.");
+        }
+
+        // 5. 마법 습득 처리
+        playSound('spell');
+        player.magic.push(mName);
+        player.magicLevels[mName] = 1; 
+        addMessage(`[${mName}] 마법을 습득했습니다!`, '#af5');
+        
+        if (it.count > 1) it.count--; 
+        else player.inv.splice(idx, 1);
+    }
     else { 
         playSound('click'); 
         let exactSlot = getEquipSlotType(it);
@@ -4734,9 +4914,12 @@ async function generateAIAgents() {
 // ==========================================
 window.changeMap = function(newMap, nx, ny) { 
     if (typeof playSound === 'function') playSound('spell'); 
-    
+
+    // 💡 이 부분이 반드시 있어야 맵 이동 시 음악이 바뀝니다!
+    if (typeof changeBGM === 'function') changeBGM(newMap);
+
     currentMap = newMap; 
-    player.map = newMap; 
+    player.map = newMap;
     
     // 💡 1. 맵 이동 시 이전 타겟, 아이템 타겟, 이동 상태 완벽 초기화
     player.target = null;
@@ -4776,11 +4959,12 @@ window.changeMap = function(newMap, nx, ny) {
     // 내 용병들도 새 맵으로 안전하게 이동
     if (typeof entities !== 'undefined' && Array.isArray(entities)) {
         entities.forEach(e => {
-            if (e && (e.isMercenary || e.isSummon) && e.owner === player) {
+            // 💡 수정됨: hp > 0 && !e.isDead 조건 추가
+            if (e && (e.isMercenary || e.isSummon) && e.owner === player && e.hp > 0 && !e.isDead) {
                 e.map = newMap;
                 e.x = nx + (Math.random() * 60 - 30);
                 e.y = ny + (Math.random() * 60 - 30);
-                e.target = null; e.isMoving = false; e.isDead = false;
+                e.target = null; e.isMoving = false;
             }
         });
     }
@@ -5024,133 +5208,283 @@ window.selectMercenary = function(mercId) {
 };
 
 function injectMobileBottomFix() {
+
     if (document.getElementById('mobile-bottom-fix')) {
+
         document.getElementById('mobile-bottom-fix').remove();
+
     }
+
     const style = document.createElement('style');
+
     style.id = 'mobile-bottom-fix';
+
     
+
     style.innerHTML = `
+
         .window, .modal-window, [id^="win-"], [id$="-modal"] {
+
             max-width: 95vw !important;
+
             box-sizing: border-box !important;
+
         }
+
+
 
         #shop-list, #inv-list, #inv-tab-equip, #magic-list, #teleport-list {
+
             max-height: 55vh !important;
+
             overflow-y: scroll !important;
+
             scrollbar-gutter: stable;
+
             overflow-x: hidden !important;
+
             box-sizing: border-box !important;
+
             padding-right: 4px !important;
+
         }
+
+
 
         #shop-list > div, #inv-list > div, #magic-list > div {
+
             max-width: 100% !important;
+
             box-sizing: border-box !important;
+
         }
+
+
 
         #map-name {
+
             font-size: 18px !important;
+
             font-weight: bold !important;
+
             letter-spacing: 0px !important;
+
             text-shadow: 1px 1px 2px #000, -1px -1px 2px #000 !important;
+
             max-width: calc(100vw - 180px) !important;
+
             white-space: nowrap !important;
+
             overflow: hidden !important;
+
             text-overflow: ellipsis !important;
+
             display: inline-block !important;
+
         }
+
+
 
         #zone-indicator {
+
             font-size: 15px !important;
+
             font-weight: bold !important;
+
         }
+
+
 
         @media (max-width: 768px) {
+
             #popup-chat-messages {
+
                 flex-grow: 1 !important;
+
                 overflow-y: auto !important;
+
             }
+
             #map-name {
+
                 font-size: 13.5px !important;
+
                 max-width: calc(100vw - 120px) !important;
+
             }
+
             #zone-indicator {
+
                 font-size: 10.5px !important;
+
             }
+
+
+
+            /* 💡 하단 바 고정 및 채팅창이 하단 바와 겹치지 않도록 위로 밀어냄 */
 
             #ui-bottom-bar {
-                position: absolute !important;
+
+                position: fixed !important;
+
                 bottom: 0 !important;
+
+                left: 0 !important;
+
+                width: 100vw !important;
+
                 margin: 0 !important;
+
+                z-index: 999999 !important;
+
+                box-sizing: border-box !important;
+
             }
+
+
+
+            #chat-container, .chat-box-wrapper {
+
+                bottom: 145px !important;
+
+            }
+
+
+
             #buff-list {
+
                 position: absolute !important;
+
                 top: auto !important;
+
                 bottom: 130px !important;
+
                 left: 50% !important;
+
                 transform: translateX(-50%) !important;
+
                 display: flex !important;
+
                 justify-content: center !important;
+
                 flex-wrap: wrap !important;
+
                 width: 100% !important;
+
                 pointer-events: none !important;
+
+                z-index: 99998 !important;
+
             }
+
             #buff-list .buff-wrap {
+
                 pointer-events: auto !important;
+
                 width: 24px !important;
+
                 height: 24px !important;
+
                 margin-right: 2px !important;
+
             }
+
             #buff-list .buff-wrap div {
+
                 width: 20px !important;
+
                 height: 20px !important;
+
                 font-size: 12px !important;
+
             }
+
             #ui-left {
+
                 padding: 2px 2px !important;
+
                 justify-content: space-evenly !important;
+
             }
+
             #ui-left .stat-row {
+
                 line-height: 1.1 !important;
+
                 margin: 0 !important;
+
             }
+
             #ui-bars { padding: 3px 5px !important; gap: 2px !important; }
+
             .bar-wrap { height: 13px !important; } 
+
             .bar-text { 
+
                 font-size: 8.5px !important; 
+
                 line-height: 13px !important; 
+
                 font-weight: bold !important;
+
                 text-shadow: 1px 1px 1px #000, -1px -1px 1px #000 !important;
+
             }            
+
             #chat-messages {
+
                 max-height: 35px !important; 
+
                 padding: 1px 3px !important;
+
             }
+
             #chat-messages div {
+
                 margin: 0 !important;
+
                 padding: 0 !important;
+
                 line-height: 1.2 !important; 
+
             }
+
         }
+
     `;
+
     document.head.appendChild(style);
 
+
+
     if (!document.getElementById('dim-overlay')) {
+
         const dim = document.createElement('div');
+
         dim.id = 'dim-overlay';
+
         dim.style.cssText = `
+
             position: fixed;
+
             top: 0; left: 0; width: 100vw; height: 100vh;
+
             background: #000;
+
             opacity: 0;
+
             pointer-events: none;
+
             transition: opacity 1.2s ease;
+
             z-index: 999998;
+
         `;
+
         document.body.appendChild(dim);
+
     }
+
 }
 
 injectMobileBottomFix();
@@ -5457,4 +5791,115 @@ document.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'magic', id: match[1] }));
         }
     }
+});
+
+
+
+// ==========================================
+// 💬 [채팅 히스토리 / 직전 대화 재입력 엔진]
+// ==========================================
+window.sentChatHistory = [];
+window.chatHistoryCursor = -1;
+
+// 1. 메시지 전송 시 기록 저장
+function recordSentChat(text) {
+    if (!text || text.trim() === '') return;
+    window.sentChatHistory.unshift(text);
+    if (window.sentChatHistory.length > 30) window.sentChatHistory.pop();
+    window.chatHistoryCursor = -1;
+}
+
+// 2. PC 키보드 화살표 (↑ 이전 대화 / ↓ 다음 대화) 탐색
+function setupInputKeyHistory(inputEl) {
+    if (!inputEl) return;
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowUp') {
+            if (window.sentChatHistory.length === 0) return;
+            e.preventDefault();
+            if (window.chatHistoryCursor < window.sentChatHistory.length - 1) {
+                window.chatHistoryCursor++;
+                inputEl.value = window.sentChatHistory[window.chatHistoryCursor];
+            }
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            if (window.chatHistoryCursor > 0) {
+                window.chatHistoryCursor--;
+                inputEl.value = window.sentChatHistory[window.chatHistoryCursor];
+            } else if (window.chatHistoryCursor === 0) {
+                window.chatHistoryCursor = -1;
+                inputEl.value = '';
+            }
+        }
+    });
+}
+
+// 3. 모바일 터치용 최근 대화 불러오기 버튼 주입
+function injectMobileChatHistoryBtn() {
+    ['chat-input-container', 'win-chat-popup'].forEach(containerId => {
+        let parent = document.getElementById(containerId);
+        if (!parent) return;
+
+        let input = parent.querySelector('input[type="text"]');
+        if (!input) return;
+
+        setupInputKeyHistory(input);
+
+        // 모바일 전용 히스토리 복원 버튼 생성 (중복 방지)
+        let btnId = containerId + '-history-btn';
+        if (!document.getElementById(btnId)) {
+            let histBtn = document.createElement('button');
+            histBtn.id = btnId;
+            histBtn.type = 'button';
+            histBtn.innerHTML = '↺';
+            histBtn.title = '이전 대화 불러오기';
+            histBtn.style.cssText = `
+                background: #2a2a38;
+                color: #fd0;
+                border: 1px solid #556;
+                border-radius: 3px;
+                padding: 0 8px;
+                font-size: 13px;
+                cursor: pointer;
+                height: ${input.offsetHeight || 24}px;
+                margin-right: 4px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            `;
+
+            histBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (window.sentChatHistory.length > 0) {
+                    window.chatHistoryCursor = (window.chatHistoryCursor + 1) % window.sentChatHistory.length;
+                    input.value = window.sentChatHistory[window.chatHistoryCursor];
+                    input.focus();
+                }
+            });
+
+            input.parentNode.insertBefore(histBtn, input);
+        }
+    });
+}
+
+// 4. 전송 함수에 기록 후킹
+const origSendChatMessage = window.sendChatMessage;
+window.sendChatMessage = function() {
+    let input = document.getElementById('chat-input');
+    if (input && input.value.trim()) {
+        recordSentChat(input.value.trim());
+    }
+    if (typeof origSendChatMessage === 'function') origSendChatMessage();
+};
+
+const origSendPopupChatMessage = window.sendPopupChatMessage;
+window.sendPopupChatMessage = function() {
+    let input = document.getElementById('popup-chat-input');
+    if (input && input.value.trim()) {
+        recordSentChat(input.value.trim());
+    }
+    if (typeof origSendPopupChatMessage === 'function') origSendPopupChatMessage();
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    injectMobileChatHistoryBtn();
 });

@@ -11,12 +11,10 @@ const SUPABASE_KEY = process.env.SUPABASE_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 
-
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 let currentGroqModel = 'qwen/qwen3.8-27b';
-
 
 async function initGroqModel() {
     try {
@@ -51,14 +49,13 @@ async function initGroqModel() {
 }
 
 let activeAgents = []; 
-const MAX_CONCURRENT = 4;
+const MAX_CONCURRENT = 10;
 
 class AIAgentClient {
     constructor(dbRow) {
         this.dbRow = dbRow;
         this.charData = dbRow.data.player || dbRow.data;
         
-
          this.charData.target = null;
         this.charData.targetId = null;
         this.charData.isMoving = false;
@@ -66,7 +63,6 @@ class AIAgentClient {
         this.charData.moveY = undefined;
         this.charData.ignoredTargetId = null;
         this.charData.ignoredUntil = 0;
-
 
         if (!this.charData.charClass) {
             let nameLower = (this.charData.name || '').toLowerCase();
@@ -867,14 +863,13 @@ class AIAgentClient {
         if (Date.now() - this.lastAiCallTime < 2500) return;
         this.lastAiCallTime = Date.now();
 
-        try {
-            const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');
-            const availableSpells = (this.charData.magic || []).join(', ');
-            const isParty = Boolean(this.partyData);
-            const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
-            const contextType = isWhisper ? `[${senderName}]님이 귓속말을 보냈습니다.` : (isParty ? `[파티 대화]` : `[일반 대화]`);
+        const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');
+        const availableSpells = (this.charData.magic || []).join(', ');
+        const isParty = Boolean(this.partyData);
+        const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
+        const contextType = isWhisper ? `[${senderName}]님이 귓속말을 보냈습니다.` : (isParty ? `[파티 대화]` : `[일반 대화]`);
 
-            const situationContext = `
+        const situationContext = `
 [내 실시간 상태]
 - 캐릭터명: ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass})
 - 체력: ${this.charData.hp}/${this.charData.maxHp}, 마나: ${this.charData.mp}/${this.charData.maxMp}
@@ -885,9 +880,10 @@ class AIAgentClient {
 - 성격/말투: ${this.personality}
 - 이동 가능 사냥터 목록: [${mapNames}]`;
 
-            this.chatHistory.push({ role: "user", content: `${contextType} ${senderName}: ${userMessage}` });
-            if (this.chatHistory.length > 6) this.chatHistory.shift();
+        this.chatHistory.push({ role: "user", content: `${contextType} ${senderName}: ${userMessage}` });
+        if (this.chatHistory.length > 6) this.chatHistory.shift();
 
+        try {
             const completion = await groq.chat.completions.create({
                 messages: [
                     {
@@ -916,7 +912,6 @@ ${situationContext}
                 temperature: 0.8
             });
 
-            // 💡 마크다운 백틱이나 불필요한 공백이 포함되어 들어올 경우를 대비한 안전 정제
             let rawContent = completion.choices[0]?.message?.content || '{}';
             rawContent = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
             
@@ -939,7 +934,29 @@ ${situationContext}
             this.executeAction(action, decision, senderName);
 
         } catch(e) {
-            console.error(`[-] [${this.charData.name}] 대화 오류:`, e.message);
+            // 💡 [핵심] API 초과(429) 등 에러 발생 시, 튕기지 않고 하드코딩된 '바쁜 척' 대사 발송
+            console.error(`[-] [${this.charData.name}] API 한도 초과 방어 발동 (Groq Error)`);
+            
+            const busyReplies = [
+                "아 지금 몹 몰려서 빡셈;; 잠시만요",
+                "지금 채팅칠 정신이 없네요 ㅠㅠ 이따 귓주세요",
+                "손 꼬여서 죽을뻔;; 사냥 좀 정리하고 말할게요!",
+                "지금 빡사냥중이라 대화가 힘듭니다 ㅈㅅㅈㅅ",
+                "물약 떨어져가서 집중해야함 ㄷㄷ 쫌따 봬요"
+            ];
+            let fallbackReply = busyReplies[Math.floor(Math.random() * busyReplies.length)];
+
+            if (isWhisper) {
+                this.socket.emit('cmd_whisper', { targetName: senderName, content: fallbackReply });
+            } else {
+                this.socket.emit('chat_message', { 
+                    message: fallbackReply, 
+                    chatType: this.partyData ? 'party' : 'normal' 
+                });
+            }
+            
+            // 💡 봇이 계속 앵무새처럼 바쁘다고 하면 어색하므로, 에러 났을 때는 다음 AI 호출 쿨타임을 15초로 늘려버림
+            this.lastAiCallTime = Date.now() + 15000; 
         }
     }
 

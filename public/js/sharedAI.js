@@ -86,12 +86,15 @@
                 let amIFollower = env.party && isFocusMode && leaderSocketId !== entity.socketId && leaderSocketId !== entity.id;
                 
                 if (amIFollower) {
-                    let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
-                    let leaderTargetMob = null;
-                    if (leaderEnt) {
-                        let ltId = leaderEnt.targetId || (leaderEnt.target ? leaderEnt.target.id : null);
-                        if (ltId) {
-                            leaderTargetMob = env.entities.find(e => e && e.id === ltId && e.hp > 0 && !e.isDead && e.map === env.currentMap);
+                    let leaderTargetId = env.party.leaderTargetId;
+                    let leaderTargetMob = null; // 💡 변수 스코프 에러 원인 해결 (선언부 상단 분리)
+
+                    if (leaderTargetId) {
+                        leaderTargetMob = env.entities.find(e => e && e.id === leaderTargetId && e.hp > 0 && !e.isDead && e.map === env.currentMap);
+                        if (leaderTargetMob) {
+                            entity.target = leaderTargetMob;
+                            entity.isMoving = false;
+                            skipSearch = true;
                         }
                     }
 
@@ -100,6 +103,8 @@
                         (e.targetId === entity.socketId || e.targetId === entity.id || e.target === entity) &&
                         Math.hypot(e.x - entity.x, e.y - entity.y) <= 400
                     );
+
+                    let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
 
                     if (attackerMob && attackerMob.id !== (leaderTargetMob ? leaderTargetMob.id : null)) {
                         if (!entity.target || entity.target.id !== attackerMob.id) {
@@ -642,7 +647,6 @@
         }
     };
 
-    // 💡 [에러 원인 해결] 함수가 아닌 객체 자체를 반환해야 충돌이 나지 않습니다.
     if (typeof module !== 'undefined' && module.exports) module.exports = SharedAI;
     else global.SharedAI = SharedAI;
 })(this);

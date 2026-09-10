@@ -1,4 +1,7 @@
 <!DOCTYPE html>
+
+//V1
+
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -272,7 +275,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     overflow: hidden !important;
 }
 .window .win-content > div {
-    overflow-y: auto !important;
+    overflow: hidden !important;
     max-height: 100% !important;
     box-sizing: border-box !important;
 }
@@ -659,16 +662,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     #menu-btns { height: 20px !important; min-height: 20px !important; gap: 2px !important; flex-shrink: 0 !important; margin: 0 !important; }
     .menu-btn { font-size: 7.5px !important; padding: 1px !important; height: 100% !important; }
     
-    #buff-list {
-        position: fixed !important;
-        top: 75px !important; 
-        left: 10px !important;
-        transform: none !important;
-        display: flex !important;
-        flex-wrap: wrap !important;
-        max-width: 50vw !important;
-        z-index: 999 !important;
-    }
+   
 
     #win-pet .win-content { padding: 6px 8px !important; gap: 3px !important; overflow: hidden !important; }
     #win-pet div[style*="background:#111"] { padding: 4px 6px !important; margin-bottom: 3px !important; }
@@ -926,8 +920,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         <div class="win-content" style="padding: 15px; display: flex; flex-direction: column; gap: 12px;">
             <div style="display: flex; flex-direction: column; gap: 8px; color: #ccc; font-size: 13px;">
                 <label style="font-weight:bold; color:#fff;">효과음 볼륨</label>
-                <input type="range" id="opt-vol" min="0" max="100" value="50" oninput="updateOptions()" style="width: 100%; cursor: pointer;">
+                <input type="range" id="opt-vol" min="0" max="100" value="40" oninput="updateOptions()" style="width: 100%; cursor: pointer;">
             </div>
+            <div class="stat-row" style="margin-top: 10px;">
+    <span style="color: #ddd; font-size: 13px;">🎵 배경음악 볼륨</span>
+    <input type="range" id="opt-bgm-vol" min="0" max="100" value="40" onchange="updateOptions()">
+</div>
             <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
                 <label style="font-weight:bold; color:#fff;">데미지 텍스트 표시</label>
                 <input type="checkbox" id="opt-dmg" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
@@ -1138,10 +1136,10 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     </div>
 
     <!-- 💡 [자동 다운로드 연동] 캐시 버스팅 적용 스크립트 로드 -->
-    <script src="js/data.js?v=2.0.0"></script>
-    <script src="js/ui.js?v=2.0.0"></script>
-    <script src="js/sharedAI.js"></script>
-    <script src="js/game.js?v=2.0.0"></script>
+    <script src="js/data.js?v=1.0.0"></script>
+    <script src="js/ui.js?v=1.0.0"></script>
+    <script src="js/sharedAI.js?v=1.0.0"></script>
+    <script src="js/game.js?v=1.0.0"></script>
     
     <!-- 💡 [모바일 터치용 리사이저 강제 삽입] -->
     <script>
