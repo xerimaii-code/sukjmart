@@ -1879,36 +1879,49 @@ entities.forEach(e => {
             drawEntity(ctx, e, timestamp);
 
             // 💡 여기서 몬스터, 보스, 타 유저, 용병의 이름과 색상이 결정됩니다.
-            let sz = e.size || 20;
+          let sz = e.size || 20;
             let tagColor = e.isBoss ? '#fbbf24' : (e.isPlayer ? '#5cf' : (e.isOtherMerc ? '#6ee' : (e.isSummon ? '#5f5' : '#ffffff')));
             let displayName = e.isOtherMerc ? `[용병] ${e.name}` : e.name;
             
             let isMobile = window.innerWidth < 768;
             let otherFontSize = 12;
 
+            // 💡 rx, ry 좌표를 먼저 선언하여 순서 오류 방지
+            let rx = Math.round(e.x);
+            let ry = Math.round(e.y - sz - (e.isPlayer ? 33 : 30));
+
             if (e.isPlayer) {
                 otherFontSize = isMobile ? 15 : 18; 
                 displayName = e.alignment > 10000 ? `[정의] ${e.name}` : (e.alignment < -10000 ? `[악인] ${e.name}` : e.name);
                 tagColor = e.alignment > 10000 ? '#38bdf8' : (e.alignment < -10000 ? '#f87171' : '#ffffff');
+
+                // 💡 타 파티 소속 유저 머리 위 파티 뱃지 (괄호 짝 완벽 정돈)
+                if (e.partyId) {
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.font = `bold ${isMobile ? 11 : 13}px "Malgun Gothic", sans-serif`;
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#000000';
+                    
+                    let partyBadgeY = Math.round(e.y - sz - (isMobile ? 48 : 46));
+                    ctx.strokeText('👥[파티]', rx, partyBadgeY);
+                    ctx.fillStyle = '#a78bfa';
+                    ctx.fillText('👥[파티]', rx, partyBadgeY);
+                    ctx.restore();
+                }
             } else if (e.isBoss) {
-                // 보스 몬스터: PC 20px / 모바일 17px
                 otherFontSize = isMobile ? 17 : 20;
             } else {
-                // 💡 일반 몬스터 & 용병: PC 18px / 모바일 15px
                 otherFontSize = isMobile ? 15 : 18;
             }
             
             ctx.save();
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            
             ctx.font = `bold ${otherFontSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
             ctx.lineWidth = 4; 
             ctx.strokeStyle = '#000000';
-            
-            // 소수점 번짐 방지 정수 렌더링
-            let rx = Math.round(e.x);
-            let ry = Math.round(e.y - sz - (e.isPlayer ? 33 : 30));
 
             ctx.strokeText(displayName, rx, ry);
             ctx.fillStyle = tagColor; 
@@ -3273,10 +3286,10 @@ if (playerInSafeZone) {
             }
         }
     }
-  // 5. UI 및 소환수 갱신 (매 프레임 실행하지 않고 200ms 주기로 제한하여 DOM 렉 제거)
 if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
     window._lastHudUpdateTime = timestamp;
     if (typeof window.renderMercenaryHUD === 'function') window.renderMercenaryHUD();
+    if (typeof window.renderPartyHUD === 'function') window.renderPartyHUD(); // 💡 파티원 HP 실시간 갱신 연동
     if (document.getElementById('win-pet') && document.getElementById('win-pet').style.display === 'flex' && typeof window.updatePetUI === 'function') window.updatePetUI();
 }
 
@@ -4496,15 +4509,29 @@ window.socket.on('monster_hit', (data) => {
     });
 
 
-    window.socket.on('party_invite_received', (data) => {
-        showConfirm(`${data.inviterName}님께서 파티 초대를 보냈습니다.\n수락하시겠습니까?`, () => {
+   window.socket.on('party_invite_received', (data) => {
+    showConfirm(
+        `${data.inviterName}님께서 파티 초대를 보냈습니다.\n수락하시겠습니까?`,
+        () => {
+            // [확인 클릭 시] 파티 수락
             window.socket.emit('party_accept', { inviterSocketId: data.inviterSocketId });
-        });
-    });
+        },
+        () => {
+            // [취소 클릭 시] 거절 패킷 전송 및 안내
+            window.socket.emit('party_reject', { 
+                inviterSocketId: data.inviterSocketId,
+                rejectorName: player.name 
+            });
+            if (typeof addMessage === 'function') {
+                addMessage(`[파티] ${data.inviterName}님의 초대를 거절했습니다.`, '#aaa');
+            }
+        }
+    );
+});
 
+
+   
 // 💡 [클릭과 드래그 구분용 전역 변수]
-   window.currentPartyData = null;
-
     window.currentPartyData = null;
 
     window.renderPartyHUD = function() {
@@ -4514,6 +4541,20 @@ window.socket.on('monster_hit', (data) => {
         if (hudList) hudList.innerHTML = '';
         return;
     }
+
+    // 💡 [실시간 HP 동기화 추가] 파티원들의 현재 HP를 entities 및 player 객체와 실시간 일치화
+    data.party.members.forEach(m => {
+        if (m.socketId === window.socket?.id) {
+            m.hp = player.hp;
+            m.maxHp = currentMaxHp;
+        } else {
+            let ent = entities.find(e => e.isPlayer && (e.id === m.socketId || e.socketId === m.socketId));
+            if (ent) {
+                m.hp = ent.hp;
+                m.maxHp = ent.maxHp || m.maxHp;
+            }
+        }
+    });
 
     // 파티 HUD 컨테이너 기본 스타일
     hudList.style.position = 'fixed';
@@ -5182,11 +5223,17 @@ window.castBuff = function(magicName, targetEntity = null) {
     let mData = dbRef[magicName];
     if (!mData) return;
 
-    // 💡 [수정] 1순위: 지정 대상, 2순위: HUD 선택 아군, 3순위: 본인
-    let target = targetEntity || player.friendlyTarget || player;
-    
-    let pMaxHp = window.currentMaxHp || player.maxHp || 150;
-    let pMaxMp = window.currentMaxMp || player.maxMp || 30;
+    // 💡 1순위: 매개변수 지정 대상, 2순위: HUD로 선택된 아군(friendlyTarget), 3순위: 본인
+    let target = targetEntity || player.friendlyTarget;
+    if (!target && window.selectedAllyId) {
+        target = entities.find(e => e.id === window.selectedAllyId || e.socketId === window.selectedAllyId);
+    }
+    if (!target) {
+        target = player;
+    }
+
+    let targetMaxHp = target.maxHp || (target === player ? (window.currentMaxHp || player.maxHp) : 100);
+    let targetMaxMp = target.maxMp || (target === player ? (window.currentMaxMp || player.maxMp) : 50);
 
     let isDefaultClassSpell = (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드', '가속', '그레이트 힐', '어드밴스 스피릿', '이뮨 투 함', '앱솔루트 배리어', '마제스티', '홀리 워크'].some(n => magicName.includes(n))) ||
                               (player.charClass === 'knight' && ['쇼크 스턴', '리덕션 아머', '카운터 바리어', '바운스 어택', '솔리드 캐리지', '블로우 어택'].some(n => magicName.includes(n))) ||
@@ -5199,6 +5246,7 @@ window.castBuff = function(magicName, targetEntity = null) {
     }
     
     if (magicName !== '블러드 투 소울' && player.mp < (mData.mp || 0)) {
+        if (typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55');
         return;
     }        
     if (magicName !== '블러드 투 소울') {
@@ -5208,12 +5256,15 @@ window.castBuff = function(magicName, targetEntity = null) {
 
     if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
         let healAmt = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
-        target.hp = Math.min(pMaxHp, target.hp + healAmt);
-        if (typeof addMessage === 'function') addMessage(`[${magicName}] HP ${healAmt} 회복`, '#5f5');
+        target.hp = Math.min(targetMaxHp, (target.hp || 0) + healAmt);
+        if (typeof addMessage === 'function') addMessage(`[${magicName}] ${target.name || '대상'} HP ${healAmt} 회복`, '#5f5');
+        if (typeof dmgTexts !== 'undefined') {
+            dmgTexts.push({ x: target.x, y: target.y - 30, text: `+${healAmt} 힐!`, life: 1.2, color: '#5f5' });
+        }
     } else if (magicName === '블러드 투 소울') {
         if (player.hp > 40) {
             player.hp -= 40;
-            player.mp = Math.min(pMaxMp, player.mp + 15);
+            player.mp = Math.min(window.currentMaxMp || player.maxMp, player.mp + 15);
             if (typeof addMessage === 'function') addMessage(`[블러드 투 소울] HP 40 소모 ➔ MP 15 회복`, '#55f');
         }
     } else {
@@ -5230,7 +5281,7 @@ window.castBuff = function(magicName, targetEntity = null) {
         window.socket.emit('player_magic_action', {
             magicName: magicName,
             targetX: target.x, targetY: target.y,
-            targetId: target.id || window.socket.id,
+            targetId: target.id || target.socketId || window.socket.id,
             casterX: player.x, casterY: player.y,
             casterId: window.socket.id,
             map: currentMap
@@ -5506,6 +5557,7 @@ window.enterBossRaid = function() {
         }
     });
 
+    window.socket.on('raid_clear_return_town', (data) => {
         player.autoHunt = false;
         player.autoPotion = false;
         player.target = null;
@@ -5517,7 +5569,7 @@ window.enterBossRaid = function() {
             changeMap(data.map || 'talking_island', data.x || 2000, data.y || 2000);
         }
         if (typeof updateUI === 'function') updateUI();
-    
+    });
 };
 
 window.spawnRaidBoss = function(tierIndex, waveNum = 1) {

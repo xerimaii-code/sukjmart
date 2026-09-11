@@ -550,58 +550,71 @@ window.entities = entities;
 window.items = items;
 window.particles = particles;
 window.dmgTexts = dmgTexts;
+
+
 // ==========================================
-// 🔊 [오디오 에셋 사전 로드 및 BGM 설정]
+// 🔊 [오디오 에셋 사전 로드 및 31종 맵/보스 통합 BGM 매니저]
 // ==========================================
 let bgmAudio = new Audio();
 bgmAudio.loop = true;
 bgmAudio.volume = 0; 
 let fadeInterval = null; 
 
-// 💡 맵 데이터 기반 4종 배경음악 1:1 완벽 매핑
+// 💡 실제 /sound 폴더 내 파일명과 1:1 완벽 매핑 (신규 추가된 8개 파일 포함)
 const mapBgmList = {
-    // 🏡 1. 안전지대 마을 (Where the Path Divides)
-    // 모험의 쉼터, 정비 구역
-    'silver_knight_town': '/sound/Where_the_Path_Divides.mp3',
-    'talking_island': '/sound/Where_the_Path_Divides.mp3',
-    'gludin': '/sound/Where_the_Path_Divides.mp3',
-    'oren': '/sound/Where_the_Path_Divides.mp3',
-    'aden': '/sound/Where_the_Path_Divides.mp3',
-
-    // 🌲 2. 활기찬 야외 필드 및 자연 구역 (Beyond the Village Gate)
-    // 초원, 숲, 사막 등 야외 탐험 필드
-    'elven_forest': '/sound/Beyond_the_Village_Gate.mp3',
-    'elven_forest_deep': '/sound/Beyond_the_Village_Gate.mp3',
-    'dream_island': '/sound/Beyond_the_Village_Gate.mp3',
-    'forgotten_island': '/sound/Beyond_the_Village_Gate.mp3',
-    'dragon_valley': '/sound/Beyond_the_Village_Gate.mp3',
-
-    // 🕯️ 3. 어두운 중/상급 던전 및 미궁 (When the Lanterns Go Out)
-    // 좁고 축축한 지하 동굴, 감옥, 수중 던전
-    'ti_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'ti_dungeon2': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'gludio_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'ant_cave': '/sound/When_the_Lanterns_Go_Out.mp3',
+    // 🌟 1. 주요 마을 및 필드 맵
+    'talking_island': '/sound/talking_island.mp3',
+    'silver_knight_town': '/sound/silver_knight_town.mp3',
+    'elven_forest': '/sound/elven_forest.mp3',
+    'gludin': '/sound/gludin.mp3',
+    'dragon_valley': '/sound/dragon dungeon.mp3',
+    'fire_dragon_nest': '/sound/fire_dragon_nest.mp3',
+    'forgotten_island': '/sound/forgotten_island.mp3',
+    'heine': '/sound/heine.mp3',
+    'oren': '/sound/oren.mp3',
+    'aden': '/sound/aden.mp3',
+    
+    // 🕯️ 2. 던전 및 동굴 구역
+    'ti_dungeon': '/sound/ti_dungeon.mp3',
+    'ti_dungeon2': '/sound/ti_dungeon2.mp3',
+    'gludio_dungeon': '/sound/gludio_dungeon.mp3',
+    'ant_cave': '/sound/ant_cave.mp3',
+    'dv_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
     'giran_dungeon_1': '/sound/When_the_Lanterns_Go_Out.mp3',
     'giran_dungeon_4': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'eva_kingdom': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'heine': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'ivory_tower': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'dv_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'dragon_valley_deep': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'tower_of_insolence_1': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'tower_of_insolence_10': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'tower_of_insolence_30': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'tower_of_insolence_50': '/sound/When_the_Lanterns_Go_Out.mp3',
-
-    // 🔥 4. 고난도 탑 정상, 화룡 둥지, 보스 레이드 (Beneath the Iron Gate)
-    // 극적인 긴장감과 압도적인 전투 분위기
-    'tower_of_insolence_70': '/sound/Beneath_the_Iron_Gate.mp3',
-    'tower_of_insolence_100': '/sound/Beneath_the_Iron_Gate.mp3',
-    'tower_of_dominance': '/sound/Beneath_the_Iron_Gate.mp3',
+    'eva_kingdom': '/sound/Beneath_The_Heavy_Stone.mp3',
+    'dragon_valley_deep': '/sound/Beneath_The_Heavy_Stone.mp3',
     'lastebad': '/sound/Beneath_the_Iron_Gate.mp3',
-    'fire_dragon_nest': '/sound/Beneath_the_Iron_Gate.mp3',
-    'boss_raid': '/sound/Beneath_the_Iron_Gate.mp3'
+    'ivory_tower': '/sound/Beneath_the_Iron_Gate.mp3',
+
+    // 🗼 3. 오만의 탑 시리즈
+    'tower_of_insolence_1': '/sound/tower_of_insolence_1.mp3',
+    'tower_of_insolence_10': '/sound/tower_of_insolence_10.mp3',
+    'tower_of_insolence_30': '/sound/Beneath_the_Iron_Gate.mp3',
+    'tower_of_insolence_50': '/sound/tower_of_insolence_50.mp3',
+    'tower_of_insolence_70': '/sound/tower_of_insolence_70.mp3',
+    'tower_of_insolence_100': '/sound/tower_of_insolence_100.mp3',
+
+    // 🌲 4. 야외/마을 잔여 구역
+    'elven_forest_deep': '/sound/Beyond_the_Village_Gate.mp3',
+    'dream_island': '/sound/Sunlight_on_the_Cobblestones.mp3',
+    'giran': '/sound/A_Hearth_for_the_Wanderer.mp3',
+
+    // 🔥 5. 보스 전용 테마 및 레이드 맵
+    'valakas': '/sound/boss_valakas.mp3',
+    'antharas': '/sound/boss_antharas.mp3',
+    'baphomet': '/sound/boss_baphomet.mp3',
+    'deathknight': '/sound/boss_deathknight.mp3',
+    'grim_reaper': '/sound/boss_grim_reaper.mp3',
+    'awakened_reaper': '/sound/boss_awakened_reaper.mp3',
+    'black_knight_chief': '/sound/boss_black_knight_chief.mp3',
+    'dantes': '/sound/boss_dantes.mp3',
+    'drake': '/sound/boss_drake.mp3',
+    'giant_ungoliant': '/sound/boss_giant_ungoliant.mp3',
+    'lich_boss': '/sound/boss_lich_boss.mp3',
+    'ant_queen': '/sound/boss_antharas.mp3',
+    'boss_raid': '/sound/Terra_Tremit.mp3',
+    'tower_of_dominance': '/sound/Terra_Tremit.mp3'
 };
 
 function fadeInBgm(targetVolume) {
@@ -629,17 +642,21 @@ function fadeInBgm(targetVolume) {
     }, 80);
 }
 
-// 💡 맵 이동 시 음악 교체 & 부드러운 전환 처리
-window.changeBGM = function(mapId) {
+// 💡 맵 이동 및 보스전 자동 전환 통합 BGM 교체 함수
+window.changeBGM = function(keyOrMapId) {
     if (!bgmAudio) return;
 
-    let newSrc = mapBgmList[mapId] || '/sound/Where_the_Path_Divides.mp3';
+    // 보스 키이거나 보스 레이드 맵인 경우 보스 전용 테마 우선 재생
+    let isBossKey = mapBgmList[keyOrMapId] && keyOrMapId.match(/valakas|antharas|baphomet|deathknight|reaper|dantes|drake|lich|chief|ungoliant/);
+    let newSrc = mapBgmList[keyOrMapId];
 
-    // 파일 이름만 추출하여 비교 (경로 표기 차이 방지)
+    if (!newSrc) {
+        newSrc = isBossKey ? '/sound/boss_valakas.mp3' : '/sound/Where_the_Path_Divides.mp3';
+    }
+
     let currentFileName = bgmAudio.src ? decodeURI(bgmAudio.src.split('/').pop()) : '';
     let targetFileName = decodeURI(newSrc.split('/').pop());
 
-    // 동일한 곡이 이미 재생 중인 경우 리로드 방지
     if (currentFileName === targetFileName && !bgmAudio.paused) {
         return; 
     }
@@ -658,6 +675,19 @@ window.changeBGM = function(mapId) {
     }
 };
 
+// 보스 몬스터 조우 시 외부에서 호출하는 전역 헬퍼 함수
+window.playBossThemeByEntity = function(targetEntity) {
+    if (!targetEntity || !targetEntity.isBoss) return;
+    
+    let matchedKey = 'valakas'; 
+    for (let key in mapBgmList) {
+        if (targetEntity.id.includes(key) || (targetEntity.name && targetEntity.name.includes(key))) {
+            matchedKey = key;
+            break;
+        }
+    }
+    window.changeBGM(matchedKey);
+};
 
 const customAudio = {
     swing: [new Audio('/sound/sword-miss3.ogg'), new Audio('/sound/fishing-cast.ogg')],
@@ -2063,31 +2093,32 @@ window.renderMagicBook = function() {
 // ==========================================
 // [7. 팝업 / 확인 모달 및 윈도우 드래그]
 // ==========================================
-window.showConfirm = function(msg, callback) {
-    const modal = $('confirm-modal');
-    if (!modal) return;
-    
-    let { title, body } = parseTitleAndMsg(msg, "확인");
-    if ($('confirm-win-title')) $('confirm-win-title').innerText = title;
-    if ($('confirm-msg')) $('confirm-msg').innerText = body;
+let confirmCancelCallback = null;
 
-    let inputEl = $('confirm-input');
-    if (inputEl) inputEl.style.display = 'none';
+window.showConfirm = function(msg, callback, cancelCallback = null) {
+    const modal = $('confirm-modal');
+    if (!modal) return;
+    
+    let { title, body } = parseTitleAndMsg(msg, "확인");
+    if ($('confirm-win-title')) $('confirm-win-title').innerText = title;
+    if ($('confirm-msg')) $('confirm-msg').innerText = body;
 
-    let container = $('confirm-btn-container');
-    if (container) {
-        container.innerHTML = '<button class="confirm-btn bg-dark-green" id="btn-yes">확인</button><button class="confirm-btn bg-gray" id="btn-no">취소</button>';
-    }
-    let closeContainer = $('modal-fixed-close-wrap');
-    if (closeContainer) closeContainer.innerHTML = '';
+    let inputEl = $('confirm-input');
+    if (inputEl) inputEl.style.display = 'none';
 
-    modal.style.display = 'flex';
-    
-    // 💡 [핵심 해결] 팝업이 캐릭터 선택창 등 다른 창 뒤로 숨는 현상을 강제로 차단!
-    modal.style.setProperty('z-index', '99999999', 'important'); 
-    
-    bindPromptButtons();
-    confirmCallback = callback;
+    let container = $('confirm-btn-container');
+    if (container) {
+        container.innerHTML = '<button class="confirm-btn bg-dark-green" id="btn-yes">확인</button><button class="confirm-btn bg-gray" id="btn-no">취소</button>';
+    }
+    let closeContainer = $('modal-fixed-close-wrap');
+    if (closeContainer) closeContainer.innerHTML = '';
+
+    modal.style.display = 'flex';
+    modal.style.setProperty('z-index', '99999999', 'important'); 
+    
+    bindPromptButtons();
+    confirmCallback = callback;
+    confirmCancelCallback = cancelCallback; // 💡 취소 콜백 등록
 };
 
 window.showPrompt = function(msg, defaultVal, maxVal, callback, isText = false) { 
@@ -2180,12 +2211,19 @@ function bindPromptButtons() {
             if(modal) modal.style.display = 'none'; 
             if(btnNo && btnNo.style.display === 'none') btnNo.style.display = 'inline-block'; 
             if(confirmCallback) { let cb = confirmCallback; confirmCallback = null; cb(); } 
+            confirmCancelCallback = null;
         };
     }
     if(btnNo) {
         btnNo.onclick = () => { 
             if(modal) modal.style.display = 'none'; 
             confirmCallback = null; 
+            // 💡 취소/거절 시 등록된 취소 콜백(party_reject 발송) 실행
+            if(confirmCancelCallback) { 
+                let ccb = confirmCancelCallback; 
+                confirmCancelCallback = null; 
+                ccb(); 
+            }
         };
     }
 }
@@ -4573,15 +4611,22 @@ function processChatCommand(cmdStr) {
         addMessage("/귓말 [이름] [할말] : 1:1 귓속말", '#fff', 'system');
         addMessage("/r [할말] : 마지막 귓속말 대상에게 빠른 답장", '#5cf', 'system');
         addMessage("/귓말종료 : 귓속말 고정(답장) 대상 해제", '#aaa', 'system');
+        addMessage("/파티초대 [이름], /파티탈퇴, /파티모드", '#5cf', 'system');
         
         if (window.isAdminAuth) {
-            addMessage("---- [👑 운영자 명령어] ----", '#f55', 'system');
-            addMessage("/공지, /소환, /아데나, /레벨, /이동, /청소", '#fd0', 'system');
-            addMessage("/운영자종료 : 운영자 권한 해제", '#aaa', 'system');
+            addMessage("---- [👑 운영자 명령어 목록] ----", '#ef4444', 'system');
+            addMessage("• /서버리부팅 : 서버 및 AI 봇 3초 후 동시 재부팅", '#fd0', 'system');
+            addMessage("• /모험가생성 : 기존 AI 삭제 후 고유 닉네임 100명 생성", '#fd0', 'system');
+            addMessage("• /공지 [내용] : 전체 유저 긴급 공지 전파", '#fd0', 'system');
+            addMessage("• /소환 [몬스터명] [수량] : 현재 위치 몬스터 소환", '#fd0', 'system');
+            addMessage("• /아데나 [수량], /레벨 [레벨] : 스펙 조정", '#fd0', 'system');
+            addMessage("• /이동 [맵코드], /청소 : 맵 이동 및 바닥 청소", '#fd0', 'system');
+            addMessage("• /플레이어삭제 [캐릭터명] : DB 영구 삭제", '#fd0', 'system');
+            addMessage("• /운영자종료 : 운영자 권한 해제", '#aaa', 'system');
         } else {
             addMessage("/운영자 [계정/비번] : 운영자 권한 획득", '#888', 'system');
         }
-    } 
+    }
 
     else if (cmd === '/파티초대') {
         if (args.length < 2) return addMessage("사용법: /파티초대 [캐릭터명]", '#f55', 'system');
@@ -4645,8 +4690,18 @@ function processChatCommand(cmdStr) {
                 addMessage("사용법: /공지 [등록할 공지 내용 및 업데이트 사항]", '#f55', 'system');
             }
         }
-        else if (cmd === '/모험가생성' || cmd === '/ai생성') {
+        // 💡 100명 생성 명령어 (기존 에이전트 자동 삭제 포함)
+        else if (cmd === '/모험가생성' || cmd === '/ai생성' || cmd === '/100명생성') {
             generateAIAgents();
+        }
+        // 💡 server.js + aiAgentRunner.js 원클릭 동시 재부팅 명령어
+        else if (cmd === '/서버리부팅' || cmd === '/전체리부팅' || cmd === '/리부팅') {
+            showConfirm("⚠️ [경고] 서버(server.js)와 AI 봇(aiAgentRunner.js)을 재부팅하시겠습니까?\n접속자 데이터 안전 저장 후 즉시 재시작됩니다.", () => {
+                if (window.socket) {
+                    window.socket.emit('admin_reboot_all');
+                    addMessage("🔄 서버 및 AI 에이전트 리부팅 신호를 전송했습니다.", '#fd0', 'system');
+                }
+            });
         }
         else if (cmd === '/공지창' || cmd === '/게시판관리') {
             if (typeof window.openAdminNoticeManager === 'function') {
@@ -4821,38 +4876,51 @@ async function generateAIAgents() {
     const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
     if (!sb || !currentUser) return addMessage("로그인 정보 또는 DB 연결이 유효하지 않습니다.", '#f55', 'system');
     
-    addMessage("실제 플레이어 스펙의 가상 모험가 42명 데이터를 생성합니다...", '#fd0', 'system');
+    addMessage("🔄 [1/2] 기존 AI 모험가 데이터를 Supabase에서 삭제 중입니다...", '#fd0', 'system');
     
-    let classes = ['knight', 'wizard', 'elf'];
-    let alignments = [30000, 0, -30000];
-    
-    let namePool = [
-        '바다', '하늘', '구름', '별빛', '달빛', '바람', '산소', '노을', '파도', '햇살', 
-        '소나무', '단풍', '우주', '대지', '폭포', '이슬', '안개', '번개', '태양', '은하',
-        '상추', '당근', '양파', '토마토', '브로콜리', '감자', '고구마', '참외', '수박', '체리',
-        '보석바', '메로나', '새우깡', '초코파이', '몽쉘', '포카칩', '너구리', '진라면', '참치캔',
-        '질풍', '무법자', '사신', '암살자', '백작', '영웅', '전설', '타이탄', '바이퍼', '카이로'
-    ];
-    
-    let usedNames = new Set();
-    let successCount = 0;
-    
-    for (let i = 1; i <= 42; i++) {
-        let baseWord = namePool[Math.floor(Math.random() * namePool.length)];
-        let randomName = baseWord + (Math.floor(Math.random() * 89) + 10);
-        while (usedNames.has(randomName)) {
-            randomName = baseWord + Math.floor(Math.random() * 999);
-        }
-        usedNames.add(randomName);
+    // 1. 기존 AI 에이전트(slot_index >= 100) 전체 삭제
+    const { error: delError } = await sb.from('characters').delete().gte('slot_index', 100);
+    if (delError) {
+        return addMessage(`기존 AI 데이터 삭제 실패: ${delError.message}`, '#f55', 'system');
+    }
 
+    addMessage("✨ [2/2] 고유 닉네임 100명 완벽 생성을 시작합니다...", '#5cf', 'system');
+
+    // 2. 넉넉한 120개 순수 한글 고유 닉네임 풀 (숫자 없음)
+    const pureNamePool = [
+        '바다', '하늘', '구름', '별빛', '달빛', '바람', '노을', '파도', '햇살', '이슬',
+        '안개', '번개', '태양', '은하', '서리', '새벽', '황혼', '설원', '단풍', '초원',
+        '산울림', '물안개', '달그림자', '미르', '가람', '나래', '라온', '마루', '아라', '다솜',
+        '늘봄', '온새미로', '하랑', '한결', '보람', '찬란', '아련', '적막', '여명', '월광',
+        '칠흑', '심연', '침묵', '고독', '비상', '선율', '잔향', '질풍', '무법자', '사신',
+        '암살자', '백작', '영웅', '전설', '타이탄', '바이퍼', '카이로', '흑기사', '성기사', '용기사',
+        '그림자', '발키리', '버서커', '슬레이어', '소드마스터', '마도사', '정령왕', '궁수', '스나이퍼', '팬텀',
+        '불패', '패왕', '제왕', '절대자', '천존', '군림', '혈왕', '광풍', '폭풍', '천둥',
+        '염화', '빙결', '뇌제', '패도', '혈풍', '일격', '극의', '무신', '투신', '검선',
+        '패황', '구문룡', '포세이돈', '집행자', '붉은사자', '하얀늑대', '사이하', '그랑카인', '아인하사드', '단테스',
+        '커츠', '바포메트', '데스나이트', '오만', '화룡', '수룡', '풍룡', '지룡', '혜성', '은하수',
+        '푸른달', '붉은달', '칼날', '방패', '수호자', '추적자', '심판관', '방랑자', '선봉장', '결사대'
+    ];
+
+    // 무작위 셔플
+    let candidateNames = pureNamePool.sort(() => 0.5 - Math.random());
+
+    const classes = ['knight', 'wizard', 'elf'];
+    const alignments = [30000, 0, -30000];
+    let successCount = 0;
+    let slotOffset = 1;
+
+    // 💡 100명이 완전히 채워질 때까지 풀에서 꺼내어 생성 (중복 시 다음 닉네임 자동 사용)
+    while (successCount < 100 && candidateNames.length > 0) {
+        let uniqueName = candidateNames.pop();
         let cClass = classes[Math.floor(Math.random() * classes.length)];
         let align = alignments[Math.floor(Math.random() * alignments.length)];
         
-        let lv = Math.floor(Math.random() * 41) + 15; 
-        let startAdena = 500000 + (lv * 50000);
+        let lv = Math.floor(Math.random() * 46) + 15; // Lv.15 ~ 60
+        let startAdena = 500000 + (lv * 40000);
 
         let pData = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { hp: 150, maxHp: 150, mp: 30, maxMp: 30, inv: [] };
-        pData.name = randomName;
+        pData.name = uniqueName;
         pData.charClass = cClass;
         pData.alignment = align;
         pData.level = lv;
@@ -4894,19 +4962,22 @@ async function generateAIAgents() {
         pData.inv.push({ name: '주홍 물약', count: 500, type: 'potion', heal: 60 });
         pData.inv.push({ name: '귀환 주문서', count: 50, type: 'scroll' });
 
-        const { error } = await sb.from('characters').upsert([{
+        const { error } = await sb.from('characters').insert([{
             user_id: currentUser.id,
-            slot_index: 100 + i, 
+            slot_index: 100 + slotOffset,
             name: pData.name,
             class_name: cClass,
             data: { player: pData, last_sync_time: 0 }
-        }], { onConflict: 'user_id,slot_index' });
+        }]);
 
-        if (!error) successCount++;
+        if (!error) {
+            successCount++;
+            slotOffset++;
+        }
     }
-    addMessage(`스펙업된 가상 모험가 42명 중 ${successCount}명 생성 완료!`, '#5f5', 'system');
-}
 
+    addMessage(`🎉 고유 닉네임 가상 모험가 ${successCount}명 생성 완료!`, '#5f5', 'system');
+}
 
 
 // ==========================================
@@ -5146,12 +5217,15 @@ window.selectedAllyId = null;
 
 window.selectAlly = function(id, name) {
     if (typeof playSound === 'function') playSound('click');
+    let targetEnt = entities.find(e => e.id === id || e.socketId === id || e.id === 'merc_' + id);
     
     if (window.selectedAllyId === id) {
         window.selectedAllyId = null;
+        player.friendlyTarget = null;
         if (typeof addMessage === 'function') addMessage(`[선택 해제] 아군 선택이 취소되었습니다.`, '#aaa');
     } else {
         window.selectedAllyId = id;
+        player.friendlyTarget = targetEnt || null;
         if (typeof addMessage === 'function') addMessage(`[아군 선택] ${name}님에게 힐/버프 조준 완료!`, '#5f5');
     }
     
@@ -5903,3 +5977,28 @@ window.sendPopupChatMessage = function() {
 document.addEventListener('DOMContentLoaded', () => {
     injectMobileChatHistoryBtn();
 });
+
+
+// ==========================================
+// 🎵 [보스 어그로 및 BGM 자동 전환 상시 감지 타이머]
+// ==========================================
+setInterval(() => {
+    if (typeof gameStarted === 'undefined' || !gameStarted || !player) return;
+
+    // 플레이어의 타겟이 보스이고, 거리가 450px 이내로 교전 중일 때
+    let hasBossAggro = player.target && player.target.isBoss && Math.hypot(player.target.x - player.x, player.target.y - player.y) <= 450;
+
+    if (hasBossAggro && !window._isFightingBoss) {
+        window._isFightingBoss = true;
+        if (typeof playBossThemeByEntity === 'function') {
+            playBossThemeByEntity(player.target);
+        }
+    } 
+    else if (!hasBossAggro && window._isFightingBoss) {
+        // 보스를 처치했거나 멀어져서 어그로가 해제된 경우 원래 맵 BGM으로 복구
+        window._isFightingBoss = false;
+        if (typeof changeBGM === 'function') {
+            changeBGM(currentMap);
+        }
+    }
+}, 200);
