@@ -1,4 +1,4 @@
-// server.js (최종 통합 버전)
+// server.js (LTE 최적화 및 어스바인드/스턴 통합 버전)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -172,7 +172,9 @@ function generateServerDropItem(baseItem) {
     return item;
 }
 
+// ==========================================
 // 2. 소켓 통신 처리
+// ==========================================
 io.on('connection', (socket) => {
     console.log(`[+] 유저 연결됨: ${socket.id}`);
 
@@ -720,6 +722,9 @@ io.on('connection', (socket) => {
     socket.on('admin_reboot_all', handleAdminReboot);
     socket.on('admin_reboot_server', handleAdminReboot);
 
+    // ==========================================
+    // ⚔️ [플레이어 타격 연산 및 마법 상태이상 구현]
+    // ==========================================
     const handlePlayerAttack = (payload = {}) => {
         let p = players[socket.id];
         if (!p || !mapsState[p.map]) return;
@@ -742,7 +747,10 @@ io.on('connection', (socket) => {
         let spellName = payload.magicName;
         let finalDamage = 10;
 
-        if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
+        // 💡 [추가] 어스 바인드 등 무적 상태면 데미지 무시 (0 고정)
+        if (monster.invincibleUntil && Date.now() < monster.invincibleUntil) {
+            finalDamage = 0;
+        } else if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
             finalDamage = Math.max(1, payload.calculatedDmg - Math.floor((monster.def || 0) / 3));
         } else {
             let statAtk = Math.max(1, Math.floor((p.str - 10) * 3.2));
@@ -752,8 +760,12 @@ io.on('connection', (socket) => {
 
         monster.hp -= finalDamage;
         
+        // 💡 [추가] 스턴 및 어스 바인드 상태 이상 적용
         if (spellName === '쇼크 스턴') {
-            monster.stunnedUntil = Date.now() + 2500;
+            monster.stunnedUntil = Date.now() + 3000;
+        } else if (spellName === '어스 바인드') {
+            monster.stunnedUntil = Date.now() + 5000;
+            monster.invincibleUntil = Date.now() + 5000;
         }
 
         monster.damageMap = monster.damageMap || {};
@@ -951,6 +963,9 @@ io.on('connection', (socket) => {
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
 
+    // ==========================================
+    // 👥 [파티 관련 이벤트 리스너]
+    // ==========================================
     socket.on('party_invite', (payload = {}) => {
         let targetSocket = io.sockets.sockets.get(payload.targetSocketId);
         if (targetSocket) {
@@ -1097,7 +1112,9 @@ io.on('connection', (socket) => {
     });
 }); 
 
-// 3. 서버 몬스터 AI & 보스 장판/타격 연산 (40ms)
+// ==========================================
+// 3. 서버 몬스터 AI & 보스 장판/타격 연산
+// ==========================================
 function processMonsterAI() {
     let now = Date.now();
     
@@ -1182,13 +1199,17 @@ function processMonsterAI() {
             }
             
             if (mob.targetId && target) {
+                // 💡 [추가] 몬스터가 스턴이거나 어스바인드 상태면 이동 및 공격 불가
+                if (mob.stunnedUntil && now < mob.stunnedUntil) return;
+
                 let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
                 let stopDist = (mob.size || 20) + 40;
 
                 if (dist > stopDist) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                     let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
-                    let mSpeed = baseMobSpeed * (40 / 1000);
+                    // 💡 [수정] 서버 연산 주기 80ms로 하향하여 LTE 환경 트래픽 대폭 절감
+                    let mSpeed = baseMobSpeed * (80 / 1000); 
                     
                     mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
                     mob.y = Math.max(150, Math.min(3850, mob.y + Math.sin(angle) * mSpeed));
@@ -1333,7 +1354,9 @@ function processMonsterAI() {
     }
 }
 
-// 몬스터 자동 리스폰
+// ==========================================
+// 4. 몬스터 스폰 및 타이머 
+// ==========================================
 function processMonsterSpawning() {
     for (let mapId in data.maps) {
         let mData = data.maps[mapId];
@@ -1403,8 +1426,9 @@ setInterval(() => {
     }
 }, 10000); 
 
+// 💡 [수정] 40ms -> 80ms 서버 연산 주기 하향 (LTE 통신 트래픽 50% 최적화)
 setInterval(processMonsterSpawning, 1000);
-setInterval(processMonsterAI, 40);
+setInterval(processMonsterAI, 80);
 
 // ==========================================
 // 🔥 [보스 레이드 멀티 인스턴스 방 객체 및 15초 카운트다운 루프]

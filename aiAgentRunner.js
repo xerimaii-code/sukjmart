@@ -750,7 +750,7 @@ class AIAgentClient {
 
     manageMercenaries(dtMs) {
         let now = Date.now();
-        let baseSpeed = 120;
+        let baseSpeed = 200;
          
         for (let i = this.charData.mercs.length - 1; i >= 0; i--) {
             let m = this.charData.mercs[i];
