@@ -1618,10 +1618,13 @@ function renderHotkeys() {
         let hk = hotkeys[i];
         if(hk && hk.id) {
             if(hk.type === 'magic') { 
-                icon.innerHTML = magicDb[hk.id] ? magicDb[hk.id].icon : '✨'; cnt.innerText = ''; 
-                let mData = magicDb[hk.id];
+                // 💡 아이콘 매핑이 없으면 기본 이모지 '🪨' 또는 '✨' 출력
+                let mIcon = (typeof magicDb !== 'undefined' && magicDb[hk.id]) ? magicDb[hk.id].icon : '✨';
+                if (hk.id === '어스 바인드') mIcon = '🪨';
+                icon.innerHTML = mIcon; 
+                cnt.innerText = ''; 
                 
-                // 💡 [수정] 공용 lastSpellCastTime 대신 마법별 개별 쿨타임(player.spellCooldowns) 기록을 참조하도록 변경
+                let mData = typeof magicDb !== 'undefined' ? magicDb[hk.id] : null;
                 let lastCast = (player && player.spellCooldowns && player.spellCooldowns[hk.id]) || 0;
                 if (mData && mData.cd && lastCast > 0 && now - lastCast < mData.cd) { 
                     cdOverlay.style.height = `${100 - ((now - lastCast) / mData.cd) * 100}%`; 
@@ -2037,19 +2040,26 @@ window.renderMagicBook = function() {
         winMagic.style.maxWidth = '95vw';
     }
 
+    // 💡 [수정1] 부모 껍데기 박스가 자식 때문에 늘어나지 않도록 구조 강제 고정
+    listEl.style.overflow = 'hidden';
+    listEl.style.display = 'flex';
+    listEl.style.flexDirection = 'column';
+
     player.magic = player.magic || [];
     player.magicLevels = player.magicLevels || {};
     let html = '';
 
     html += `
-    <div style="display:flex; flex-direction:row; gap:3px; margin-bottom:8px; background:#111116; padding:3px; border-radius:4px; border:1px solid #33333d; width:100%; box-sizing:border-box;">
+    <div style="display:flex; flex-direction:row; gap:3px; margin-bottom:8px; background:#111116; padding:3px; border-radius:4px; border:1px solid #33333d; width:100%; box-sizing:border-box; flex-shrink: 0;">
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab==='all'?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab('all')">전체</button>
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===1?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(1)">1단</button>
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===2?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(2)">2단</button>
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===3?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(3)">3단</button>
         <button type="button" class="menu-btn" style="flex:1; height:24px; min-height:24px; padding:0; font-size:11px; ${window.currentMagicTab===4?'background:#334;color:#fd0;border-color:#fd0;':''}" onclick="setMagicTab(4)">4단</button>
     </div>
-    <div style="display:flex; flex-direction:column; gap:4px; padding-right:2px;">`;
+    
+    <!-- 💡 [핵심 수정2] 이 영역에 고정 높이(height: 260px)를 박아버려서 절대 박스 아래로 뚫고 나가지 못하게 완벽 차단 -->
+    <div style="display:flex; flex-direction:column; gap:4px; padding-right:4px; height: 260px; overflow-y: auto !important; overflow-x: hidden; box-sizing: border-box;">`;
 
     let sortedMagic = [...player.magic].sort((a, b) => getMagicLevelTier(a) - getMagicLevelTier(b) || a.localeCompare(b));
     let filteredMagic = sortedMagic.filter(m => window.currentMagicTab === 'all' || getMagicLevelTier(m) === window.currentMagicTab);
@@ -2066,12 +2076,13 @@ window.renderMagicBook = function() {
 
             if (window.currentMagicTab === 'all' && tier !== currentTier) {
                 currentTier = tier;
-                html += `<div style="color:#fd0; font-size:11px; font-weight:bold; margin:6px 0 2px 2px; border-bottom:1px dashed #444; padding-bottom:2px;">[ ${currentTier} 서클 ]</div>`;
+                // flex-shrink: 0 을 주어 타이틀이 찌그러지지 않게 방어
+                html += `<div style="color:#fd0; font-size:11px; font-weight:bold; margin:6px 0 2px 2px; border-bottom:1px dashed #444; padding-bottom:2px; flex-shrink:0;">[ ${currentTier} 서클 ]</div>`;
             }
 
-            // 💡 한 줄(가로) 정렬 적용
+            // flex-shrink: 0 을 주어 아이템 행이 찌그러지지 않게 방어
             html += `
-            <div draggable="true" ondragstart="startDragMagic(event, '${m}')" style="padding:4px 8px; border:1px solid #333344; border-radius:4px; background:linear-gradient(to right, #181824, #0f0f16); color:#ddd; display:flex; flex-direction:row; align-items:center; justify-content:space-between; box-sizing:border-box; width:100%; cursor:grab; height:34px;" oncontextmenu="openMagicActionModal('${m}'); return false;">
+            <div draggable="true" ondragstart="startDragMagic(event, '${m}')" style="flex-shrink:0; padding:4px 8px; border:1px solid #333344; border-radius:4px; background:linear-gradient(to right, #181824, #0f0f16); color:#ddd; display:flex; flex-direction:row; align-items:center; justify-content:space-between; box-sizing:border-box; width:100%; cursor:grab; height:34px;" oncontextmenu="openMagicActionModal('${m}'); return false;">
                 <div style="display:flex; gap:6px; align-items:center; min-width:0; overflow:hidden;">
                     <span style="font-size:16px; flex-shrink:0;">${mData.icon || '✨'}</span>
                     <span style="font-weight:bold; color:#fff; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m}</span>
@@ -2089,7 +2100,6 @@ window.renderMagicBook = function() {
     html += `</div>`;
     listEl.innerHTML = html;
 };
-
 // ==========================================
 // [7. 팝업 / 확인 모달 및 윈도우 드래그]
 // ==========================================
@@ -2325,14 +2335,10 @@ window.removeMagicOption = function(stackKey, idx) {
 };
 
 window.assignHotkeyFromModal = function(idx) { 
-    if(!selectedItemForAction) return; 
+    if (!selectedItemForAction) return; 
     
-    if(selectedItemForAction.isMagic) { 
+    if (selectedItemForAction.isMagic) { 
         let mKey = selectedItemForAction.itemName;
-        if (typeof magicDb !== 'undefined' && !magicDb[mKey]) {
-            let found = Object.keys(magicDb).find(k => k === mKey || magicDb[k].name === mKey);
-            if (found) mKey = found;
-        }
         hotkeys[idx] = { type: 'magic', id: mKey }; 
         if (typeof addMessage === 'function') addMessage(`[F${idx+5}] 슬롯에 [${mKey}] 마법 등록 완료`, '#5f5'); 
     } else { 
@@ -5307,20 +5313,13 @@ function injectMobileBottomFix() {
 
 
 
-        #shop-list, #inv-list, #inv-tab-equip, #magic-list, #teleport-list {
-
+        #shop-list, #inv-list, #inv-tab-equip, #teleport-list {
             max-height: 55vh !important;
-
             overflow-y: scroll !important;
-
             scrollbar-gutter: stable;
-
             overflow-x: hidden !important;
-
             box-sizing: border-box !important;
-
             padding-right: 4px !important;
-
         }
 
 
@@ -5829,13 +5828,17 @@ window.openMagicActionModal = function(magicName) {
     let mData = typeof magicDb !== 'undefined' ? magicDb[magicName] : null;
     if (!mData) return;
 
-    selectedItemForAction = { isMagic: true, itemName: magicName };
+    // 💡 마법 고유 플래그 확정
+    selectedItemForAction = { 
+        isMagic: true, 
+        itemName: magicName,
+        itemType: 'magic'
+    };
 
     if ($('action-modal-title')) $('action-modal-title').innerText = `마법 설정 (${magicName})`;
 
     let html = `<b class="tooltip-title" style="color:#60a5fa">${magicName}</b><br>`;
     html += `<span style="color:#88aaff; font-size:12px;">소모 MP: ${mData.mp}</span>`;
-    // 💡 쿨타임(ms)을 초(s) 단위로 변환하여 표시
     if (mData.cd) html += ` <span style="color:#facc15; font-size:12px; margin-left:8px;">쿨타임: ${(mData.cd / 1000).toFixed(1)}초</span>`;
     html += `<br>`;
     if (mData.dmg) html += `위력/피해량: ${mData.dmg}<br>`;
@@ -5847,7 +5850,7 @@ window.openMagicActionModal = function(magicName) {
         if ($('action-modal-desc')) $('action-modal-desc').innerHTML = html;
         
         let mgmtEl = $('action-modal-item-mgmt');
-        if (mgmtEl) mgmtEl.style.display = 'flex';
+        if (mgmtEl) mgmtEl.style.display = 'none';
 
         let purgeBtn = $('btn-purge-magic');
         if (purgeBtn) purgeBtn.style.display = 'none';

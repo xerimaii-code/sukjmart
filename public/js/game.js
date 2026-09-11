@@ -2358,6 +2358,45 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.moveTo(size, -35 - size); ctx.lineTo(-size, -35 + size);
                 ctx.stroke();
             }
+            else if (p.type === 'earth_bind') {
+                let r = (p.size || 40) * (0.8 + Math.sin(progress * Math.PI) * 0.2);
+                
+                ctx.save();
+                ctx.scale(1, 0.45);
+                ctx.fillStyle = `rgba(60, 30, 10, ${0.7 * (1 - progress)})`;
+                ctx.beginPath();
+                ctx.arc(0, 0, r * 1.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+
+                ctx.fillStyle = '#78350f';
+                ctx.strokeStyle = '#271005';
+                ctx.lineWidth = 2;
+
+                for (let k = 0; k < 5; k++) {
+                    let ang = (Math.PI * 2 / 5) * k;
+                    let rx = Math.cos(ang) * (r * 0.75);
+                    let ry = Math.sin(ang) * (r * 0.35) - 20;
+                    let rockH = 45 * Math.sin(Math.min(1, progress * 2) * Math.PI * 0.5);
+
+                    ctx.beginPath();
+                    ctx.moveTo(rx, ry - rockH);
+                    ctx.lineTo(rx - 12, ry + 10);
+                    ctx.lineTo(rx + 12, ry + 10);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.fillStyle = '#a16207';
+                    ctx.beginPath();
+                    ctx.moveTo(rx, ry - rockH);
+                    ctx.lineTo(rx, ry + 10);
+                    ctx.lineTo(rx + 12, ry + 10);
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.fillStyle = '#78350f';
+                }
+            }
             else if (p.type === 'immune_to_harm') {
                 ctx.shadowBlur = 30; ctx.shadowColor = '#ff44bb';
                 ctx.strokeStyle = 'rgba(255, 100, 210, 0.95)'; ctx.lineWidth = 4;
@@ -4765,8 +4804,8 @@ window.updateMercenaryAI = function() {
 
     let playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
     let baseSpeed = player.currentSpeed || 180;
-    let followSpeed = (baseSpeed + (playerHasHaste ? 100 : 0)) * (dt / 1000);
-    let combatApproachSpeed = (baseSpeed * 0.95 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
+    let followSpeed = (baseSpeed + 30 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
+    let combatApproachSpeed = (baseSpeed + 15 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
 
     const executeMercAttack = (e, chosenSpell) => {
         e.lastAttack = now;

@@ -1014,7 +1014,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
             <span>마법책</span> 
             <span class="win-close" onclick="toggleWindow('win-magic')">X</span>
         </div>
-        <div class="win-content" style="padding:10px; max-height:300px;" id="magic-list"></div>
+      
+        <div class="win-content" style="padding:10px; max-height:300px; overflow-y: auto;" id="magic-list"></div>
     </div>
     
     <div class="window" id="win-shop" style="width: 350px;">
