@@ -977,15 +977,15 @@ io.on('connection', (socket) => {
     });
 
     socket.on('party_reject', (payload = {}) => {
-        let inviterSocket = io.sockets.sockets.get(payload.inviterSocketId);
-        if (inviterSocket) {
-            inviterSocket.emit('party_reject', {
-                rejectorSocketId: socket.id,
-                rejectorName: payload.rejectorName || players[socket.id]?.name || '모험가'
-            });
-        }
-    });
-
+    let inviterSocket = io.sockets.sockets.get(payload.inviterSocketId);
+    if (inviterSocket) {
+        inviterSocket.emit('party_reject', {
+            rejectorSocketId: socket.id,
+            rejectorName: payload.rejectorName || players[socket.id]?.name || '모험가',
+            type: payload.type || 'soft' // 💡 type 필드 추가 전달
+        });
+    }
+});
     socket.on('party_accept', (payload = {}) => {
         let inviter = players[payload.inviterSocketId];
         let accepter = players[socket.id];

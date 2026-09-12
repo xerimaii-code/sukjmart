@@ -1,5 +1,5 @@
 // =========================================================================
-// aiAgentRunner.js (Groq LLM 연동, 5인 파티/초대 거절 차단/보스 BGM 연동 통합본)
+// aiAgentRunner.js (Groq LLM 연동, 자율 파티 초대, 맵 이동/점사 추적 통합본)
 // =========================================================================
 require('dotenv').config();
 const io = require('socket.io-client');
@@ -101,8 +101,9 @@ class AIAgentClient {
         this.nextMercCheckTime = Date.now() + (Math.random() * 10000);
         this.lastRegenTime = Date.now();
         
-        // 💡 [초대 관리 메모리] 거절한 유저 목록 및 개별 초대 쿨타임
+        // 💡 [초대 관리 메모리] 자율 파티 초대 관련
         this.lastPartyInviteTime = 0;
+        this.lastProactiveInviteCheck = Date.now();
         this.rejectedTargets = new Set();
         this.invitedHistory = new Map();
 
@@ -113,7 +114,7 @@ class AIAgentClient {
 
         this.chatHistory = [];
         this.combatMemory = "최근 평범하게 사냥 중입니다.";
-        this.partyData = null; // 최대 5명
+        this.partyData = null; 
         this.lastInviterSocketId = null;
         this.lastInviterName = null;
         this.followTarget = null;
@@ -130,9 +131,14 @@ class AIAgentClient {
             "농담과 장난을 좋아하고 ㅋㅋㅋ를 자주 붙이는 활발한 수다쟁이 게이머",
             "승부욕이 강하고 사냥 방해에 민감한 호전적인 게이머"
         ];
+        
+        // 💡 성향에 따른 먼저 파티 초대 보낼 확률(가중치) 설정
+        const inviteWeightMap = [0.05, 0.70, 0.20, 0.60, 0.80, 0.00];
+        
         let hash = 0;
         for (let i = 0; i < this.charData.name.length; i++) hash += this.charData.name.charCodeAt(i);
         this.personality = personalities[hash % personalities.length];
+        this.autoInviteChance = inviteWeightMap[hash % inviteWeightMap.length]; // 확률 매핑
 
         this.learnMagicForLevel(); 
         this.connect();
@@ -142,7 +148,7 @@ class AIAgentClient {
         this.socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
         this.socket.on('connect', () => {
             this.charData.id = this.socket.id; 
-            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass})`);
+            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass}) - 자율초대확률: ${this.autoInviteChance*100}%`);
              
             let startMap = this.determineBestMap();
             this.charData.map = startMap;
@@ -217,7 +223,6 @@ class AIAgentClient {
             }
         });
 
-        // 👥 파티 초대 수신 (5인 제한)
         this.socket.on('party_invite_received', (packet) => {
             let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
             if (currentMembersCount >= 5) {
@@ -228,13 +233,18 @@ class AIAgentClient {
             this.lastInviterName = packet.inviterName;
         });
 
-        // 💡 [신규] 유저가 파티 초대를 거절했을 때 블랙리스트 등록
         this.socket.on('party_reject', (packet) => {
-            if (packet && packet.rejectorName) {
-                this.rejectedTargets.add(packet.rejectorName);
-                console.log(`[파티 거절 수신] ${packet.rejectorName}님이 초대를 거절하여 블랙리스트에 등록합니다.`);
-            }
-        });
+    if (packet && packet.rejectorName) {
+        if (packet.type === 'hard') {
+            this.rejectedTargets.add(packet.rejectorName);
+            console.log(`[파티 거절-차단] ${packet.rejectorName}님이 초대를 차단했습니다.`);
+        } else {
+            // soft 거절일 경우, 블랙리스트에는 넣지 않고 5분 쿨타임만 갱신
+            this.invitedHistory.set(packet.rejectorName, Date.now());
+            console.log(`[파티 거절-단순] ${packet.rejectorName}님이 초대를 거절했습니다. 5분 뒤 쿨타임 해제.`);
+        }
+    }
+});
 
         this.socket.on('party_update', (packet) => {
             const prevParty = this.partyData;
@@ -297,7 +307,6 @@ class AIAgentClient {
             scale = Math.pow(1.15, Math.max(0, lv - 1));
             maxExp = Math.floor(baseExp * lv * scale);
         }
-        if (leveledUp) console.log(`[🎉 레벨업] ${this.charData.name} -> Lv.${this.charData.level}`);
     }
 
     learnMagicForLevel() {
@@ -327,6 +336,48 @@ class AIAgentClient {
         }
     }
 
+    // 💡 [신규] 자율 파티 초대 탐색 로직 (LLM 없이 구동)
+    checkProactivePartyInvite() {
+        let now = Date.now();
+        if (now - this.lastProactiveInviteCheck < 15000) return;
+        this.lastProactiveInviteCheck = now;
+
+        if (this.autoInviteChance <= 0) return;
+        let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
+        if (currentMembersCount >= 5) return;
+        if (this.partyData && this.partyData.leader !== this.socket.id) return;
+
+        let candidates = this.worldPlayers.filter(p => {
+            if (!p || p.socketId === this.socket.id) return false;
+            if (p.map !== this.charData.map) return false;
+            if (this.rejectedTargets.has(p.name)) return false; 
+
+            let lastInvited = this.invitedHistory.get(p.name) || 0;
+            if (now - lastInvited < 300000) return false; // 5분 쿨
+
+            let lvDiff = Math.abs((p.level || 1) - (this.charData.level || 1));
+            if (lvDiff > 5) return false; // 5레벨 이하 차이만 초대
+
+            let dist = Math.hypot(p.x - this.charData.x, p.y - this.charData.y);
+            return dist <= 500; // 화면 내 거리
+        });
+
+        if (candidates.length === 0) return;
+
+        if (Math.random() <= this.autoInviteChance) {
+            let target = candidates[Math.floor(Math.random() * candidates.length)];
+            this.invitedHistory.set(target.name, now);
+
+            let targetSockId = target.socketId || target.id;
+            if (targetSockId) {
+                this.socket.emit('party_invite', {
+                    targetSocketId: targetSockId,
+                    targetName: target.name
+                });
+            }
+        }
+    }
+
     startLoop() {
         this.loopTimer = setInterval(() => {
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
@@ -343,6 +394,10 @@ class AIAgentClient {
 
             this.processAutoBuffs(); 
 
+            // 자율 초대 및 파티장 맵 추적 실행
+            this.checkProactivePartyInvite();
+            this.checkSmartMapNavigation();
+
             if (this.followTarget && this.state !== 'SHOPPING') {
                 this.executeFollowMovement();
             }
@@ -353,8 +408,6 @@ class AIAgentClient {
              
             this.checkMercenaryHire(); 
             this.manageMercenaries(100); 
-             
-            this.checkSmartMapNavigation();
 
             this.socket.emit('player_update', {
                 name: this.charData.name, charClass: this.charData.charClass,
@@ -494,7 +547,8 @@ class AIAgentClient {
             party: this.partyData ? {
                 isFocusMode: this.partyData.mode === 'focus',
                 leaderId: this.partyData.leader,
-                leaderTargetId: leaderEnt ? leaderEnt.targetId : null
+                leaderTargetId: leaderEnt ? leaderEnt.targetId : null,
+                leaderEnt: leaderEnt
             } : null,
             isInSafeZone: (m, x, y) => data.isInSafeZone(m, x, y),
             playSound: () => {}, 
@@ -624,9 +678,25 @@ class AIAgentClient {
         return availableMaps[rotationIndex];
     }
 
+    // 💡 [신규] 파티장 맵 이동 추적 로직 추가
     checkSmartMapNavigation() {
-        if (this.followTarget || this.partyData) return;
+        // 파티에 속해있으면 리더 맵 추적
+        if (this.partyData) {
+            let leaderInfo = this.partyData.members.find(m => m.socketId === this.partyData.leader);
+            if (leaderInfo && leaderInfo.socketId !== this.socket.id) {
+                // 파티 객체에서 리더의 맵 정보를 직접 확인
+                if (leaderInfo.map && leaderInfo.map !== this.charData.map) {
+                    // 현재 공격중인 타겟이 없거나 죽었을 때만 이동(잡던 건 마저 잡기)
+                    if (!this.charData.target || this.charData.target.hp <= 0) {
+                        this.teleport(leaderInfo.map, leaderInfo.x || 2000, leaderInfo.y || 2000);
+                        return;
+                    }
+                }
+            }
+            return; // 파티 중에는 혼자 사냥터를 변경하지 않음
+        }
 
+        // 혼자일 때의 스마트 내비게이션
         if (Date.now() - this.lastMapCheckTime > 180000) { 
             this.lastMapCheckTime = Date.now();
             if (!this.charData.target && this.state === 'HUNTING') {
@@ -1031,7 +1101,6 @@ ${situationContext}
                 }
                 break;
 
-            // 💡 [거절 유저 영구 차단 & 5분 쿨타임 제어 포함]
             case 'PARTY_INVITE':
                 let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
                 if (currentMembersCount >= 5) break;
@@ -1040,7 +1109,6 @@ ${situationContext}
                     let pName = targetPl.name;
                     let lastInvitedTime = this.invitedHistory.get(pName) || 0;
 
-                    // 플레이어가 한 번이라도 거절했거나, 최근 5분 이내 이미 초대한 경우 즉시 취소
                     if (this.rejectedTargets.has(pName) || (Date.now() - lastInvitedTime < 300000)) {
                         break;
                     }
@@ -1144,7 +1212,6 @@ ${situationContext}
 async function manageAgentRotation() {
     if (activeAgents.length < MAX_CONCURRENT) {
         let needed = MAX_CONCURRENT - activeAgents.length;
-        // 💡 limit을 42에서 100으로 확장하여 100명 전체에서 10명씩 순환 활동
         const { data: aiChars } = await supabase.from('characters').select('*').gte('slot_index', 100).limit(100);
         if (!aiChars) return;
         let offlineList = aiChars.filter(dbChar => !activeAgents.some(a => a.charData.name === dbChar.name));
