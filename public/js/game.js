@@ -1543,6 +1543,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
 
 
 
+
+
+
 function drawNPC(ctx, n, timestamp) { 
     ctx.save(); ctx.translate(n.x, n.y); let sz = 20; 
     ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.ellipse(0, sz*0.8, sz*0.8, sz*0.3, 0, 0, Math.PI*2); ctx.fill(); 
@@ -3307,24 +3310,26 @@ if (playerInSafeZone) {
    // ========================================================
     // 4. 타겟 유효성 및 수동 도망 시 어그로 이탈 검사
     // ========================================================
-    if (player.target) {
-        // 💡 고유 ID로 현재 맵에 살아있는 몬스터인지 확실하게 동기화
-        let liveTarget = entities.find(e => e && e.id === player.target.id && e.hp > 0 && !e.isDead);
+   if (player.target) {
+    let liveTarget = entities.find(e => e && e.id === player.target.id && e.hp > 0 && !e.isDead);
+    
+    if (!liveTarget || liveTarget.map !== currentMap || liveTarget.isPlayer || (liveTarget.isSummon && liveTarget.owner === player)) {
+        player.target = null;
+        player.isMoving = false;
+    } else {
+        player.target = liveTarget; 
         
-        if (!liveTarget || liveTarget.map !== currentMap || liveTarget.isPlayer || (liveTarget.isSummon && liveTarget.owner === player)) {
+        let distToTarget = Math.hypot(liveTarget.x - player.x, liveTarget.y - player.y);
+        // 💡 [수정] 파티 점사 중일 때는 거리가 멀어져도 타겟을 끊지 않고 끝까지 추적 (화면 밖 해제 방지)
+        let isPartyFocus = window.currentPartyData?.party?.mode === 'focus' && window.currentPartyData.party.leader !== (window.socket ? window.socket.id : null);
+        
+        if (!player.autoHunt && !isPartyFocus && distToTarget > 650) {
             player.target = null;
-            player.isMoving = false;
-        } else {
-            player.target = liveTarget; // 최신 좌표 객체로 갱신
-            
-            // 💡 [수정] 수동 조작 중일 때만 650px 이상 도망치면 타겟 해제 (자동사냥 중에는 먼 몬스터도 끝까지 추적)
-            let distToTarget = Math.hypot(liveTarget.x - player.x, liveTarget.y - player.y);
-            if (!player.autoHunt && distToTarget > 650) {
-                player.target = null;
-                if (typeof addMessage === 'function') addMessage("몬스터와 거리가 멀어져 타겟이 해제되었습니다.", "#aaa");
-            }
+            if (typeof addMessage === 'function') addMessage("몬스터와 거리가 멀어져 타겟이 해제되었습니다.", "#aaa");
         }
     }
+}
+
 if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
     window._lastHudUpdateTime = timestamp;
     if (typeof window.renderMercenaryHUD === 'function') window.renderMercenaryHUD();
@@ -4549,25 +4554,35 @@ window.socket.on('monster_hit', (data) => {
 
 
    window.socket.on('party_invite_received', (data) => {
-    showConfirm(
-        `${data.inviterName}님께서 파티 초대를 보냈습니다.\n수락하시겠습니까?`,
-        () => {
-            // [확인 클릭 시] 파티 수락
-            window.socket.emit('party_accept', { inviterSocketId: data.inviterSocketId });
+    let btns = [
+        {
+            text: "✅ 수락",
+            color: "#166534",
+            callback: () => { window.socket.emit('party_accept', { inviterSocketId: data.inviterSocketId }); }
         },
-        () => {
-            // [취소 클릭 시] 거절 패킷 전송 및 안내
-            window.socket.emit('party_reject', { 
-                inviterSocketId: data.inviterSocketId,
-                rejectorName: player.name 
-            });
-            if (typeof addMessage === 'function') {
-                addMessage(`[파티] ${data.inviterName}님의 초대를 거절했습니다.`, '#aaa');
+        {
+            text: "❌ 거절 (나중에 할게요)",
+            color: "#444",
+            callback: () => { 
+                window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'soft' }); 
+                if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 거절했습니다.`, '#aaa');
+            }
+        },
+        {
+            text: "🚫 차단 (다시는 초대하지 마세요)",
+            color: "#7f1d1d",
+            callback: () => { 
+                // 💡 [수정] 차단 버튼 클릭 시 한 번 더 물어보는 로직 추가
+                showConfirm(`정말 [${data.inviterName}]님의 파티 초대를 차단하시겠습니까?\n차단 시 이번 접속 중에는 다시 초대받지 않습니다.`, () => {
+                    // 확인을 눌렀을 때만 하드(영구) 거절 전송
+                    window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'hard' }); 
+                    if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 영구 차단했습니다.`, '#f55');
+                });
             }
         }
-    );
+    ];
+    showCustomPrompt(`[파티 초대]\n\n${data.inviterName}님께서 파티 초대를 보냈습니다.\n어떻게 하시겠습니까?`, btns);
 });
-
 
    
 // 💡 [클릭과 드래그 구분용 전역 변수]

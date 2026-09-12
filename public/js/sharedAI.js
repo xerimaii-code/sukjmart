@@ -1,4 +1,4 @@
-// sharedAI.js - 플레이어, 용병, 에이전트 공통 AI 엔진 (쿨타임 데드존, 마나 관리, 스마트 카이팅, 고유 패시브 통합 적용)
+// sharedAI.js - 플레이어, 용병, 에이전트 공통 AI 엔진 (쿨타임 데드존, 마나 관리, 스마트 카이팅, 고유 패시브, 파티 점사 통합 적용)
 (function(global) {
     const SharedAI = {
         processRoutine: function(entity, env) {
@@ -84,35 +84,30 @@
                 let isFocusMode = env.party && env.party.isFocusMode;
                 let leaderSocketId = env.party ? env.party.leaderId : null;
                 let amIFollower = env.party && isFocusMode && leaderSocketId !== entity.socketId && leaderSocketId !== entity.id;
+                let leaderTargetMob = null;
                 
+                // 💡 [핵심] 파티 점사 모드 및 파티장 추적 로직
                 if (amIFollower) {
                     let leaderTargetId = env.party.leaderTargetId;
-                    let leaderTargetMob = null; // 💡 변수 스코프 에러 원인 해결 (선언부 상단 분리)
 
                     if (leaderTargetId) {
                         leaderTargetMob = env.entities.find(e => e && e.id === leaderTargetId && e.hp > 0 && !e.isDead && e.map === env.currentMap);
-                        if (leaderTargetMob) {
-                            entity.target = leaderTargetMob;
-                            entity.isMoving = false;
-                            skipSearch = true;
-                        }
                     }
-
-                    let attackerMob = env.entities.find(e => 
-                        e && !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.map === env.currentMap && e.hp > 0 && !e.isDead &&
-                        (e.targetId === entity.socketId || e.targetId === entity.id || e.target === entity) &&
-                        Math.hypot(e.x - entity.x, e.y - entity.y) <= 400
-                    );
-
+                    
                     let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
 
-                    if (attackerMob && attackerMob.id !== (leaderTargetMob ? leaderTargetMob.id : null)) {
-                        if (!entity.target || entity.target.id !== attackerMob.id) {
-                            entity.target = attackerMob;
-                            entity.isMoving = false;
-                        }
+                    let distToLeader = leaderEnt ? Math.hypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y) : 0;
+                    
+                    // 현재 타겟이 죽었거나 없는데, 리더와 거리가 700 이상 떨어져 있으면 새로운 점사 타겟을 안 잡고 무조건 리더에게 다가감 (잡던 몹만 마저 잡음)
+                    if ((!entity.target || entity.target.hp <= 0) && leaderEnt && distToLeader > 700) {
+                        entity.target = null;
+                        let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
+                        entity.moveX = leaderEnt.x - Math.cos(angle) * 100;
+                        entity.moveY = leaderEnt.y - Math.sin(angle) * 100;
+                        entity.isMoving = true;
                         skipSearch = true;
                     } else if (leaderTargetMob) {
+                        // 리더 근처이거나 아직 잡던 몹이 있으면 점사
                         if (!entity.target || entity.target.id !== leaderTargetMob.id) {
                             entity.target = leaderTargetMob;
                             entity.isMoving = false;
@@ -120,7 +115,6 @@
                         skipSearch = true;
                     } else if (leaderEnt) {
                         if (entity.target) entity.target = null;
-                        let distToLeader = Math.hypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y);
                         if (distToLeader > 90) {
                             let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
                             entity.moveX = leaderEnt.x - Math.cos(angle) * 60;
@@ -148,7 +142,10 @@
 
                 let target = entity.target;
 
-                if (target) {
+                // 💡 [수정] 점사 모드일 경우 타겟 덮어쓰기 방어(Lock) 변수
+                let isFocusLocked = amIFollower && leaderTargetMob;
+
+                if (target && !isFocusLocked) {
                     let distToTarget = Math.hypot(target.x - entity.x, target.y - entity.y);
                     let attackers = env.entities.filter(e => e && e.map === env.currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && (e.targetId === entity.id || e.targetId === entity.socketId));
                     let bossAttacker = attackers.find(e => e.isBoss);
@@ -260,11 +257,10 @@
             let maxMp = entity.maxMp || 100;
             let chosenSpell = null;
 
-         if (target) {
+            if (target) {
                 let dbRef = typeof magicDb !== 'undefined' ? magicDb : (typeof data !== 'undefined' ? data.magicDb : {});
 
                 if (isMerc) {
-                    // 💡 [버그 픽스] 에이전트 용병도 레벨에 맞는 스킬을 강제로 장착시킵니다.
                     if (!entity.skills || entity.skills.length === 0) {
                         let lv = entity.level || 1;
                         if (pClass === 'wizard') {
@@ -389,7 +385,6 @@
                             let targetX, targetY;
 
                             if (dist < closeThreshold) { 
-                                // 💡 [완성된 강강술래 대형 오르빗 (Dragging) 로직]
                                 let escapeAngle;
                                 let retreatDist = isWizardWithoutMp ? 250 : 200; 
                                 let fleeAngle = Math.atan2(entity.y - target.y, entity.x - target.x);
@@ -409,12 +404,9 @@
                                     let allyCenterX = allySumX / allyCount;
                                     let allyCenterY = allySumY / allyCount;
                                     
-                                    // 아군(파티원/용병) 무리의 중심점을 향한 각도
                                     let angleFromAlly = Math.atan2(entity.y - allyCenterY, entity.x - allyCenterX);
-                                    // 아군을 중심으로 크게 휘어 도는 접선 각도 (강강술래 궤도)
                                     let tangentAngle = angleFromAlly + 1.25; 
 
-                                    // 보스가 너무 가까우면 뒤로 튀는 비율(fleeWeight)을 높이고, 거리가 있으면 크게 돎
                                     let fleeWeight = (dist < 100) ? 0.7 : 0.3;
                                     let orbitWeight = 1.0 - fleeWeight;
 

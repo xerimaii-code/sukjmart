@@ -560,61 +560,61 @@ bgmAudio.loop = true;
 bgmAudio.volume = 0; 
 let fadeInterval = null; 
 
-// 💡 실제 /sound 폴더 내 파일명과 1:1 완벽 매핑 (신규 추가된 8개 파일 포함)
+// 💡 실제 /sound 폴더 내 파일명과 1:1 완벽 매핑 (.ogg 확장자 적용)
 const mapBgmList = {
     // 🌟 1. 주요 마을 및 필드 맵
-    'talking_island': '/sound/talking_island.mp3',
-    'silver_knight_town': '/sound/silver_knight_town.mp3',
-    'elven_forest': '/sound/elven_forest.mp3',
-    'gludin': '/sound/gludin.mp3',
-    'dragon_valley': '/sound/dragon dungeon.mp3',
-    'fire_dragon_nest': '/sound/fire_dragon_nest.mp3',
-    'forgotten_island': '/sound/forgotten_island.mp3',
-    'heine': '/sound/heine.mp3',
-    'oren': '/sound/oren.mp3',
-    'aden': '/sound/aden.mp3',
+    'talking_island': '/sound/talking_island.ogg',
+    'silver_knight_town': '/sound/silver_knight_town.ogg',
+    'elven_forest': '/sound/elven_forest.ogg',
+    'gludin': '/sound/gludin.ogg',
+    'dragon_valley': '/sound/dragon dungeon.ogg',
+    'fire_dragon_nest': '/sound/fire_dragon_nest.ogg',
+    'forgotten_island': '/sound/forgotten_island.ogg',
+    'heine': '/sound/heine.ogg',
+    'oren': '/sound/oren.ogg',
+    'aden': '/sound/aden.ogg',
     
     // 🕯️ 2. 던전 및 동굴 구역
-    'ti_dungeon': '/sound/ti_dungeon.mp3',
-    'ti_dungeon2': '/sound/ti_dungeon2.mp3',
-    'gludio_dungeon': '/sound/gludio_dungeon.mp3',
-    'ant_cave': '/sound/ant_cave.mp3',
-    'dv_dungeon': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'giran_dungeon_1': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'giran_dungeon_4': '/sound/When_the_Lanterns_Go_Out.mp3',
-    'eva_kingdom': '/sound/Beneath_The_Heavy_Stone.mp3',
-    'dragon_valley_deep': '/sound/Beneath_The_Heavy_Stone.mp3',
-    'lastebad': '/sound/Beneath_the_Iron_Gate.mp3',
-    'ivory_tower': '/sound/Beneath_the_Iron_Gate.mp3',
+    'ti_dungeon': '/sound/ti_dungeon.ogg',
+    'ti_dungeon2': '/sound/ti_dungeon2.ogg',
+    'gludio_dungeon': '/sound/gludio_dungeon.ogg',
+    'ant_cave': '/sound/ant_cave.ogg',
+    'dv_dungeon': '/sound/When_the_Lanterns_Go_Out.ogg',
+    'giran_dungeon_1': '/sound/When_the_Lanterns_Go_Out.ogg',
+    'giran_dungeon_4': '/sound/When_the_Lanterns_Go_Out.ogg',
+    'eva_kingdom': '/sound/Beneath_The_Heavy_Stone.ogg',
+    'dragon_valley_deep': '/sound/Beneath_The_Heavy_Stone.ogg',
+    'lastebad': '/sound/Beneath_the_Iron_Gate.ogg',
+    'ivory_tower': '/sound/Beneath_the_Iron_Gate.ogg',
 
     // 🗼 3. 오만의 탑 시리즈
-    'tower_of_insolence_1': '/sound/tower_of_insolence_1.mp3',
-    'tower_of_insolence_10': '/sound/tower_of_insolence_10.mp3',
-    'tower_of_insolence_30': '/sound/Beneath_the_Iron_Gate.mp3',
-    'tower_of_insolence_50': '/sound/tower_of_insolence_50.mp3',
-    'tower_of_insolence_70': '/sound/tower_of_insolence_70.mp3',
-    'tower_of_insolence_100': '/sound/tower_of_insolence_100.mp3',
+    'tower_of_insolence_1': '/sound/tower_of_insolence_1.ogg',
+    'tower_of_insolence_10': '/sound/tower_of_insolence_10.ogg',
+    'tower_of_insolence_30': '/sound/Beneath_the_Iron_Gate.ogg',
+    'tower_of_insolence_50': '/sound/tower_of_insolence_50.ogg',
+    'tower_of_insolence_70': '/sound/tower_of_insolence_70.ogg',
+    'tower_of_insolence_100': '/sound/tower_of_insolence_100.ogg',
 
     // 🌲 4. 야외/마을 잔여 구역
-    'elven_forest_deep': '/sound/Beyond_the_Village_Gate.mp3',
-    'dream_island': '/sound/Sunlight_on_the_Cobblestones.mp3',
-    'giran': '/sound/A_Hearth_for_the_Wanderer.mp3',
+    'elven_forest_deep': '/sound/Beyond_the_Village_Gate.ogg',
+    'dream_island': '/sound/Sunlight_on_the_Cobblestones.ogg',
+    'giran': '/sound/A_Hearth_for_the_Wanderer.ogg',
 
     // 🔥 5. 보스 전용 테마 및 레이드 맵
-    'valakas': '/sound/boss_valakas.mp3',
-    'antharas': '/sound/boss_antharas.mp3',
-    'baphomet': '/sound/boss_baphomet.mp3',
-    'deathknight': '/sound/boss_deathknight.mp3',
-    'grim_reaper': '/sound/boss_grim_reaper.mp3',
-    'awakened_reaper': '/sound/boss_awakened_reaper.mp3',
-    'black_knight_chief': '/sound/boss_black_knight_chief.mp3',
-    'dantes': '/sound/boss_dantes.mp3',
-    'drake': '/sound/boss_drake.mp3',
-    'giant_ungoliant': '/sound/boss_giant_ungoliant.mp3',
-    'lich_boss': '/sound/boss_lich_boss.mp3',
-    'ant_queen': '/sound/boss_antharas.mp3',
-    'boss_raid': '/sound/Terra_Tremit.mp3',
-    'tower_of_dominance': '/sound/Terra_Tremit.mp3'
+    'valakas': '/sound/boss_valakas.ogg',
+    'antharas': '/sound/boss_antharas.ogg',
+    'baphomet': '/sound/boss_baphomet.ogg',
+    'deathknight': '/sound/boss_deathknight.ogg',
+    'grim_reaper': '/sound/boss_grim_reaper.ogg',
+    'awakened_reaper': '/sound/boss_awakened_reaper.ogg',
+    'black_knight_chief': '/sound/boss_black_knight_chief.ogg',
+    'dantes': '/sound/boss_dantes.ogg',
+    'drake': '/sound/boss_drake.ogg',
+    'giant_ungoliant': '/sound/boss_giant_ungoliant.ogg',
+    'lich_boss': '/sound/boss_lich_boss.ogg',
+    'ant_queen': '/sound/boss_antharas.ogg',
+    'boss_raid': '/sound/Terra_Tremit.ogg',
+    'tower_of_dominance': '/sound/Terra_Tremit.ogg'
 };
 
 function fadeInBgm(targetVolume) {
@@ -646,12 +646,11 @@ function fadeInBgm(targetVolume) {
 window.changeBGM = function(keyOrMapId) {
     if (!bgmAudio) return;
 
-    // 보스 키이거나 보스 레이드 맵인 경우 보스 전용 테마 우선 재생
     let isBossKey = mapBgmList[keyOrMapId] && keyOrMapId.match(/valakas|antharas|baphomet|deathknight|reaper|dantes|drake|lich|chief|ungoliant/);
     let newSrc = mapBgmList[keyOrMapId];
 
     if (!newSrc) {
-        newSrc = isBossKey ? '/sound/boss_valakas.mp3' : '/sound/Where_the_Path_Divides.mp3';
+        newSrc = isBossKey ? '/sound/boss_valakas.ogg' : '/sound/Where_the_Path_Divides.ogg';
     }
 
     let currentFileName = bgmAudio.src ? decodeURI(bgmAudio.src.split('/').pop()) : '';
@@ -674,7 +673,6 @@ window.changeBGM = function(keyOrMapId) {
         fadeInBgm(gameOptions.bgmVolume);
     }
 };
-
 // 보스 몬스터 조우 시 외부에서 호출하는 전역 헬퍼 함수
 window.playBossThemeByEntity = function(targetEntity) {
     if (!targetEntity || !targetEntity.isBoss) return;
