@@ -5,7 +5,7 @@
             if (!entity || entity.hp <= 0 || entity.isDead || env.state === 'SHOPPING') return;
 
             if (!env.now) env.now = performance.now();
-            let now = env.now; // 💡 변수 참조 에러 완벽 차단
+            let now = env.now;
 
             let isManualMoving = now < (entity.manualOverrideUntil || 0);
             let skipSearch = false;
@@ -73,7 +73,6 @@
             // 2. [스마트 타겟 탐색 및 교전 룰]
             // ========================================================
             if (!skipSearch && !isManualMoving) {
-                
                 if (isMerc && myLeader && myLeader.target && (!entity.target || entity.target.hp <= 0 || entity.target.isDead)) {
                     let leaderTarget = env.entities.find(e => e && e.id === myLeader.target.id && e.hp > 0 && !e.isDead);
                     if (leaderTarget) {
@@ -86,7 +85,6 @@
                 let amIFollower = env.party && isFocusMode && leaderSocketId !== entity.socketId && leaderSocketId !== entity.id;
                 let leaderTargetMob = null;
                 
-                // 💡 [핵심] 파티 점사 모드 및 파티장 추적 로직
                 if (amIFollower) {
                     let leaderTargetId = env.party.leaderTargetId;
 
@@ -95,10 +93,8 @@
                     }
                     
                     let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
-
                     let distToLeader = leaderEnt ? Math.hypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y) : 0;
                     
-                    // 현재 타겟이 죽었거나 없는데, 리더와 거리가 700 이상 떨어져 있으면 새로운 점사 타겟을 안 잡고 무조건 리더에게 다가감 (잡던 몹만 마저 잡음)
                     if ((!entity.target || entity.target.hp <= 0) && leaderEnt && distToLeader > 700) {
                         entity.target = null;
                         let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
@@ -107,7 +103,6 @@
                         entity.isMoving = true;
                         skipSearch = true;
                     } else if (leaderTargetMob) {
-                        // 리더 근처이거나 아직 잡던 몹이 있으면 점사
                         if (!entity.target || entity.target.id !== leaderTargetMob.id) {
                             entity.target = leaderTargetMob;
                             entity.isMoving = false;
@@ -141,8 +136,6 @@
                 }
 
                 let target = entity.target;
-
-                // 💡 [수정] 점사 모드일 경우 타겟 덮어쓰기 방어(Lock) 변수
                 let isFocusLocked = amIFollower && leaderTargetMob;
 
                 if (target && !isFocusLocked) {
@@ -402,7 +395,7 @@
 
                                 if (allyCount > 0) {
                                     let allyCenterX = allySumX / allyCount;
-                                    let allyCenterY = allySumY / allyCount;
+                                    let allyCenterY = allyCenterY = allySumY / allyCount;
                                     
                                     let angleFromAlly = Math.atan2(entity.y - allyCenterY, entity.x - allyCenterX);
                                     let tangentAngle = angleFromAlly + 1.25; 
@@ -503,9 +496,10 @@
                         }
                     } 
                     else if (isWizardWithoutMp) {
-                        // No physical attack
+                        // MP 부족 시 물리 타격 생략
                     } 
                     else {
+                        // ⚔️ [기사/군주 근접 공격 및 광폭화 클리브]
                         if (pClass === 'knight' || pClass === 'royal') {
                             let isFury = now < (entity.furyUntil || 0);
                             let finalDamage = isFury ? Math.floor(baseAtk * 2.0) : baseAtk;
@@ -524,7 +518,7 @@
                                     e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 95 && e.id !== target.id
                                 ) : [];
                                 
-                                let totalCleaveDmg = 0;
+                                let totalCleaveDmg = 0; // 💡 변수 정상 선언
                                 splashTargets.forEach(st => {
                                     let sDmg = Math.floor(finalDamage * 0.6);
                                     totalCleaveDmg += sDmg;
@@ -544,6 +538,7 @@
                                 entity.furyCleavedThisCycle = false;
                             }
                         }
+                        // 🏹 [요정 원거리 사격 및 실프의 폭풍 / 에코 오브 실프]
                         else if (pClass === 'elf') {
                             let isCoolingDown = now < (entity.elfFuryCooldownUntil || 0);
                             if (!(now < (entity.elfFuryUntil || 0)) && !isCoolingDown) {
@@ -571,7 +566,9 @@
                                     e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200
                                 ) : [];
                                 
-                                let furyAtk = Math.floor(baseAtk * 1.4);
+                                let bowEnchant = (entity.equip && entity.equip.weapon && entity.equip.weapon.enchantValue) ? entity.equip.weapon.enchantValue : 0;
+                                let furyMultiplier = 1.4 + (bowEnchant * 0.1);
+                                let furyAtk = Math.floor(baseAtk * furyMultiplier);
                                 let totalFuryDamage = 0;
 
                                 splashTargets.forEach(st => {
@@ -605,6 +602,7 @@
                                 }
                             }
                         }
+                        // 🔮 [마법사/기타 기본 원거리 및 근접 평타]
                         else {
                             if (isRangedAttacker) {
                                 if (typeof env.playSound === 'function') {

@@ -221,15 +221,15 @@ const itemDb = [
     _wp("장궁", 14, 2, {isBow: true}), _wp("흑빛의 활", 18, 3, {isBow: true}), _wp("파괴의 장궁", 20, 3, {isBow: true}), 
     _wp("사이하의 활", 25, 4, {isBow: true}), 
     _wp("마나의 지팡이", 3, 2, {mpDrain: 2}), _wp("수정 지팡이", 8, 2, {mpDrain: 1}), 
-    _wp("바포메트의 지팡이", 15, 4, {skill: '이럽션'}), _wp("얼음 여왕의 지팡이", 18, 4, {skill: '블리자드'}),
+    _wp("바포메트의 지팡이", 15, 4, {skill: '이럽션'}), 
+    _wp("얼음 여왕의 지팡이", 18, 4, { sp: 3, int: 2, skill: '블리자드', desc: '타격 시 확률로 블리자드 발동' }), // 중복 통합
     _wp("마력의 단검", 6, 2, { sp: 1, mpDrain: 1, desc: '타격 시 MP를 흡수하고 SP를 증가시킨다.' }),
     _wp("흑왕도", 20, 4, { str: 2, desc: '다크엘프 최고위 암살자의 검' }),
     _wp("흑장로의 지팡이", 12, 3, { sp: 2, mpRegen: 5 }),
-    _wp("얼음여왕의 지팡이", 14, 4, { sp: 3, int: 2, skill: '블리자드' }),
     _wp("제로스의 지팡이", 18, 4, { sp: 5, int: 3, skill: '크리티컬 매직', desc: '궁극의 마법 지팡이' }),
     _wp("살천의 활", 16, 3, { isBow: true, dex: 2, skill: '엘븐 애로우' }),
     _wp("악몽의 장궁", 22, 4, { isBow: true, dex: 3, hitBonus: 5, desc: '적을 관통하는 악몽의 활' }),
-    _wp("포르세의 검", 26, 4, { str: 2, skill: '이럽션' }),
+    _wp("포르세의 검", 26, 4, { str: 2, skill: '이럽션' }), // 하단 중복 제거
     _wp("블러드서커", 18, 3, { vampiric: true, desc: '타격 시 일정 확률로 체력 흡수' }), 
     _am("가죽 갑옷", "armor", 3, 0), _am("사슬 갑옷", "armor", 5, 1), _am("요정족 판금 갑옷", "armor", 6, 1), 
     _am("강철 판금 갑옷", "armor", 8, 2), _am("흑장로의 로브", "armor", 5, 3, {mpRegen: 5}), 
@@ -242,9 +242,9 @@ const itemDb = [
     _am("가죽 장갑", "gloves", 1, 0), _am("장갑", "gloves", 1, 0), _am("강철 장갑", "gloves", 2, 2), 
     _am("파워 글로브", "gloves", 3, 3, {hpBonus: 20}), _am("암령의 장갑", "gloves", 4, 4, {atk: 2}), 
     _am("가죽 부츠", "boots", 1, 0), _am("강철 부츠", "boots", 3, 2), _am("흑장로의 샌달", "boots", 2, 3, {mpBonus: 20}), 
-    _am("수련자의 반지", "ring", 0, 0), _am("멸마의 반지", "ring", 2, 2), _am("순간이동 조종 반지", "ring", 0, 3), 
-    _am("오우거의 반지", "ring", 1, 3, {hpBonus: 50}), 
-    _am("오우거의 벨트", "belt", 1, 3, {hpBonus: 30}),
+    _am("수련자의 반지", "ring", 0, 0), _am("멸마의 반지", "ring", 2, 2, {mr: 10}), _am("순간이동 조종 반지", "ring", 0, 3), 
+    _am("오우거의 반지", "ring", 1, 3, {hpBonus: 50, str: 1}), 
+    _am("오우거의 벨트", "belt", 1, 3, {hpBonus: 50, str: 1, desc: '강력한 힘이 깃든 벨트'}), // 벨트 버프 적용
     _am("멸마의 판금 갑옷", "armor", 9, 3, { mr: 15, desc: '강력한 마법 저항력을 지닌 판금' }),
     _am("고대의 가죽 갑옷", "armor", 8, 4, { hpRegen: 10, dex: 1, mr: 5 }),
     _am("파푸리온의 마력", "armor", 11, 4, { sp: 2, mr: 10, mpRegen: 10, desc: '수룡의 마력이 깃든 로브' }),
@@ -252,7 +252,6 @@ const itemDb = [
     _am("발라카스의 완력", "armor", 13, 4, { str: 2, hpBonus: 150, def: 5, mr: 10, desc: '화룡의 힘이 깃든 궁극의 갑옷' }),
     _am("린드비오르의 인내", "armor", 11, 4, { dex: 2, dodge: 5, mr: 15, desc: '풍룡의 가속이 깃든 갑옷' }),
     _wp("나이트발드의 양손검", 28, 4),
-    _wp("포르세의 검", 26, 4, {skill: '이럽션'}),
     _wp("사신의 검", 45, 4, {isUndeadWeapon: true, skill: '디스인티그레이트', desc: '지배의 탑 정상에서 드롭되는 신화의 무기'}),
     _wp("가이아의 격노", 35, 4, {isBow: true, desc: '대자연의 분노가 담긴 최강의 활'}),
     _am("반역자의 방패", "shield", 10, 4, {hpBonus: 100, desc: '확률적으로 대미지를 반사한다.'}),
@@ -270,9 +269,12 @@ const itemDb = [
     _am("수호의 반지", "ring", 0, 2, { hpRegen: 2, def: 1 }),
     _am("스냅퍼의 용사 반지", "ring", 0, 4, { str: 1, hpBonus: 30, atk: 2 }),
     _am("스냅퍼의 지혜 반지", "ring", 0, 4, { int: 1, mpBonus: 30, sp: 1 }),
-    _am("룸티스의 푸른빛 귀걸이", "helmet", 0, 4, { hpBonus: 50, potionEffect: 10, desc: '물약 회복량 10% 증가 (투구 슬롯 착용)' }),
-    _am("룸티스의 검은빛 귀걸이", "helmet", 0, 4, { def: 3, mr: 5, dmgReduct: 2 }),
-    _am("룸티스의 붉은빛 귀걸이", "helmet", 0, 4, { hpBonus: 100, dmgReduct: 3 }),
+    
+    // 💡 룸티스의 귀걸이 종류를 helmet -> earring으로 모두 수정
+    _am("룸티스의 푸른빛 귀걸이", "earring", 0, 4, { hpBonus: 50, potionEffect: 10, desc: '물약 회복량 10% 증가 (귀걸이 슬롯 착용)' }),
+    _am("룸티스의 검은빛 귀걸이", "earring", 0, 4, { def: 3, mr: 5, dmgReduct: 2 }),
+    _am("룸티스의 붉은빛 귀걸이", "earring", 0, 4, { hpBonus: 100, dmgReduct: 3 }),
+
     { name: "마법서 (데스 힐)", type: "book", magicName: "데스 힐", grade: 4, price: 5000000 },
     { name: "마법서 (마제스티)", type: "book", magicName: "마제스티", grade: 4, price: 10000000 },
     { name: "마법서 (저지먼트)", type: "book", magicName: "저지먼트", grade: 4, price: 20000000 }, 
@@ -521,6 +523,28 @@ function getExtraDesc(name) {
 const potionMap = { '빨간': { c: '#d00', g: '#f00' }, '주홍': { c: '#f80', g: '#fa0' }, '맑은': { c: '#fff', g: '#ddd' }, '파란': { c: '#00f', g: '#55f' }, '초록': { c: '#0c0', g: '#0f0' }, '용기': { c: '#da0', g: '#fd0' }, '와퍼': { c: '#8f8', g: '#afa' }, '고기': { c: '#a42', g: '#f66' } };
 function getPotionColorInfo(name) { if (!name || typeof name !== 'string') return { c: '#fff', g: '#fff' }; for(let key in potionMap) if(name.includes(key)) return potionMap[key]; return { c: '#fff', g: '#fff' }; }
 function getPotionIcon(type) { if(type === '고기') return `🍖`; let info = getPotionColorInfo(type); return `<div style="display:inline-block; width:16px; height:20px; background:radial-gradient(circle at 30% 30%, #fff 5%, ${info.c} 60%); border-radius: 5px 5px 2px 2px; border:1px solid #333; box-shadow: 0 0 5px ${info.g}; position:relative; overflow:hidden;"><div style="position:absolute; top:-2px; left:3px; width:8px; height:4px; background:#cca; border-radius:2px;"></div></div>`; }
-function getItemIcon(it) { if (!it || !it.name) return '🎒'; let name = it.name; if(it.type === 'potion') return getPotionIcon(name); if(it.type === 'scroll') return '📜'; if(it.type === 'book') return '📘'; if(it.type === 'weapon') { if(it.isBow || (typeof name === 'string' && (name.includes('활') || name.includes('크로스보우') || name.includes('장궁')))) return '🏹'; if(typeof name === 'string' && name.includes('지팡이')) return '🦯'; return '🗡️'; } if(it.type === 'armor') return '🦺'; if(it.type === 'helmet') return '🪖'; if(it.type === 'shield') return '🛡️'; if(it.type === 'cloak') return '🧥'; if(it.type === 'gloves') return '🧤'; if(it.type === 'boots') return '👢'; if(it.type === 'belt') return '🎗️'; if(it.type === 'ring1' || it.type === 'ring2' || it.type === 'ring') return '💍'; return '🎒'; }
+function getItemIcon(it) { 
+    if (!it || !it.name) return '🎒'; 
+    let name = it.name; 
+    if(it.type === 'potion') return getPotionIcon(name); 
+    if(it.type === 'scroll') return '📜'; 
+    if(it.type === 'book') return '📘'; 
+    if(it.type === 'earring' || (typeof name === 'string' && name.includes('귀걸이'))) return '💎'; 
+    if(it.type === 'weapon') { 
+        if(it.isBow || (typeof name === 'string' && (name.includes('활') || name.includes('크로스보우') || name.includes('장궁')))) return '🏹'; 
+        if(typeof name === 'string' && name.includes('지팡이')) return '🦯'; 
+        return '🗡️'; 
+    } 
+    if(it.type === 'armor') return '🦺'; 
+    if(it.type === 'helmet') return '🪖'; 
+    if(it.type === 'shield') return '🛡️'; 
+    if(it.type === 'cloak') return '🧥'; 
+    if(it.type === 'gloves') return '🧤'; 
+    if(it.type === 'boots') return '👢'; 
+    if(it.type === 'belt') return '🎗️'; 
+    if(it.type === 'ring1' || it.type === 'ring2' || it.type === 'ring') return '💍'; 
+    return '🎒'; 
+}
+
 function getStackKey(it) { if (it.isEnchantScroll) return `enchant_${it.enchantType}_${it.enchantValue}`; if (['potion', 'scroll', 'book', 'gold'].includes(it.type)) return it.name; if (['weapon', 'armor', 'helmet', 'shield', 'cloak', 'gloves', 'boots', 'belt', 'ring1', 'ring2', 'ring'].includes(it.type)) { let enchant = it.enchantValue || 0; let encType = it.enchantType || 'none'; let opts = (it.magicOptions || []).sort().join(','); return `eq_${it.name}_${enchant}_${encType}_${opts}`; } if (!it.id) it.id = 'eq_' + Math.random().toString(36).substr(2, 9); return it.id; }
 if (typeof module !== 'undefined' && module.exports) { module.exports = { gradeColors, gradeNames, classData, maps, templates, npcs, itemDb, magicDb, shopWares, isInSafeZone, isNearPortal, getExtraDesc, getPotionColorInfo, getPotionIcon, getItemIcon, getStackKey }; }

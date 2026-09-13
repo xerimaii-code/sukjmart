@@ -523,9 +523,9 @@ const getInitialPlayer = () => ({
     knightHitStack: 0,
     furyUntil: 0,
     equip: { 
-        helmet: null, tshirt: null, armor: null, cloak: null, 
+    helmet: null, earring: null, tshirt: null, armor: null, cloak: null, 
         weapon: null, shield: null, gloves: null, boots: null, 
-        belt: null, ring1: null, ring2: null 
+        belt: null, ring1: null, ring2: null
     },
     inv: [
         { id: 'ring_teleport_init', name: '순간이동 조종 반지', type: 'ring', grade: 2, desc: '착용 시 어디든 자유롭게 순간이동할 수 있는 마법의 반지.' },
@@ -1055,31 +1055,26 @@ function recalculateStats() {
 
     let lv = player.level || 1; 
 
+    // 레벨당 기본 성장률 (기사 30, 요정 18, 법사 12, 군주 22)
     const CLASS_GROWTH = {
-        'knight': { baseHp: 150, baseMp: 10, hpPerLv: 45, mpPerLv: 5 },
-        'elf':    { baseHp: 100, baseMp: 30, hpPerLv: 28, mpPerLv: 19 },
-        'wizard': { baseHp: 80,  baseMp: 50, hpPerLv: 15, mpPerLv: 45 },
-        'royal':  { baseHp: 120, baseMp: 30, hpPerLv: 30, mpPerLv: 10 }
+        'knight': { baseHp: 150, baseMp: 10, hpPerLv: 30, mpPerLv: 5 },
+        'elf':    { baseHp: 100, baseMp: 30, hpPerLv: 18, mpPerLv: 19 },
+        'wizard': { baseHp: 80,  baseMp: 50, hpPerLv: 12, mpPerLv: 45 },
+        'royal':  { baseHp: 120, baseMp: 30, hpPerLv: 22, mpPerLv: 10 }
     };
-
     let growth = CLASS_GROWTH[player.charClass] || CLASS_GROWTH['knight'];
 
-    player.maxHp = growth.baseHp + Math.max(0, lv - 1) * growth.hpPerLv;
-    player.maxMp = growth.baseMp + Math.max(0, lv - 1) * growth.mpPerLv;
-
-    let baseExp = 100;
-    let scale = Math.pow(1.15, Math.max(0, lv - 1));
-    player.maxExp = Math.floor(baseExp * lv * scale);
+    let baseMaxHp = growth.baseHp + Math.max(0, lv - 1) * growth.hpPerLv;
+    let baseMaxMp = growth.baseMp + Math.max(0, lv - 1) * growth.mpPerLv;
+    player.maxExp = Math.floor(100 * lv * Math.pow(1.15, Math.max(0, lv - 1)));
 
     const localClassData = {
-        'knight': { name: '기사', str: 18, dex: 14, int: 8 },
-        'elf':    { name: '요정', str: 11, dex: 18, int: 11 },
-        'wizard': { name: '마법사', str: 8, dex: 14, int: 18 },
-        'royal':  { name: '군주', str: 14, dex: 14, int: 12 }
+        'knight': { str: 18, dex: 14, int: 8 },
+        'elf':    { str: 11, dex: 18, int: 11 },
+        'wizard': { str: 8, dex: 14, int: 18 },
+        'royal':  { str: 14, dex: 14, int: 12 }
     };
-
     let cData = localClassData[player.charClass] || localClassData['knight'];
-    
     player.str = cData.str + Math.floor(lv / 4); 
     player.dex = cData.dex + Math.floor(lv / 4); 
     player.int = cData.int + Math.floor(lv / 4);
@@ -1087,46 +1082,62 @@ function recalculateStats() {
     let totalDef = 0, totalMr = player.int * 2, totalSp = Math.floor(player.int / 3);
     let meleeBonus = 0, rangedBonus = 0;
     let totalDmgReduction = (player.charClass === 'knight') ? (10 + Math.floor(lv / 3)) : 0;
-    let bonusSpeed = 0;
-    let totalPotionEffect = 0;
+    let bonusSpeed = 0, totalPotionEffect = 0, totalHpBonus = 0, totalMpBonus = 0;
 
     for (let k in player.equip) {
         let eq = player.equip[k];
-        if (eq) {
-            player.str += eq.str || 0;
-            player.dex += eq.dex || 0;
-            player.int += eq.int || 0;
-            totalSp += eq.sp || 0;
-            if (eq.mr) totalMr += eq.mr;
-            if (eq.dmgReduct) totalDmgReduction += eq.dmgReduct;
-            if (eq.speed) bonusSpeed += eq.speed;
-            if (eq.potionEffect) totalPotionEffect += eq.potionEffect;
+        if (!eq) continue;
 
-            if (eq.magicOptions && Array.isArray(eq.magicOptions)) {
-                eq.magicOptions.forEach(opt => {
-                    let match = opt.match(/\+(\d+)/);
-                    let val = match ? parseInt(match[1]) : 0;
+        player.str += eq.str || 0;
+        player.dex += eq.dex || 0;
+        player.int += eq.int || 0;
+        totalSp += eq.sp || 0;
+        if (eq.mr) totalMr += eq.mr;
+        if (eq.dmgReduct) totalDmgReduction += eq.dmgReduct;
+        if (eq.speed) bonusSpeed += eq.speed;
+        if (eq.potionEffect) totalPotionEffect += eq.potionEffect;
+        if (eq.hpBonus) totalHpBonus += eq.hpBonus;
+        if (eq.mpBonus) totalMpBonus += eq.mpBonus;
 
-                    if (opt.includes('STR')) player.str += val;
-                    if (opt.includes('DEX')) player.dex += val;
-                    if (opt.includes('INT')) player.int += val;
+        if (eq.magicOptions && Array.isArray(eq.magicOptions)) {
+            eq.magicOptions.forEach(opt => {
+                let val = parseInt(opt.match(/\+(\d+)/)?.[1]) || 0;
+                if (opt.includes('STR')) player.str += val;
+                if (opt.includes('DEX')) player.dex += val;
+                if (opt.includes('INT')) player.int += val;
+                if (opt.includes('최대 HP') || opt.includes('[생명]')) totalHpBonus += val;
+                if (opt.includes('최대 MP')) totalMpBonus += val;
+                if (opt.includes('추가 대미지') || opt.includes('근거리')) meleeBonus += val;
+                if (opt.includes('원거리')) rangedBonus += val;
+                if (opt.includes('SP') || opt.includes('마법 공격력')) totalSp += val;
+                if (opt.includes('추가 방어력')) totalDef += val;
+                if (opt.includes('MR')) totalMr += val;
+                if (opt.includes('대미지 감소')) totalDmgReduction += val;
+            });
+        }
 
-                    if (opt.includes('추가 대미지') || opt.includes('근거리 대미지') || opt.includes('속성')) meleeBonus += val;
-                    if (opt.includes('원거리 대미지') || opt.includes('속성')) rangedBonus += val;
-                    if (opt.includes('SP') || opt.includes('마법 공격력')) totalSp += val;
-                    if (opt.includes('추가 방어력') || opt.includes('[보호]')) totalDef += val;
-                    if (opt.includes('MR') || opt.includes('마법 방어력')) totalMr += val;
-                    if (opt.includes('대미지 감소')) totalDmgReduction += val;
-                });
-            }
-
-            if (k !== 'weapon') {
-                totalDef += (eq.def || 0) + (eq.enchantValue || 0);
-                if (eq.mr || eq.name.includes('마법') || eq.name.includes('면갑') || eq.name.includes('반지') || eq.name.includes('망토')) {
-                    totalMr += (eq.enchantValue || 0);
+        if (k !== 'weapon') {
+            totalDef += (eq.def || 0) + (eq.enchantValue || 0);
+            if (eq.mr || /마법|면갑|반지|망토/.test(eq.name)) totalMr += (eq.enchantValue || 0);
+            
+            if (eq.enchantValue > 0) {
+                if (['tshirt', 'cloak', 'belt', 'earring'].includes(k)) {
+                    totalHpBonus += eq.enchantValue * 10;
+                    totalMpBonus += eq.enchantValue * 2;
+                }
+                if (eq.enchantValue >= 5) {
+                    totalDmgReduction += (eq.enchantValue - 4); 
                 }
             }
+        } else if (k === 'weapon' && eq.name.includes('지팡이') && eq.enchantValue > 0) {
+            totalSp += Math.floor(eq.enchantValue * 1.5);
         }
+    }
+
+    if (player.buffs) {
+        if (player.buffs['실드']) totalDef += (player.buffs['실드'].val || 2);
+        if (player.buffs['어드밴스 스피릿']) { totalHpBonus += 50; totalMpBonus += 50; }
+        if (player.buffs['이뮨 투 함']) totalDmgReduction += (player.buffs['이뮨 투 함'].val || 10);
     }
 
     player.sp = totalSp;
@@ -1134,25 +1145,30 @@ function recalculateStats() {
     player.totalDmgReduction = totalDmgReduction;
     player.totalPotionEffect = totalPotionEffect;
     player.currentSpeed = 180 + bonusSpeed;
+    player.maxHp = baseMaxHp + totalHpBonus;
+    player.maxMp = baseMaxMp + totalMpBonus;
     
     let wp = player.equip.weapon; 
     let wpAtk = wp ? (wp.atk || 0) + (wp.enchantValue || 0) : 0;
-    let enchantBonus = wp ? Math.floor((wp.enchantValue || 0) * 2.0) : 0;
+    let enchantBonus = wp ? Math.floor((wp.enchantValue || 0) * 2.5) : 0; 
     
-    // 💡 [요정 클래스 계산식 완벽 밸런싱] 요정의 원거리 기본 계수를 3.8로 대폭 상향
     if (wp && wp.isBow) {
         player.atk = Math.max(1, Math.floor((player.dex - 10) * 3.8)) + Math.floor(lv / 3) + wpAtk + enchantBonus + rangedBonus;
     } else {
         player.atk = Math.max(1, Math.floor((player.str - 10) * 3.5)) + Math.floor(lv / 3) + wpAtk + enchantBonus + meleeBonus;
     }
 
-    player.def = Math.max(0, Math.floor((player.dex - 10) / 2)) + totalDef; 
+    player.def = Math.max(0, Math.floor((player.dex - 10) / 3)) + totalDef; 
 }
 
+// 💡 [누락 복구] 전역 체력/마나 변수
+var currentMaxHp = 150;
+var currentMaxMp = 30;
+window.currentMaxHp = currentMaxHp;
+window.currentMaxMp = currentMaxMp;
 
-let currentMaxHp = 150; let currentMaxMp = 30;
-
-window.renderBuffs = function() {
+// 💡 [누락 복구] 버프 렌더링 함수
+function renderBuffs() {
     const buffListEl = $('buff-list');
     if (!buffListEl || !player || !player.buffs) return;
     
@@ -1196,9 +1212,10 @@ window.renderBuffs = function() {
         }
     }
     buffListEl.innerHTML = html;
-};
+}
+window.renderBuffs = renderBuffs;
 
-
+// 💡 [누락 복구] 버프 적용 함수
 window.applyBuff = function(name, duration, icon, type, val, target = player) { 
     let now = performance.now(); 
     target.buffs = target.buffs || {};
@@ -1218,6 +1235,8 @@ window.applyBuff = function(name, duration, icon, type, val, target = player) {
     } 
     if (typeof updateUI === 'function') updateUI(); 
 };
+
+// 💡 [누락 복구] 플레이어 사망 처리 함수
 window.handlePlayerDeath = function() {
     if (!player || player.isDead) return;
     
@@ -1229,12 +1248,18 @@ window.handlePlayerDeath = function() {
     player.target = null;
     updateUI();
 
-    if (typeof playSound === 'function') playSound('player_dead'); // 💡 남성 사망 소리
+    if (typeof playSound === 'function') playSound('player_dead');
     addMessage("💀 사망하셨습니다... 3초 후 안전지대에서 부활합니다.", "#f55");
     setTimeout(() => {
         window.respawnPlayer();
     }, 3000);
 };
+
+// 메인 UI 업데이트 함수
+var currentMaxHp = 150;
+var currentMaxMp = 30;
+window.currentMaxHp = currentMaxHp;
+window.currentMaxMp = currentMaxMp;
 
 function updateUI() {
     if (player && player.hp <= 0 && !player.isDead && gameStarted) {
@@ -1244,74 +1269,23 @@ function updateUI() {
     
     recalculateStats();
 
-    let totalDef = player.def; 
-    let totalAtk = player.atk; 
-    let totalMr = player.totalMr || (player.int * 2); 
-
-    let totalHpBonus = 0; 
-    let totalMpBonus = 0; 
-    let totalHpRegen = 0; 
-    let totalMpRegen = 0; 
-    let totalDmgReduction = player.totalDmgReduction || 0; 
-    
-    for (let k in player.equip) {
-        if(player.equip[k]) {
-            let eq = player.equip[k]; 
-            
-            if(k !== 'weapon') {
-                totalDef += (eq.def || 0) + (eq.enchantValue || 0);
-                if (eq.mr || eq.name.includes('마법') || eq.name.includes('면갑') || eq.name.includes('반지')) {
-                    totalMr += (eq.enchantValue || 0);
-                }
-            }
-
-            if(eq.hpBonus) totalHpBonus += eq.hpBonus; 
-            if(eq.mpBonus) totalMpBonus += eq.mpBonus;
-            if(eq.hpRegen) totalHpRegen += eq.hpRegen; 
-            if(eq.mpRegen) totalMpRegen += eq.mpRegen;
-            
-            if(eq.magicOptions) { 
-                eq.magicOptions.forEach(opt => { 
-                    let val = parseInt(opt.match(/\+(\d+)/)?.[1]) || 0; 
-                    if(opt.includes('추가 방어력') || opt.includes('[보호]')) totalDef += val; 
-                    if(opt.includes('마법 방어력')) totalMr += val; 
-                    if(opt.includes('HP 회복률')) totalHpRegen += val; 
-                    if(opt.includes('MP 회복률')) totalMpRegen += val; 
-                    if(opt.includes('[재생]')) { totalHpRegen += val; totalMpRegen += val; } 
-                    if(opt.includes('대미지 감소')) totalDmgReduction += val; 
-                }); 
-            }
-        }
-    }
-    
-    if (player.buffs['용기물약']) totalAtk += 3;
-    player.totalHpRegen = totalHpRegen; 
-    player.totalMpRegen = totalMpRegen; 
-    player.totalDmgReduction = totalDmgReduction;
-    player.totalMr = totalMr; 
-    if (player.buffs['실드']) totalDef += (player.buffs['실드'].val || 2);
-    if (player.buffs['어드밴스 스피릿']) { totalHpBonus += 50; totalMpBonus += 50; }
-    if (player.buffs['이뮨 투 함']) player.totalDmgReduction += (player.buffs['이뮨 투 함'].val || 10);
-
-    // 💡 [핵심] window 전역 및 player 객체에 총 최대 HP/MP 직접 동기화하여 루프 멈춤 방지
-    window.currentMaxHp = player.maxHp + totalHpBonus; 
-    window.currentMaxMp = player.maxMp + totalMpBonus; 
+    window.currentMaxHp = player.maxHp; 
+    window.currentMaxMp = player.maxMp; 
     currentMaxHp = window.currentMaxHp;
     currentMaxMp = window.currentMaxMp;
 
-    if(player.hp > currentMaxHp) player.hp = currentMaxHp; 
-    if(player.mp > currentMaxMp) player.mp = currentMaxMp;
+    if (player.hp > currentMaxHp) player.hp = currentMaxHp; 
+    if (player.mp > currentMaxMp) player.mp = currentMaxMp;
 
-    if($('st-lv')) $('st-lv').innerText = player.level; 
-    if($('st-class')) {
-    let cName = classData[player.charClass] ? classData[player.charClass].name : '기사';
-    // 💡 클래스명 자체에 깔끔한 클릭 가능 테두리와 초미니 [?] 뱃지 부여
-    $('st-class').innerHTML = `<span style="cursor:pointer; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.15); color:#fff; display:inline-flex; align-items:center; gap:2px;" onclick="window.showClassPassiveInfo()">${cName}<span style="color:#38bdf8; font-size:9px; font-weight:bold;">?</span></span>`;
-}
-    if($('st-stats')) $('st-stats').innerText = `S:${player.str} D:${player.dex} I:${player.int}`;
-    if($('st-ac')) $('st-ac').innerText = `-${totalDef} / ${totalMr}`; 
-    if($('st-atk')) { $('st-atk').innerText = `${totalAtk} / ${player.sp || 0}`; $('st-atk').style.color = '#aaf'; }
-    if($('st-adena')) $('st-adena').innerText = player.adena.toLocaleString(); 
+    if ($('st-lv')) $('st-lv').innerText = player.level; 
+    if ($('st-class')) {
+        let cName = (typeof classData !== 'undefined' && classData[player.charClass]) ? classData[player.charClass].name : '기사';
+        $('st-class').innerHTML = `<span style="cursor:pointer; border:1px solid #38bdf8; padding:1px 5px; border-radius:3px; background:rgba(56,189,248,0.15); color:#fff; display:inline-flex; align-items:center; gap:2px;" onclick="window.showClassPassiveInfo()">${cName}<span style="color:#38bdf8; font-size:9px; font-weight:bold;">?</span></span>`;
+    }
+    if ($('st-stats')) $('st-stats').innerText = `S:${player.str} D:${player.dex} I:${player.int}`;
+    if ($('st-ac')) $('st-ac').innerText = `-${player.def} / ${player.totalMr}`; 
+    if ($('st-atk')) { $('st-atk').innerText = `${player.atk} / ${player.sp || 0}`; $('st-atk').style.color = '#aaf'; }
+    if ($('st-adena')) $('st-adena').innerText = player.adena.toLocaleString(); 
     
     let hpPercent = Math.max(0, Math.min(100, (player.hp / currentMaxHp) * 100));
     let mpPercent = Math.max(0, Math.min(100, (player.mp / currentMaxMp) * 100));
@@ -1325,14 +1299,13 @@ function updateUI() {
     if ($('mp-text')) $('mp-text').innerText = `${Math.floor(player.mp)} / ${currentMaxMp}`;
     if ($('exp-text')) $('exp-text').innerText = `${expPercentVal.toFixed(2)}%`;
 
-    if($('btn-auto')) { $('btn-auto').className = player.autoPotion ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto').innerText = `물약 ${player.autoPotion ? 'ON' : 'OFF'}`; }
-    if($('btn-auto-hunt')) { $('btn-auto-hunt').className = player.autoHunt ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto-hunt').innerText = `사냥 ${player.autoHunt ? 'ON' : 'OFF'}`; }
+    if ($('btn-auto')) { $('btn-auto').className = player.autoPotion ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto').innerText = `물약 ${player.autoPotion ? 'ON' : 'OFF'}`; }
+    if ($('btn-auto-hunt')) { $('btn-auto-hunt').className = player.autoHunt ? 'toggle-btn active' : 'toggle-btn'; $('btn-auto-hunt').innerText = `사냥 ${player.autoHunt ? 'ON' : 'OFF'}`; }
     
     renderHotkeys(); 
     renderBuffs();
-    if($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
+    if ($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
 }
-
 
 let windowZIndex = 100000;
 
@@ -1754,7 +1727,7 @@ window.renderInventory = function() {
         if (!equipTabEl) return;
         
         let equipHtml = `<div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; padding:12px; width:100%; box-sizing:border-box; align-content:start;">`;
-        const slotNames = { helmet:'투구', tshirt:'티셔츠', armor:'갑옷', cloak:'망토', weapon:'무기', shield:'방패', gloves:'장갑', boots:'부츠', belt:'벨트', ring1:'반지(좌)', ring2:'반지(우)' };
+        const slotNames = { helmet:'투구', earring:'귀걸이', tshirt:'티셔츠', armor:'갑옷', cloak:'망토', weapon:'무기', shield:'방패', gloves:'장갑', boots:'부츠', belt:'벨트', ring1:'반지(좌)', ring2:'반지(우)' };
         
         for (let slotKey in slotNames) {
             let it = player.equip[slotKey];
@@ -2537,6 +2510,11 @@ function getEquipSlotType(it) {
     let t = it.type.toLowerCase();
     let n = (it.name || '').toLowerCase();
     
+    // 귀걸이 우선 검사
+    if (t === 'earring' || n.includes('귀걸이')) {
+        it.type = 'earring';
+        return 'earring';
+    }
     if (t === 'weapon') return 'weapon';
     if (t === 'shield' || n.includes('방패')) return 'shield';
     if (t === 'helmet' || n.includes('투구') || n.includes('면갑') || n.includes('축복')) return 'helmet';
@@ -2549,6 +2527,7 @@ function getEquipSlotType(it) {
     if (t === 'ring' || t.includes('ring') || n.includes('반지')) return 'ring';
     return t;
 }
+
 
 // 2. 장착 해제 및 장착 중인 아이템 인챈트
 window.cancelEnchantMode = function() {
@@ -2782,7 +2761,7 @@ window.attemptEnchant = function(scrollKey, targetItem) {
     }
 
     let isWeapon = targetItem.type === 'weapon';
-    let isArmor = ['armor', 'helmet', 'gloves', 'boots', 'cloak', 'shield', 'ring', 'belt', 'tshirt'].includes(targetItem.type);
+    let isArmor = ['armor', 'helmet', 'gloves', 'boots', 'cloak', 'shield', 'ring', 'belt', 'tshirt', 'earring'].includes(targetItem.type);
     let isFantasy = scrollItem.enchantType === '환상' || scrollItem.name.includes('환상') || scrollItem.name.includes('마법 부여서');
 
     if (!isWeapon && !isArmor && !isFantasy) { 
@@ -3418,18 +3397,35 @@ function deepMerge(target, source) { 
 }
 
 function applyStatsPostLoad() { 
-    if(!player.charClass) player.charClass = 'knight'; 
-    if (player.activeSpellSlot !== undefined) { player.activeSpellSlots = player.activeSpellSlot !== -1 ? [player.activeSpellSlot] : []; delete player.activeSpellSlot; }
+    if (!player.charClass) player.charClass = 'knight'; 
+    if (player.activeSpellSlot !== undefined) { 
+        player.activeSpellSlots = player.activeSpellSlot !== -1 ? [player.activeSpellSlot] : []; 
+        delete player.activeSpellSlot; 
+    }
     if (!player.activeSpellSlots) player.activeSpellSlots = [];
     if (Array.isArray(hotkeys)) {
         hotkeys = hotkeys.map(hk => (hk && hk.id) ? hk : null);
         window.hotkeys = hotkeys;
     }
 
-    
-    // 💡 [핵심 보완] 로드 직후 모든 이전 타겟, 이동 좌표, 락(Lock)을 강제로 원점 초기화
+    // 귀걸이 자동 분리
+    if (player.equip) {
+        if (player.equip.earring === undefined) player.equip.earring = null;
+        if (player.equip.helmet && (player.equip.helmet.name.includes('귀걸이') || player.equip.helmet.type === 'earring')) {
+            let earringItem = player.equip.helmet;
+            earringItem.type = 'earring';
+            player.equip.helmet = null;
+            if (!player.equip.earring) player.equip.earring = earringItem;
+            else player.inv.push(earringItem);
+        }
+    }
+    if (player.inv) {
+        player.inv.forEach(it => {
+            if (it && it.name && it.name.includes('귀걸이')) it.type = 'earring';
+        });
+    }
+
     player.isDrinking = false; 
-   player.isDrinking = false; 
     player.target = null;         
     player.targetItem = null;     
     player.isMoving = false; 
@@ -3439,11 +3435,12 @@ function applyStatsPostLoad() {
     player.manualOverrideUntil = 0; 
     player.lastRegen = performance.now(); 
     player.buffs = {}; 
-    player.spellCooldowns = {}; // 💡 이 줄 추가: 과거의 쿨타임 잔재 즉시 소각
-    player.vx = 0; player.vy = 0; player.isKitingActive = false;
-    
-    // 💡 [핵심] 서버 측에도 내 캐릭터의 타겟이 완전히 비었음을 즉시 통보하여 잔재 동기화 차단
-if (window.socket && currentUser) {
+    player.spellCooldowns = {};
+    player.vx = 0; 
+    player.vy = 0; 
+    player.isKitingActive = false;
+
+    if (window.socket && currentUser) {
         window.socket.emit('player_target', { targetId: null });
         window.socket.emit('player_update', {
             name: player.name,
@@ -3463,9 +3460,12 @@ if (window.socket && currentUser) {
     
     recalculateStats(); 
     
+    let safeMaxHp = player.maxHp || window.currentMaxHp || 150;
+    let safeMaxMp = player.maxMp || window.currentMaxMp || 30;
+
     if (player.hp <= 0 || player.isDead) {
-        player.hp = currentMaxHp;
-        player.mp = currentMaxMp;
+        player.hp = safeMaxHp;
+        player.mp = safeMaxMp;
         player.isDead = false;
         
         let mData = maps[currentMap];
@@ -3480,12 +3480,14 @@ if (window.socket && currentUser) {
         }
         addMessage("사망 상태의 캐릭터가 안전하게 복구(부활)되었습니다.", "#5f5");
     } else {
-        player.hp = Math.min(player.hp, currentMaxHp); 
-        player.mp = Math.min(player.mp, currentMaxMp); 
+        player.hp = Math.min(player.hp, safeMaxHp); 
+        player.mp = Math.min(player.mp, safeMaxMp); 
     }
     
     updateUI(); 
 }
+
+
 function renderSaveList() {
     let saves = getLocalSaves(); let container = $('save-list-container'); if(!container) return;
     let keys = Object.keys(saves).sort((a,b) => (saves[b].time || 0) - (saves[a].time || 0));
@@ -5732,41 +5734,53 @@ window.showClassPassiveInfo = function() {
         title = "⚔️ 기사/군주 클래스 완벽 가이드 & 패시브";
         classSpecificHtml = `
             <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:8px;">
+                <b style="color:#38bdf8; font-size:14px;">[클래스 특성] 기사 (Knight)</b><br>
+                • 레벨당 체력(HP)이 가장 많이 상승(+30)하며, 방어구 강화 효율이 가장 뛰어난 근접 전투 스페셜리스트입니다.
+            </div>
+            <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:8px;">
                 <b style="color:#38bdf8; font-size:14px;">[고유 패시브 1] 돌진 (Rush)</b><br>
                 • 대상과의 거리가 사거리(55~350px) 밖에 있으면 쿨타임(2초)마다 적의 코앞으로 순식간에 파고들어 즉시 전투를 시작합니다.
             </div>
             <div style="background:rgba(239,68,68,0.1); border-left:3px solid #ef4444; padding:8px; margin-bottom:12px;">
                 <b style="color:#ef4444; font-size:14px;">[고유 패시브 2] 광폭화 & 클리브 (Fury & Cleave)</b><br>
-                • 강한 대미지를 입거나 다수의 적(4명 이상)에게 포위당하면 3.5초간 광폭화 상태에 돌입합니다.<br>
-                • 광폭화 중에는 <b>공격력이 2배로 폭발</b>하며, 평타 공격 시 주변 95px 내 적들을 함께 베어버리는 광역 참격(클리브)이 발동합니다.<br>
-                • 이때 적에게 입힌 총 피해량의 25%가 <b>즉시 체력(HP)으로 흡혈</b>되어 위기를 극복합니다.
+                • 강한 대미지를 입거나 다수의 적에게 포위당하면 4초간 광폭화 상태에 돌입합니다.<br>
+                • 광폭화 중에는 <b>공격력이 2배로 폭발</b>하며, 평타 시 주변 적들을 함께 베어버리는 광역 참격이 발동합니다.<br>
+                • 적에게 입힌 피해의 25%가 <b>즉시 체력(HP)으로 흡혈</b>됩니다.
             </div>`;
     } else if (pClass === 'elf') {
         title = "🏹 요정 클래스 완벽 가이드 & 패시브";
         classSpecificHtml = `
             <div style="background:rgba(74,222,128,0.1); border-left:3px solid #4ade80; padding:8px; margin-bottom:8px;">
+                <b style="color:#4ade80; font-size:14px;">[클래스 특성] 요정 (Elf)</b><br>
+                • 밸런스형 체력(+18)과 마나(+19) 성장을 가지며, 무기(활) 강화 효율이 가장 높은 원거리 특화 클래스입니다.
+            </div>
+            <div style="background:rgba(74,222,128,0.1); border-left:3px solid #4ade80; padding:8px; margin-bottom:8px;">
                 <b style="color:#4ade80; font-size:14px;">[고유 패시브 1] 에코 오브 실프 (Echo of Sylph)</b><br>
-                • 평타 사격 시 25% 확률로 정령의 바람이 실려 추가 마법 피해를 입히고 MP를 4~5 즉시 회복합니다.
+                • 평타 사격 시 25% 확률로 마법 피해를 추가로 입히고 MP를 즉시 회복합니다.
             </div>
             <div style="background:rgba(250,204,21,0.1); border-left:3px solid #facc15; padding:8px; margin-bottom:8px;">
                 <b style="color:#facc15; font-size:14px;">[고유 패시브 2] 실프의 폭풍 (Sylph Tempest)</b><br>
-                • 평타 타격이 5회 누적되면 4초간 에메랄드 바람 오라와 함께 광폭화 상태가 됩니다.<br>
-                • 주변 200px 적들에게 광역 화살 세례를 퍼붓고 대미지의 일부를 HP/MP로 흡수합니다.
+                • 평타 5회 누적 시 4초간 에메랄드 바람 오라와 함께 광폭화 상태가 됩니다.<br>
+                • <b>활 강화 수치에 비례하여 대미지가 대폭 증폭</b>되는 광역 화살 세례를 퍼붓습니다.
             </div>
             <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:12px;">
                 <b style="color:#38bdf8; font-size:14px;">[전투 AI] 스마트 카이팅</b><br>
-                • 적이 150px 이내로 너무 가까이 접근하면 자동으로 뒤로 물러나며 원거리 무빙샷을 구사합니다.
+                • 적이 가까이 접근하면 자동으로 뒤로 물러나며 원거리 무빙샷을 구사합니다.
             </div>`;
     } else if (pClass === 'wizard') {
         title = "🔮 마법사 클래스 완벽 가이드 & 패시브";
         classSpecificHtml = `
             <div style="background:rgba(192,132,252,0.1); border-left:3px solid #c084fc; padding:8px; margin-bottom:8px;">
+                <b style="color:#c084fc; font-size:14px;">[클래스 특성] 마법사 (Wizard)</b><br>
+                • 체력 성장(+12)은 가장 낮지만 압도적인 마나(+45)를 바탕으로 마법을 구사하며, 지팡이 강화 시 마법 공격력(SP)이 크게 오릅니다.
+            </div>
+            <div style="background:rgba(192,132,252,0.1); border-left:3px solid #c084fc; padding:8px; margin-bottom:8px;">
                 <b style="color:#c084fc; font-size:14px;">[고유 패시브 1] 스마트 마력 순환</b><br>
-                • 적의 수(3마리 이상 광역/단일)와 보스 여부에 따라 가방/슬롯에 등록된 마법 중 가장 효율적이고 강력한 마법을 자동으로 선별하여 난사합니다.
+                • 적의 수(광역/단일)와 보스 여부에 따라 가방/슬롯에 등록된 마법 중 가장 효율적인 마법을 자동 선별해 난사합니다.
             </div>
             <div style="background:rgba(56,189,248,0.1); border-left:3px solid #38bdf8; padding:8px; margin-bottom:12px;">
                 <b style="color:#38bdf8; font-size:14px;">[전투 AI] 원형 오르빗 카이팅</b><br>
-                • 적이 접근하면 안전 거리를 유지하며 플레이어를 중심축으로 원을 그리며 회전하며 마법을 퍼붓습니다.
+                • 적이 접근하면 안전 거리를 유지하며 원을 그리듯 회전하면서 마법을 퍼붓습니다.
             </div>`;
     }
 
@@ -5777,37 +5791,30 @@ window.showClassPassiveInfo = function() {
         </div>
         ${classSpecificHtml}
         <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
-            2. 화면 인터페이스(UI) 구조 및 모바일/PC 조작법
+            2. 장비 강화(인챈트) 시스템 안내 (핵심 생존 요소)
         </div>
         <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px; margin-bottom:8px;">
-            • <b>상단 HP / MP / EXP 바:</b> 생명력, 마력, 경험치를 실시간으로 표시합니다. HP가 0이 되면 사망하며 3초 후 안전지대 마을에서 부활합니다.<br>
-            • <b>미니맵 (minimap):</b> 현재 캐릭터의 위치, 주변 지형, 안전지대(초록색 원), 포탈 및 주요 NPC 위치를 보여줍니다.<br>
-            • <b>이동 및 타겟팅 조작:</b><br>
-              - <b>PC:</b> 마우스 좌클릭으로 이동 및 빈 땅 클릭, 몬스터를 클릭하면 타겟 고정 및 자동/수동 전투가 시작됩니다.<br>
-              - <b>모바일:</b> 화면을 터치하여 이동하고, 몬스터나 NPC를 직접 터치하여 상호작용 및 전투를 진행합니다.<br>
-            • <b>하단 토글 버튼 (물약 / 사냥):</b><br>
-              - <b>물약 ON:</b> 설정한 조건에 맞춰 가방 속 회복 물약을 자동으로 마십니다.<br>
-              - <b>사냥 ON:</b> 주변 몬스터를 자동 탐색해 사냥하고 바닥에 떨어진 아이템을 등급 필터에 맞춰 자동 줍기(루팅)합니다.<br>
-            • <b>퀵슬롯 (F5 ~ F12):</b> 인벤토리 아이템이나 마법책 스킬을 끌어다 등록합니다.<br>
-              - <b>마법 더블클릭:</b> 자동사냥 전용으로 지정되어 사냥 시 자동으로 난사됩니다.<br>
-              - <b>마법 단일클릭:</b> 수동 타겟팅 모드가 켜져 원하는 적을 직접 지정해 공격할 수 있습니다.
+            • <b>방어구 강화 보너스:</b> 레벨업 체력이 적은 대신, <b>티셔츠, 망토, 벨트를 강화할 때마다 HP+10, MP+2</b>가 대폭 증가합니다.<br>
+            • <b>방어구 고강화 특권:</b> 방어구를 <b>+5 이상 강화하면 대미지 리덕션(피해 감소)</b>이 부여되어 몬스터의 공격을 더욱 튼튼하게 버팁니다.<br>
+            • <b>무기 강화 보너스:</b> 무기 강화 시 대미지 배율이 매우 높아 체감이 확실하며, <b>지팡이 강화 시 마법 공격력(SP)이 크게 증가</b>합니다.<br>
+            ※ 안전 강화(무기 +6, 방어구 +4)를 넘어가서 실패하더라도 주문서만 사라지고 <b>장비는 절대 파괴되지 않습니다.</b>
         </div>
         <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
-            3. 상세한 게임 진행 방식 및 초보자 성장 가이드
+            3. 화면 인터페이스(UI) 구조 및 조작법
         </div>
         <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px; margin-bottom:8px;">
-            • <b>1단계:</b> 마을의 '판도라(잡화상인)'에게 들러 주홍 물약과 초록 물약 등을 구매하세요.<br>
-            • <b>2단계:</b> 안전지대 마을 밖 초원 지역(Lv.1~15)에서 몬스터를 잡으며 아데나와 경험치를 모읍니다.<br>
-            • <b>3단계:</b> 상인(게라드)에게 마법서, 기술서를 구매해 인벤토리에서 더블클릭하면 새로운 스킬을 배웁니다.<br>
-            • <b>4단계:</b> '데이젤' 상인에게서 '무기/갑옷 마법 주문서'를 구매해 장비를 강화하세요 (무기 +6, 방어구 +4 안전강화).
+            • <b>상단 바:</b> HP(체력)/MP(마나)/EXP(경험치)를 표시. 사망 시 3초 후 마을에서 부활합니다.<br>
+            • <b>이동/전투:</b> 마우스나 터치로 빈 땅을 누르면 이동, 몬스터를 누르면 공격합니다.<br>
+            • <b>하단 버튼:</b> 물약 자동 복용(HP 70%, MP 20% 미만)과 주변 몬스터 자동 사냥 기능을 켜고 끕니다.<br>
+            • <b>퀵슬롯:</b> 인벤토리에서 마법이나 물약을 지정. 마법 더블클릭 시 자동사냥용, 단일클릭 시 수동 공격 상태가 됩니다.
         </div>
         <div style="font-size:14px; font-weight:bold; color:#fd0; margin:14px 0 6px 0; border-bottom:1px solid #444; padding-bottom:3px;">
-            4. 핵심 콘텐츠 - 용병, 펫, 창고 시스템 활용 가이드
+            4. 핵심 콘텐츠 - 용병, 펫, 창고 시스템
         </div>
         <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px;">
-            • <b>⚔️ 용병 시스템:</b> 마을 '용병 단장'을 통해 최대 3명까지 고용할 수 있으며 가방 속 장비와 물약을 보급해 줄 수 있습니다.<br>
-            • <b>🐾 펫 테이밍:</b> 잡화상인에게 '고기'를 사서 '도베르만' 근처에서 사용하면 일정 확률로 펫으로 길들일 수 있습니다.<br>
-            • <b>📦 계정 공용 창고:</b> 마을 '창고지기'를 통해 계정 내 캐릭터 간 아데나와 아이템을 공유할 수 있습니다.
+            • <b>⚔️ 용병:</b> 마을 '용병 단장'에게 최대 3명까지 고용하며, 가방 속 장비와 물약을 보급해줄 수 있습니다.<br>
+            • <b>🐾 펫:</b> 잡화상인의 '고기'를 '도베르만'에게 사용하여 길들일 수 있습니다.<br>
+            • <b>📦 계정 창고:</b> 마을 '창고지기'를 통해 본캐와 부캐릭터 간 아이템/아데나를 자유롭게 공유합니다.
         </div>
     </div>`;
 
