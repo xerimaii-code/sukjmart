@@ -1,4 +1,4 @@
-// server.js (LTE 최적화 및 어스바인드/스턴 통합 버전)
+// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원 및 어스바인드/스턴 통합 버전)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -106,7 +106,7 @@ function applyTranscendOptions(item) {
         }
     } else if (['armor', 'helmet', 'cloak', 'shield', 'gloves', 'boots', 'tshirt'].includes(t)) {
         item.magicOptions.push('[초월] 대미지 감소 +20', '[초월] 추가 방어력 +25', '[초월] 최대 HP +500');
-    } else if (['ring', 'belt'].includes(t)) {
+    } else if (['ring', 'belt', 'earring'].includes(t)) {
         item.magicOptions.push('[초월] 모든 스탯 +8', '[초월] HP 회복률 +25', '[초월] MP 회복률 +15');
     }
     item.magicOptions = [...new Set(item.magicOptions)];
@@ -220,7 +220,9 @@ io.on('connection', (socket) => {
             equip: {},
             mercs: [],
             isMoving: false,
-            angle: 0
+            angle: 0,
+            totalMr: payload.totalMr || 50,
+            totalDmgReduction: payload.totalDmgReduction || 0
         };
         socket.join(currentMap);
         socket.emit('sync_map_state', { 
@@ -369,7 +371,9 @@ io.on('connection', (socket) => {
                 equip: payload.equip || {},
                 mercs: payload.mercs || [], 
                 isMoving: payload.isMoving || false, 
-                angle: payload.angle || 0
+                angle: payload.angle || 0,
+                totalMr: payload.totalMr || 50,
+                totalDmgReduction: payload.totalDmgReduction || 0
             };
             socket.join(currentMap);
             socket.emit('sync_map_state', { monsters: mapsState[currentMap].monsters, items: mapsState[currentMap].items });
@@ -423,6 +427,9 @@ io.on('connection', (socket) => {
         p.isMoving = payload.isMoving !== undefined ? payload.isMoving : (p.isMoving || false);
         p.equip = payload.equip || p.equip;
         
+        p.totalMr = payload.totalMr !== undefined ? payload.totalMr : (p.totalMr || p.int * 2);
+        p.totalDmgReduction = payload.totalDmgReduction !== undefined ? payload.totalDmgReduction : (p.totalDmgReduction || 0);
+
         if (payload.mercs && Array.isArray(payload.mercs) && payload.mercs.length > 0) {
             p.mercs = payload.mercs;
         }
@@ -747,20 +754,27 @@ io.on('connection', (socket) => {
         let spellName = payload.magicName;
         let finalDamage = 10;
 
-        // 💡 [추가] 어스 바인드 등 무적 상태면 데미지 무시 (0 고정)
+        // 💡 어스 바인드 등 무적 상태면 데미지 무시 (0 고정)
         if (monster.invincibleUntil && Date.now() < monster.invincibleUntil) {
             finalDamage = 0;
-        } else if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
-            finalDamage = Math.max(1, payload.calculatedDmg - Math.floor((monster.def || 0) / 3));
         } else {
-            let statAtk = Math.max(1, Math.floor((p.str - 10) * 3.2));
-            let wpAtk = (p.equip && p.equip.weapon ? p.equip.weapon.atk || 0 : 0);
-            finalDamage = Math.max(1, statAtk + wpAtk - Math.floor((monster.def || 0) / 3));
+            // 💡 몬스터 방어력(DEF) 곡선형 피격 공식 적용 (방어력 100 기준 50% 피해 감소)
+            let mDef = monster.def || 0;
+            let mDefRatio = 100 / (100 + Math.max(0, mDef));
+            
+            if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
+                finalDamage = Math.max(1, Math.floor(payload.calculatedDmg * mDefRatio));
+            } else {
+                let statAtk = Math.max(1, Math.floor((p.str - 10) * 3.2));
+                let wpAtk = (p.equip && p.equip.weapon ? p.equip.weapon.atk || 0 : 0);
+                let rawDmg = statAtk + wpAtk;
+                finalDamage = Math.max(1, Math.floor(rawDmg * mDefRatio));
+            }
         }
 
         monster.hp -= finalDamage;
         
-        // 💡 [추가] 스턴 및 어스 바인드 상태 이상 적용
+        // 💡 스턴 및 어스 바인드 상태 이상 적용
         if (spellName === '쇼크 스턴') {
             monster.stunnedUntil = Date.now() + 3000;
         } else if (spellName === '어스 바인드') {
@@ -841,7 +855,7 @@ io.on('connection', (socket) => {
 
                     if (!baseChosen) {
                         let equipPool = data.itemDb.filter(it => 
-                            ['weapon', 'armor', 'helmet', 'cloak', 'gloves', 'boots', 'shield', 'belt', 'ring'].includes(it.type)
+                            ['weapon', 'armor', 'helmet', 'cloak', 'gloves', 'boots', 'shield', 'belt', 'ring', 'earring', 'tshirt'].includes(it.type)
                         );
                         baseChosen = equipPool[Math.floor(Math.random() * equipPool.length)];
                     }
@@ -977,15 +991,16 @@ io.on('connection', (socket) => {
     });
 
     socket.on('party_reject', (payload = {}) => {
-    let inviterSocket = io.sockets.sockets.get(payload.inviterSocketId);
-    if (inviterSocket) {
-        inviterSocket.emit('party_reject', {
-            rejectorSocketId: socket.id,
-            rejectorName: payload.rejectorName || players[socket.id]?.name || '모험가',
-            type: payload.type || 'soft' // 💡 type 필드 추가 전달
-        });
-    }
-});
+        let inviterSocket = io.sockets.sockets.get(payload.inviterSocketId);
+        if (inviterSocket) {
+            inviterSocket.emit('party_reject', {
+                rejectorSocketId: socket.id,
+                rejectorName: payload.rejectorName || players[socket.id]?.name || '모험가',
+                type: payload.type || 'soft'
+            });
+        }
+    });
+
     socket.on('party_accept', (payload = {}) => {
         let inviter = players[payload.inviterSocketId];
         let accepter = players[socket.id];
@@ -1199,7 +1214,7 @@ function processMonsterAI() {
             }
             
             if (mob.targetId && target) {
-                // 💡 [추가] 몬스터가 스턴이거나 어스바인드 상태면 이동 및 공격 불가
+                // 💡 몬스터가 스턴이거나 어스바인드 상태면 이동 및 공격 불가
                 if (mob.stunnedUntil && now < mob.stunnedUntil) return;
 
                 let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
@@ -1208,7 +1223,6 @@ function processMonsterAI() {
                 if (dist > stopDist) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                     let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
-                    // 💡 [수정] 서버 연산 주기 80ms로 하향하여 LTE 환경 트래픽 대폭 절감
                     let mSpeed = baseMobSpeed * (80 / 1000); 
                     
                     mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
@@ -1266,9 +1280,17 @@ function processMonsterAI() {
                                 let pDist = Math.hypot(currentTarget.x - castTargetX, currentTarget.y - castTargetY);
 
                                 if (pDist <= cfg.radius + 45) {
-                                    currentTarget.hp = Math.max(0, currentTarget.hp - cfg.dmg);
+                                    // 💡 마법 방어력(MR) 기반 곡선형 피해 감소 적용 및 대미지 리덕션 차감
+                                    let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
+                                    let targetReduc = currentTarget.totalDmgReduction || 0;
+                                    let magicRatio = 100 / (100 + targetMr);
+                                    
+                                    let rawMagicDmg = Math.floor(cfg.dmg * magicRatio);
+                                    let finalMagicDmg = Math.max(1, rawMagicDmg - targetReduc);
+
+                                    currentTarget.hp = Math.max(0, currentTarget.hp - finalMagicDmg);
                                     io.to(ownerSocketId).emit('take_damage', { 
-                                        damage: cfg.dmg, 
+                                        damage: finalMagicDmg, 
                                         hitType: 'magic', 
                                         hpRemaining: currentTarget.hp, 
                                         targetId: currentTarget.id || currentTarget.socketId 
@@ -1282,8 +1304,13 @@ function processMonsterAI() {
                             }, cfg.delay * 1000);
 
                         } else {
+                            // 💡 물리 방어력(DEF) 기반 곡선형 피해 감소 적용 및 대미지 리덕션 차감
                             let targetDef = target.def || 0;
-                            let dmg = Math.max(1, (mob.atk || 15) - Math.floor(targetDef * 0.5));
+                            let targetReduc = target.totalDmgReduction || 0;
+                            let defRatio = 100 / (100 + Math.max(0, targetDef));
+                            
+                            let rawDmg = Math.floor((mob.atk || 15) * defRatio);
+                            let dmg = Math.max(1, rawDmg - targetReduc);
 
                             target.hp = Math.max(0, target.hp - dmg);
                             if (ownerSocketId) {
@@ -1426,7 +1453,6 @@ setInterval(() => {
     }
 }, 10000); 
 
-// 💡 [수정] 40ms -> 80ms 서버 연산 주기 하향 (LTE 통신 트래픽 50% 최적화)
 setInterval(processMonsterSpawning, 1000);
 setInterval(processMonsterAI, 80);
 
