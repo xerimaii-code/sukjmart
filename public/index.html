@@ -1,12 +1,8 @@
 <!DOCTYPE html>
-
-//V1.1
-
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -39,73 +35,25 @@
     border-color: #5cf;
 }
 
-/* 기본 모바일/반응형 하단 바 */
-#ui-bottom-bar {
-    height: 165px;
-}
+#ui-bottom-bar { height: 165px; }
 
-/* =================================================== */
-/* 🖥️ 1. PC 전용 스타일 (769px 이상에서만 단독 작동) */
-/* =================================================== */
 @media (min-width: 769px) {
-    #mobile-chat-toggle-btn {
-        display: none !important;
-    }
- 
-    #ui-bottom-bar {
-        height: 165px !important;
-    }
+    #mobile-chat-toggle-btn { display: none !important; }
+    #ui-bottom-bar { height: 165px !important; }
     #ui-bars { 
-        padding: 6px 10px !important; 
-        background: #0c0c10 !important; 
-        display: flex !important; 
-        flex-direction: column !important; 
-        gap: 4px !important; 
-        border-bottom: 1px solid #33333d !important; 
+        padding: 6px 10px !important; background: #0c0c10 !important; display: flex !important; 
+        flex-direction: column !important; gap: 4px !important; border-bottom: 1px solid #33333d !important; 
     }
-    .bar-wrap { 
-        display: flex !important; 
-        align-items: center !important; 
-        gap: 8px !important; 
-        height: 16px !important;
-    }
-    .bar-label { 
-        width: 36px !important; 
-        font-size: 12px !important; 
-        font-weight: bold !important; 
-        color: #eee !important; 
-        text-align: right !important; 
-    }
-    .bar-bg { 
-        flex: 1 !important; 
-        height: 100% !important; 
-        background: #000 !important; 
-        border: 1px inset #555 !important; 
-        position: relative !important; 
-        overflow: hidden !important; 
-        border-radius: 3px !important;
-    }
+    .bar-wrap { display: flex !important; align-items: center !important; gap: 8px !important; height: 16px !important; }
+    .bar-label { width: 36px !important; font-size: 12px !important; font-weight: bold !important; color: #eee !important; text-align: right !important; }
+    .bar-bg { flex: 1 !important; height: 100% !important; background: #000 !important; border: 1px inset #555 !important; position: relative !important; overflow: hidden !important; border-radius: 3px !important; }
     .bar-fill { height: 100% !important; }
     .hp { background: linear-gradient(to bottom, #ee3333, #880000) !important; }
     .mp { background: linear-gradient(to bottom, #3366ff, #001188) !important; }
     .exp { background: linear-gradient(to bottom, #ffcc00, #886600) !important; }
-
-    .bar-text { 
-        position: absolute !important; 
-        top: 0 !important; 
-        left: 0 !important; 
-        width: 100% !important; 
-        height: 100% !important; 
-        text-align: center !important; 
-        font-size: 11.5px !important; 
-        font-weight: bold !important; 
-        color: #ffffff !important; 
-        line-height: 16px !important; 
-        text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000 !important; 
-    }
+    .bar-text { position: absolute !important; top: 0 !important; left: 0 !important; width: 100% !important; height: 100% !important; text-align: center !important; font-size: 11.5px !important; font-weight: bold !important; color: #ffffff !important; line-height: 16px !important; text-shadow: 1px 1px 2px #000, -1px -1px 2px #000, 1px -1px 2px #000, -1px 1px 2px #000 !important; }
 }
 
-/* --- 인벤토리 탭 및 원작 스타일 장비창 --- */
 .inv-tabs { display: flex; background: #111116; border-bottom: 2px solid #33333d; }
 .inv-tab { flex: 1; text-align: center; padding: 8px; font-size: 12px; color: #888; cursor: pointer; font-weight: bold; }
 .inv-tab.active { color: #fd0; background: #22222d; border-bottom: 2px solid #fd0; }
@@ -115,20 +63,7 @@
 .ce-slot:hover { border-color: #fd0; }
 .ce-label { position: absolute; bottom: -14px; width: 100%; text-align: center; font-size: 10px; color: #aaa; text-shadow: 1px 1px 0 #000; pointer-events: none; }
 
-.ce-helm { top: 10px; left: 90px; }
-.ce-tshirt { top: 60px; left: 40px; }
-.ce-armor { top: 60px; left: 90px; }
-.ce-cloak { top: 60px; left: 140px; }
-.ce-weapon { top: 110px; left: 40px; }
-.ce-shield { top: 110px; left: 140px; }
-.ce-gloves { top: 160px; left: 40px; }
-.ce-boots { top: 160px; left: 140px; }
-.ce-ring1 { top: 210px; left: 65px; }
-.ce-ring2 { top: 210px; left: 115px; }
-.ce-belt { top: 110px; left: 90px; }
-
 .e-mark { position: absolute; top: 2px; left: 2px; font-size: 10px; font-weight: bold; color: #fd0; background: rgba(0,0,0,0.7); padding: 0 3px; border-radius: 2px; border: 1px solid #da0; pointer-events: none; }
-
 .btn-magic-setup { background: linear-gradient(to bottom, #444, #222); border: 1px solid #666; color: #ccc; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
 .btn-magic-setup:hover { border-color: #fd0; color: #fff; }
 .btn-magic-use { background: linear-gradient(to bottom, #262, #141); border: 1px solid #4a4; color: #5f5; border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold; cursor: pointer; }
@@ -152,61 +87,14 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #map-name { font-size: 24px; font-weight: bold; color: #fff; text-shadow: 2px 2px 0 #000; cursor: pointer; }
 #zone-indicator { font-size: 14px; font-weight: bold; color: #5f5; text-shadow: 1px 1px 0 #000; margin-top: 2px; }
 
-#mercenary-hud-list { 
-    position: fixed !important; 
-    top: 175px !important; 
-    right: 10px !important; 
-    display: flex !important; 
-    flex-direction: column !important; 
-    gap: 6px !important; 
-    z-index: 350 !important; 
-    pointer-events: none !important; 
-}
-.merc-hud-card { 
-    pointer-events: auto;
-    padding: 5px 7px; 
-    background: rgba(10, 10, 15, 0.92); 
-    border: 1px solid #444455; 
-    border-radius: 4px; 
-    width: 130px; 
-    cursor: pointer; 
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
-}
-.merc-name-row { 
-    font-size: 10.5px; 
-    font-weight: bold; 
-    color: #ffdd00; 
-    white-space: nowrap; 
-    overflow: hidden; 
-    text-overflow: ellipsis; 
-    margin-bottom: 3px;
-}
-.merc-bar-wrap { 
-    width: 100%; 
-    height: 10px; 
-    background: #000000; 
-    border: 1px solid #333333; 
-    position: relative; 
-    border-radius: 2px; 
-    overflow: hidden; 
-    margin-top: 2px; 
-}
+#mercenary-hud-list { position: fixed !important; top: 175px !important; right: 10px !important; display: flex !important; flex-direction: column !important; gap: 6px !important; z-index: 350 !important; pointer-events: none !important; }
+.merc-hud-card { pointer-events: auto; padding: 5px 7px; background: rgba(10, 10, 15, 0.92); border: 1px solid #444455; border-radius: 4px; width: 130px; cursor: pointer; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
+.merc-name-row { font-size: 10.5px; font-weight: bold; color: #ffdd00; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px; }
+.merc-bar-wrap { width: 100%; height: 10px; background: #000000; border: 1px solid #333333; position: relative; border-radius: 2px; overflow: hidden; margin-top: 2px; }
 .merc-bar-fill { height: 100%; }
 .merc-bar-fill.hp { background: linear-gradient(to right, #dd2222, #880000); }
 .merc-bar-fill.mp { background: linear-gradient(to right, #2244dd, #000088); }
-.merc-bar-text {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    text-align: center;
-    font-size: 7.5px;
-    font-weight: bold;
-    color: #ffffff;
-    line-height: 10px;
-    text-shadow: 1px 1px 1px #000;
-}
+.merc-bar-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; text-align: center; font-size: 7.5px; font-weight: bold; color: #ffffff; line-height: 10px; text-shadow: 1px 1px 1px #000; }
 
 #ui-bottom-bar { position: absolute; bottom: 0; left: 0; width: 100%; height: 125px; background: #1a1a24; border-top: 2px solid #555562; display: flex; z-index: 100; }
 #ui-left { width: 180px; padding: 8px; border-right: 2px solid #33333d; display: flex; flex-direction: column; justify-content: center; gap: 4px; color: #aaa; font-size: 12px; }
@@ -234,94 +122,21 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 #chat-input { flex: 1; height: 22px; background: #1a1a26; border: 1px solid #556; color: #fff; padding: 0 6px; font-size: 11px; outline: none; }
 #chat-send-btn { display: none; background: #33333d; color: #fd0; border: 1px solid #555; padding: 2px 8px; font-size: 11px; font-weight: bold; cursor: pointer; height: 22px; }
 
-/* 💡 펼치기 버튼 정돈 스타일 */
-#chat-expand-btn {
-    margin-left: auto !important;
-    padding: 0 8px !important;
-    color: #fd0 !important;
-    cursor: pointer !important;
-    font-weight: bold !important;
-    border-left: 1px solid #33333d !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    white-space: nowrap !important;
-    font-size: 10px !important;
-    height: 100% !important;
-    background: #181822;
-}
+#win-chat-popup { position: fixed !important; width: 420px; height: 320px; min-width: 260px !important; min-height: 180px !important; max-width: 95vw !important; max-height: 80vh !important; z-index: 999999 !important; resize: both; overflow: hidden !important; }
 
-/* 📜 확장 대화창 팝업 크기 조절 및 이동 완벽 개방 패치 */
-#win-chat-popup {
-    position: fixed !important;
-    width: 420px; 
-    height: 320px;
-    min-width: 260px !important;
-    min-height: 180px !important;
-    max-width: 95vw !important;
-    max-height: 80vh !important;
-    z-index: 999999 !important;
-    resize: both;
-    overflow: hidden !important;
-}
-
-/* 💡 [패치] 창 내부 스크롤바 중복(리스팅바 두 개) 원천 방지 CSS */
-.window .win-content {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    height: 100%;
-    position: relative;
-    overflow: hidden !important;
-}
-.window .win-content > div {
-    overflow: hidden !important;
-    max-height: 100% !important;
-    box-sizing: border-box !important;
-}
+.window .win-content { display: flex; flex-direction: column; flex: 1; height: 100%; position: relative; overflow: hidden !important; }
+.window .win-content > div { overflow: hidden !important; max-height: 100% !important; box-sizing: border-box !important; }
 
 #ui-right { width: 280px; display: flex; flex-direction: column; padding: 8px; gap: 6px; justify-content: center; background: rgba(0,0,0,0.5); }
 #hotkeys { display: grid; grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, 1fr); gap: 3px; height: 85px; }
-.hotkey-slot { 
-    background: #0a0a0f; 
-    border: 1px inset #444; 
-    position: relative !important; 
-    cursor: pointer; 
-    display: flex !important; 
-    justify-content: center !important; 
-    align-items: center !important; 
-    overflow: hidden !important;
-}
+.hotkey-slot { background: #0a0a0f; border: 1px inset #444; position: relative !important; cursor: pointer; display: flex !important; justify-content: center !important; align-items: center !important; overflow: hidden !important; }
 .hk-label { position: absolute; top: 2px; left: 3px; font-size: 9px; color: #aaa; font-weight: bold; z-index: 5; } 
 .hk-count { position: absolute; bottom: 2px; right: 3px; font-size: 10px; color: #fd0; font-weight: bold; z-index: 5; } 
-.hk-icon { 
-    width: 100% !important; 
-    height: 100% !important; 
-    text-align: center; 
-    display: flex !important; 
-    justify-content: center !important; 
-    align-items: center !important; 
-    font-size: 18px !important;
-    z-index: 1 !important;
-    object-fit: contain !important;
-}
+.hk-icon { width: 100% !important; height: 100% !important; text-align: center; display: flex !important; justify-content: center !important; align-items: center !important; font-size: 18px !important; z-index: 1 !important; object-fit: contain !important; }
 .cooldown-overlay { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.7); z-index: 4; }
 
 #menu-btns { display: flex; gap: 4px; height: 32px; }
-.menu-btn { 
-    flex: 1; 
-    background: #2a2a35; 
-    border: 1px outset #555; 
-    color: #ccc; 
-    font-size: 11px; 
-    font-weight: bold; 
-    cursor: pointer; 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    padding: 4px 2px !important;
-    white-space: nowrap !important;
-}
+.menu-btn { flex: 1; background: #2a2a35; border: 1px outset #555; color: #ccc; font-size: 11px; font-weight: bold; cursor: pointer; display: flex; justify-content: center; align-items: center; padding: 4px 2px !important; white-space: nowrap !important; }
 
 #minimap-container { position: absolute; top: 10px; right: 10px; width: 150px; height: 150px; background: rgba(0,0,0,0.6); border: 2px solid #444; border-radius: 50%; overflow: hidden; z-index: 10; pointer-events: none; }
 
@@ -331,26 +146,12 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .char-stat { font-size: 14px; font-weight: bold; display: flex; justify-content: space-between; margin: 5px 0; border-bottom: 1px dashed #333; padding-bottom: 3px;}
 .color-knight { color: #ccc; } .color-elf { color: #8f8; } .color-wizard { color: #88f; }
 
-.window {
-    display: none;
-    position: absolute;
-    min-width: 240px;
-    min-height: 180px;
-    background: rgba(15, 15, 20, 0.96);
-    border: 2px outset #555562;
-    border-radius: 6px;
-    z-index: 2000;
-    flex-direction: column;
-    box-shadow: 0 6px 20px rgba(0,0,0,0.85);
-    resize: both;
-    overflow: hidden;
-}
+.window { display: none; position: absolute; min-width: 240px; min-height: 180px; background: rgba(15, 15, 20, 0.96); border: 2px outset #555562; border-radius: 6px; z-index: 2000; flex-direction: column; box-shadow: 0 6px 20px rgba(0,0,0,0.85); resize: both; overflow: hidden; }
 .win-header { background: linear-gradient(to right, #1a2a44, #0d1522); padding: 6px 10px; color: #fff; font-weight: bold; font-size: 13px; cursor: move; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #000; flex-shrink: 0; }
 .win-close { cursor: pointer; color: #aaa; font-weight: bold; font-size: 15px; padding: 0 5px; } .win-close:hover { color: #f55; }
 
 #buff-list { position: absolute; bottom: 175px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; z-index: 100; }
-
-#equip-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; background: #15151d; padding: 10px; border-bottom: 2px solid #444; flex-shrink: 0;}
+#equip-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; background: #15151d; padding: 12px; border-bottom: 2px solid #444; flex-shrink: 0; align-content:start; }
 .equip-slot { background: #111; border: 1px inset #555; padding: 6px; text-align: center; font-size: 13px; color: #fff; border-radius: 2px; cursor: pointer; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 40px;} 
 #inv-list { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding-bottom: 5px; }
 .inv-slot { position: relative; width: 100%; aspect-ratio: 1/1; background: #111; border: 1px solid #444; border-radius: 3px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 24px; } 
@@ -361,110 +162,25 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.6); z-index: 999999; align-items: center; justify-content: center; }
 .modal-box { background: rgba(20, 20, 28, 0.96); border: 2px solid #555562; border-radius: 8px; padding: 14px 16px; text-align: center; color: #fff; width: 310px; max-width: 88vw; display: flex; flex-direction: column; }
 .modal-input { width: 100%; padding: 8px; margin-bottom: 10px; background: #223; color: #fff; border: 1px solid #556; text-align: center; font-weight: bold; font-size: 14px; }
-.confirm-btn { 
-    padding: 8px 12px; 
-    cursor: pointer; 
-    background: #334; 
-    border: 1px outset #556; 
-    color: #fff; 
-    font-weight: bold; 
-    border-radius: 4px; 
-    font-size: 13px; 
-    display: inline-flex; 
-    justify-content: center; 
-    align-items: center; 
-    white-space: nowrap;
-}
+.confirm-btn { padding: 8px 12px; cursor: pointer; background: #334; border: 1px outset #556; color: #fff; font-weight: bold; border-radius: 4px; font-size: 13px; display: inline-flex; justify-content: center; align-items: center; white-space: nowrap; }
 .grade-0 { color: #ffffff; } .grade-1 { color: #1eff00; } .grade-2 { color: #0070dd; } .grade-3 { color: #a335ee; } .grade-4 { color: #ff8000; text-shadow: 0 0 5px rgba(255,128,0,0.5); }
 
-/* 💡 [추가됨] 상점 리스트(구매/판매) 아이템 행 UI 깔끔하게 정돈 */
-#shop-list > div {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    padding: 8px 10px !important;
-    margin-bottom: 4px !important;
-    background: #1a1a24 !important;
-    border: 1px solid #33333d !important;
-    border-radius: 4px !important;
-    min-height: 38px !important; 
-}
-#shop-list > div > span:first-child {
-    font-size: 13px !important;
-    color: #e2e8f0 !important;
-    flex: 1 !important;
-    text-align: left !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    line-height: 1.2 !important;
-}
-#shop-list > div > div {
-    display: flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-}
-#shop-list input[type="number"] {
-    width: 55px !important;
-    height: 24px !important;
-    background: #000 !important;
-    color: #fd0 !important;
-    border: 1px solid #555 !important;
-    text-align: center !important;
-    font-size: 12px !important;
-    font-weight: bold !important;
-    border-radius: 3px !important;
-    outline: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-}
-#shop-list button {
-    padding: 4px 10px !important;
-    height: 24px !important;
-    font-size: 12px !important;
-    font-weight: bold !important;
-    background: linear-gradient(to bottom, #2a2a35, #111) !important;
-    color: #5cf !important;
-    border: 1px solid #555 !important;
-    border-radius: 3px !important;
-    cursor: pointer !important;
-    white-space: nowrap !important;
-    box-sizing: border-box !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-}
-#shop-list button:hover {
-    border-color: #5cf !important;
-    color: #fff !important;
-    background: linear-gradient(to bottom, #334, #223) !important;
-}
+#shop-list > div { display: flex !important; justify-content: space-between !important; align-items: center !important; padding: 8px 10px !important; margin-bottom: 4px !important; background: #1a1a24 !important; border: 1px solid #33333d !important; border-radius: 4px !important; min-height: 38px !important; }
+#shop-list > div > span:first-child { font-size: 13px !important; color: #e2e8f0 !important; flex: 1 !important; text-align: left !important; white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important; line-height: 1.2 !important; }
+#shop-list > div > div { display: flex !important; align-items: center !important; gap: 6px !important; }
+#shop-list input[type="number"] { width: 55px !important; height: 24px !important; background: #000 !important; color: #fd0 !important; border: 1px solid #555 !important; text-align: center !important; font-size: 12px !important; font-weight: bold !important; border-radius: 3px !important; outline: none !important; margin: 0 !important; padding: 0 !important; box-sizing: border-box !important; }
+#shop-list button { padding: 4px 10px !important; height: 24px !important; font-size: 12px !important; font-weight: bold !important; background: linear-gradient(to bottom, #2a2a35, #111) !important; color: #5cf !important; border: 1px solid #555 !important; border-radius: 3px !important; cursor: pointer !important; white-space: nowrap !important; box-sizing: border-box !important; display: flex !important; align-items: center !important; justify-content: center !important; }
+#shop-list button:hover { border-color: #5cf !important; color: #fff !important; background: linear-gradient(to bottom, #334, #223) !important; }
 
 @media (max-width: 768px) {
-  #mobile-chat-toggle-btn {
-        display: flex !important;
-        position: fixed !important;
-        bottom: 128px !important; /* 전체 하단 UI(125px) 바로 위로 올려서 단축키 가림 원천 차단 */
-        right: 4px !important;
-        width: auto !important;   /* 고정 가로폭(102px) 제거, 글자 크기에 딱 맞춤 */
-        height: auto !important;  /* 고정 세로폭 제거 */
-        padding: 3px 6px !important; /* 상하좌우 최소한의 여백만 부여 */
-        background: rgba(26, 26, 38, 0.95) !important;
-        border: 1px solid #5cf !important;
-        color: #fd0 !important;
-        font-size: 10px !important;
-        font-weight: bold !important;
-        justify-content: center !important;
-        align-items: center !important;
-        border-radius: 3px !important;
-        z-index: 350 !important;
-        white-space: nowrap !important; /* 텍스트 줄바꿈 방지 */
-        box-shadow: 0 2px 5px rgba(0,0,0,0.6) !important;
+    #mobile-chat-toggle-btn {
+        display: flex !important; position: fixed !important; bottom: 128px !important; right: 4px !important; width: auto !important; height: auto !important; padding: 3px 6px !important; background: rgba(26, 26, 38, 0.95) !important; border: 1px solid #5cf !important; color: #fd0 !important; font-size: 10px !important; font-weight: bold !important; justify-content: center !important; align-items: center !important; border-radius: 3px !important; z-index: 350 !important; white-space: nowrap !important; box-shadow: 0 2px 5px rgba(0,0,0,0.6) !important;
     }
+    
+    /* 💡 [수정됨] 맵 이름과 미니맵이 화면 밖으로 나가는 현상 방지 */
     #map-title-wrap {
-        position: fixed !important;
-        top: 6px !important;
+        position: absolute !important;
+        top: 10px !important;
         left: 50% !important;
         transform: translateX(-50%) !important;
         display: flex !important;
@@ -476,182 +192,52 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         border-radius: 12px !important;
         z-index: 1000 !important;
     }
+    #minimap-container { 
+        position: absolute !important;
+        top: 10px !important; 
+        right: 10px !important; 
+        width: 55px !important; 
+        height: 55px !important; 
+        pointer-events: none !important; 
+        z-index: 1000 !important;
+    }
+
     #map-name { font-size: clamp(11px, 3.2vw, 14px) !important; font-weight: bold !important; color: #fff !important; margin: 0 !important; position: static !important; transform: none !important; }
     #zone-indicator { font-size: clamp(9px, 2.5vw, 11px) !important; margin: 0 !important; position: static !important; transform: none !important; }
 
-    #minimap-container { width: 55px !important; height: 55px !important; top: 4px !important; right: 4px !important; pointer-events: none !important; }
+    #mercenary-hud-list { position: fixed !important; top: 68px !important; right: 4px !important; display: flex !important; flex-direction: column !important; gap: 3px !important; z-index: 350 !important; pointer-events: none !important; }
+    .merc-hud-card { pointer-events: auto !important; background: rgba(10, 10, 15, 0.92) !important; border: 1px solid #444455 !important; border-radius: 3px !important; padding: 2px 3px !important; width: 50px !important; cursor: pointer !important; text-align: center !important; }
+    .merc-name-row { font-size: 8px !important; font-weight: bold !important; color: #ffdd00 !important; margin-bottom: 1px !important; }
+    .merc-bar-wrap { width: 100% !important; height: 5px !important; background: #000000 !important; border: 1px solid #333333 !important; position: relative !important; border-radius: 1px !important; overflow: hidden !important; margin-top: 1px !important; }
 
-    #mercenary-hud-list {
-        position: fixed !important;
-        top: 68px !important; 
-        right: 4px !important;
-        display: flex !important;
-        flex-direction: column !important;
-        gap: 3px !important;
-        z-index: 350 !important;
-        pointer-events: none !important;
-    }
-    .merc-hud-card {
-        pointer-events: auto !important;
-        background: rgba(10, 10, 15, 0.92) !important;
-        border: 1px solid #444455 !important;
-        border-radius: 3px !important;
-        padding: 2px 3px !important;
-        width: 50px !important; 
-        cursor: pointer !important;
-        text-align: center !important;
-    }
-    .merc-name-row { 
-        font-size: 8px !important; 
-        font-weight: bold !important; 
-        color: #ffdd00 !important; 
-        margin-bottom: 1px !important; 
-    }
-    .merc-bar-wrap { 
-        width: 100% !important; 
-        height: 5px !important; 
-        background: #000000 !important; 
-        border: 1px solid #333333 !important; 
-        position: relative !important; 
-        border-radius: 1px !important; 
-        overflow: hidden !important; 
-        margin-top: 1px !important; 
-    }
+    #ui-bottom-bar { position: absolute !important; bottom: 0 !important; left: 0 !important; width: 100% !important; margin: 0 !important; padding-bottom: 0 !important; box-sizing: border-box !important; }
+    #gameCanvas { display: block !important; margin: 0 !important; }
 
-    #ui-bottom-bar {
-        position: absolute !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding-bottom: 0 !important;
-        box-sizing: border-box !important;
-    }
-    #gameCanvas {
-        display: block !important;
-        margin: 0 !important;
-    }
-
-    #ui-left { 
-        width: 100px !important; 
-        flex: 0 0 100px !important; 
-        padding: 3px 2px !important; 
-        font-size: 9px !important; 
-        border-right: 1px solid #444; 
-        display: flex !important; 
-        flex-direction: column !important; 
-        justify-content: space-between !important; 
-    }
-    .toggle-btn { 
-        font-size: 8.5px !important; 
-        padding: 5px 0 !important; 
-        margin-bottom: 0 !important; 
-        border-radius: 3px !important;
-    }
+    #ui-left { width: 100px !important; flex: 0 0 100px !important; padding: 3px 2px !important; font-size: 9px !important; border-right: 1px solid #444; display: flex !important; flex-direction: column !important; justify-content: space-between !important; }
+    .toggle-btn { font-size: 8.5px !important; padding: 5px 0 !important; margin-bottom: 0 !important; border-radius: 3px !important; }
     .toggle-btn.active { background: #d22 !important; color: #fff !important; border-color: #f55 !important; }
 
-    #ui-center { 
-        flex: 1 1 auto !important; 
-        min-width: 0 !important; 
-        height: 100% !important; 
-        overflow: hidden !important; 
-        display: flex !important; 
-        flex-direction: column !important; 
-        border-right: 1px solid #444; 
-    }
-    #ui-bars { 
-        padding: 6px 8px; 
-        background: #0c0c10; 
-        display: flex; 
-        flex-direction: column; 
-        gap: 3px; 
-        border-bottom: 1px solid #33333d; 
-    }
-    .bar-wrap { 
-        display: flex; 
-        align-items: center; 
-        gap: 6px; 
-        height: 16px; 
-    }
-    .bar-label { 
-        width: 32px; 
-        font-size: 11px; 
-        font-weight: bold; 
-        color: #ccc; 
-        text-align: right; 
-    }
-    .bar-bg { 
-        flex: 1; 
-        height: 100%; 
-        background: #000; 
-        border: 1px inset #555; 
-        position: relative; 
-        overflow: hidden; 
-        border-radius: 2px;
-    }
+    #ui-center { flex: 1 1 auto !important; min-width: 0 !important; height: 100% !important; overflow: hidden !important; display: flex !important; flex-direction: column !important; border-right: 1px solid #444; }
+    #ui-bars { padding: 6px 8px; background: #0c0c10; display: flex; flex-direction: column; gap: 3px; border-bottom: 1px solid #33333d; }
+    .bar-wrap { display: flex; align-items: center; gap: 6px; height: 16px; }
+    .bar-label { width: 32px; font-size: 11px; font-weight: bold; color: #ccc; text-align: right; }
+    .bar-bg { flex: 1; height: 100%; background: #000; border: 1px inset #555; position: relative; overflow: hidden; border-radius: 2px; }
     .bar-fill { height: 100%; }
-    .hp { background: linear-gradient(to bottom, #e33, #800); }
-    .mp { background: linear-gradient(to bottom, #36f, #008); }
-    .exp { background: linear-gradient(to bottom, #fd0, #880); }
 
-    .bar-text { 
-        position: absolute; 
-        top: 0; 
-        left: 0; 
-        width: 100%; 
-        height: 100%; 
-        text-align: center; 
-        font-size: 12px; 
-        font-weight: bold; 
-        color: #fff; 
-        line-height: 16px; 
-        text-shadow: 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; 
-    }
+    .bar-text { position: absolute; top: 0; left: 0; width: 100%; height: 100%; text-align: center; font-size: 12px; font-weight: bold; color: #fff; line-height: 16px; text-shadow: 1px 1px 1px #000, -1px -1px 1px #000, 1px -1px 1px #000, -1px 1px 1px #000; }
 
-    #ui-chat { 
-        flex: 1 !important; 
-        height: calc(100% - 14px) !important;
-        display: flex !important; 
-        flex-direction: column !important; 
-        justify-content: space-between !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-    }
+    #ui-chat { flex: 1 !important; height: calc(100% - 14px) !important; display: flex !important; flex-direction: column !important; justify-content: space-between !important; min-height: 0 !important; overflow: hidden !important; }
     #chat-tabs { height: 14px !important; min-height: 14px !important; flex-shrink: 0 !important; }
     .chat-tab { padding: 1px 5px !important; font-size: 7.5px !important; }
     
-    #chat-messages { 
-        flex: 1 !important; 
-        width: 100% !important;
-        height: auto !important; 
-        max-height: 45px !important; 
-        font-size: 10px !important; 
-        padding: 2px 4px !important; 
-        overflow-y: auto !important; 
-    }
+    #chat-messages { flex: 1 !important; width: 100% !important; height: auto !important; max-height: 45px !important; font-size: 10px !important; padding: 2px 4px !important; overflow-y: auto !important; }
     
-    #chat-input-container { 
-        height: 28px !important; 
-        min-height: 28px !important;
-        flex-shrink: 0 !important; 
-        margin: 0 !important; 
-        padding: 0 2px 0 2px !important; 
-        border-bottom: none !important;
-        background: #0c0c12 !important;
-    }
+    #chat-input-container { height: 28px !important; min-height: 28px !important; flex-shrink: 0 !important; margin: 0 !important; padding: 0 2px 0 2px !important; border-bottom: none !important; background: #0c0c12 !important; }
     #chat-input { font-size: 7.5px !important; height: 24px !important; margin: 0 !important; box-sizing: border-box !important; }
     #chat-send-btn { display: block !important; font-size: 10px !important; height: 28px !important; padding: 0 4px !important; margin: 0 !important; box-sizing: border-box !important; }
     
-    #win-chat-popup {
-        width: 88vw;
-        height: 40vh;
-        max-width: 95vw !important;
-        max-height: 80vh !important;
-    }
-    #popup-chat-messages {
-        flex-grow: 1 !important;
-        overflow-y: auto !important;
-    }
+    #win-chat-popup { width: 88vw; height: 40vh; max-width: 95vw !important; max-height: 80vh !important; }
+    #popup-chat-messages { flex-grow: 1 !important; overflow-y: auto !important; }
 
     #ui-right { width: 110px !important; flex: 0 0 110px !important; padding: 2px !important; display: flex !important; flex-direction: column !important; justify-content: space-between !important; }
     #hotkeys { height: 60px !important; gap: 1px !important; flex-shrink: 0 !important; }
@@ -662,8 +248,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     #menu-btns { height: 20px !important; min-height: 20px !important; gap: 2px !important; flex-shrink: 0 !important; margin: 0 !important; }
     .menu-btn { font-size: 7.5px !important; padding: 1px !important; height: 100% !important; }
     
-   
-
     #win-pet .win-content { padding: 6px 8px !important; gap: 3px !important; overflow: hidden !important; }
     #win-pet div[style*="background:#111"] { padding: 4px 6px !important; margin-bottom: 3px !important; }
     #win-pet .menu-btn { height: 26px !important; min-height: 26px !important; font-size: 11px !important; }
@@ -675,21 +259,10 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
     #slot-box button.confirm-btn, 
     #slot-box .bg-dark-red,
     #slot-box div[style*="로그아웃"] + button,
-    #slot-box button[onclick*="logout"] {
-        width: 100% !important;
-        display: block !important;
-        margin-top: 15px !important;
-        padding: 15px !important;
-        box-sizing: border-box !important;
-    }
+    #slot-box button[onclick*="logout"] { width: 100% !important; display: block !important; margin-top: 15px !important; padding: 15px !important; box-sizing: border-box !important; }
 }
 
-#win-option #opt-vol {
-    width: 80% !important;        /* 창 가로폭보다 작게 축소 */
-    margin: 4px auto !important;  /* 양옆 여백을 주어 중앙에 위치 */
-    display: block !important;
-    box-sizing: border-box !important;
-}
+#win-option #opt-vol { width: 80% !important; margin: 4px auto !important; display: block !important; box-sizing: border-box !important; }
 
 </style>
 </head>
@@ -820,7 +393,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
             <span class="win-close" onclick="toggleChatPopup()">X</span>
         </div>
         <div class="win-content" style="padding: 6px; display: flex; flex-direction: column; height: calc(100% - 32px); box-sizing: border-box;">
-            <!-- 상단 탭 메뉴 (귓말/시스템 제거 -> 공지 및 시스템 숨김 추가) -->
             <div id="popup-chat-tabs" style="display: flex; gap: 4px; background: #111116; padding: 4px; border-radius: 4px; border: 1px solid #33333d; margin-bottom: 6px; flex-shrink: 0; align-items: center;">
                 <button type="button" class="popup-tab active" onclick="switchChatTab('all')">전체</button>
                 <button type="button" class="popup-tab" onclick="switchChatTab('chat')">💬일반</button>
@@ -831,10 +403,8 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                 </div>
             </div>
             
-            <!-- 메시지 출력창 -->
             <div id="popup-chat-messages" style="flex: 1; min-height: 0; background: rgba(0, 0, 0, 0.75); border: 1px inset #444; border-radius: 4px; padding: 8px; overflow-y: auto; font-size: 13px; line-height: 1.5; color: #eee;"></div>
             
-            <!-- 입력창 -->
            <div style="display: flex; gap: 6px; margin-top: 6px; height: 32px; flex-shrink: 0; padding-right: 20px;">
                 <input type="text" id="popup-chat-input" placeholder="대화 내용을 입력하세요... (Enter)" autocomplete="off" style="flex: 1; height: 100%; background: #1a1a26; border: 1px solid #556; color: #fff; padding: 0 10px; font-size: 12px; border-radius: 4px; outline: none;">
                 <button type="button" class="confirm-btn bg-dark-green" style="height: 100%; padding: 0 14px; font-size: 12px;" onclick="sendPopupChatMessage()">전송</button>
@@ -886,7 +456,7 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                         <div style="margin-left:auto; display:flex; align-items:center; padding-right:6px; font-size:10px; color:#aaa; background:#111116;">
                             <label style="cursor:pointer; display:flex; align-items:center; gap:2px;"><input type="checkbox" id="hide-system-chk" onchange="window.toggleHideSystem()" style="vertical-align:middle;"> 시스템숨김</label>
                         </div>
-                        <div id="chat-expand-btn" onclick="toggleChatPopup()">🔼 펼치기</div>
+                        <!-- 💡 불필요한 하단 펼치기 버튼 삭제됨 -->
                     </div>
                     
                     <div id="chat-messages"></div>
@@ -923,9 +493,9 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
                 <input type="range" id="opt-vol" min="0" max="100" value="40" oninput="updateOptions()" style="width: 100%; cursor: pointer;">
             </div>
             <div class="stat-row" style="margin-top: 10px;">
-    <span style="color: #ddd; font-size: 13px;">🎵 배경음악 볼륨</span>
-    <input type="range" id="opt-bgm-vol" min="0" max="100" value="40" onchange="updateOptions()">
-</div>
+                <span style="color: #ddd; font-size: 13px;">🎵 배경음악 볼륨</span>
+                <input type="range" id="opt-bgm-vol" min="0" max="100" value="40" onchange="updateOptions()">
+            </div>
             <div style="display: flex; justify-content: space-between; align-items: center; color: #ccc; font-size: 13px;">
                 <label style="font-weight:bold; color:#fff;">데미지 텍스트 표시</label>
                 <input type="checkbox" id="opt-dmg" checked onchange="updateOptions()" style="width:16px; height:16px; cursor:pointer;">
@@ -1014,7 +584,6 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
             <span>마법책</span> 
             <span class="win-close" onclick="toggleWindow('win-magic')">X</span>
         </div>
-      
         <div class="win-content" style="padding:10px; max-height:300px; overflow-y: auto;" id="magic-list"></div>
     </div>
     
@@ -1136,37 +705,26 @@ canvas { display: block; width: 100%; height: 100%; touch-action: none; }
         </div>
     </div>
 
-   
-
-
-
- <!-- 💡 [자동 다운로드 연동] 캐시 버스팅 적용 스크립트 로드 -->
+    <!-- 💡 캐시 버스팅 적용 스크립트 로드 -->
     <script src="js/data.js?v=2.0.0"></script>
     <script src="js/ui.js?v=2.0.0"></script>
     <script src="js/sharedAI.js?v=2.0.0"></script>
     <script src="js/game.js?v=2.0.0"></script>
-    
 
-
-
-
-
-
-
-    <!-- 💡 [모바일 터치용 리사이저 강제 삽입] -->
+    <!-- 💡 모바일 채팅창 리사이저 패치 -->
     <script>
     document.addEventListener('DOMContentLoaded', () => {
         const pop = document.getElementById('win-chat-popup');
         if(!pop) return;
         
-    let resizer = document.createElement('div');
-    resizer.style.cssText = 'position:absolute; right:0; bottom:0; width:35px; height:35px; cursor:nwse-resize; z-index:999999; border-bottom-right-radius: 4px;';
-    
-    let visualGrip = document.createElement('div');
-    visualGrip.style.cssText = 'position:absolute; right:3px; bottom:3px; width:14px; height:14px; background: repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.7) 2px, rgba(0,0,0,0.7) 3px, rgba(255,255,255,0.2) 3px, rgba(255,255,255,0.2) 4px); clip-path: polygon(100% 0, 0 100%, 100% 100%); pointer-events: none;';
-    
-    resizer.appendChild(visualGrip);
-    pop.appendChild(resizer);
+        let resizer = document.createElement('div');
+        resizer.style.cssText = 'position:absolute; right:0; bottom:0; width:35px; height:35px; cursor:nwse-resize; z-index:999999; border-bottom-right-radius: 4px;';
+        
+        let visualGrip = document.createElement('div');
+        visualGrip.style.cssText = 'position:absolute; right:3px; bottom:3px; width:14px; height:14px; background: repeating-linear-gradient(-45deg, transparent, transparent 2px, rgba(0,0,0,0.7) 2px, rgba(0,0,0,0.7) 3px, rgba(255,255,255,0.2) 3px, rgba(255,255,255,0.2) 4px); clip-path: polygon(100% 0, 0 100%, 100% 100%); pointer-events: none;';
+        
+        resizer.appendChild(visualGrip);
+        pop.appendChild(resizer);
 
         let isResizing = false, startX, startY, startW, startH;
         
