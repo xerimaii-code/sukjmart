@@ -425,8 +425,13 @@ class AIAgentClient {
     }
 
     startLoop() {
+        this.isLoggingOut = false; // 💡 로그아웃 중복 방지 플래그 추가
+        
         this.loopTimer = setInterval(() => {
+            if (this.isLoggingOut) return; // 💡 이미 퇴장 처리 중이면 루프 스킵
+
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
+                this.isLoggingOut = true; // 💡 퇴장 시작 상태로 변경
                 console.log(`[🤖 에이전트 퇴장] ${this.charData.name}님이 활동 시간을 채워 교체됩니다.`);
                 this.gracefulLogout(); 
                 return;

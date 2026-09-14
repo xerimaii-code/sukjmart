@@ -1216,22 +1216,27 @@ function processMonsterAI() {
 
     for (let mapId in mapsState) {
         let state = mapsState[mapId];
-        let playersInMap = Object.values(players).filter(p => p.map === mapId);
+        let playersInMap = Object.values(players).filter(p => p && p.map === mapId && typeof p.x === 'number' && typeof p.y === 'number');
         if (playersInMap.length === 0) continue;
 
         let allEntitiesInMap = [...playersInMap];
         playersInMap.forEach(p => {
             if (p.mercs && Array.isArray(p.mercs)) {
                 p.mercs.forEach(m => {
-                    m.ownerSocketId = p.socketId;
-                    m.id = m.id || ('merc_' + p.socketId);
+                    if (m) {
+                        m.ownerSocketId = p.socketId;
+                        m.id = m.id || ('merc_' + p.socketId);
+                    }
                 });
-                allEntitiesInMap.push(...p.mercs);
+                allEntitiesInMap.push(...p.mercs.filter(m => m && typeof m.x === 'number' && typeof m.y === 'number'));
             }
         });
 
+        // 💡 [에러 방어] 좌표(x, y)가 누락된 비정상 객체가 섞이는 것을 원천 차단
+        allEntitiesInMap = allEntitiesInMap.filter(e => e && typeof e.x === 'number' && typeof e.y === 'number');
+
         state.monsters.forEach(mob => {
-            if (mob.hp <= 0) return;
+            if (!mob || mob.hp <= 0) return;
 
             let highestDmg = -1;
             let aggroTargetId = null;
@@ -1272,12 +1277,9 @@ function processMonsterAI() {
             }
             
             if (mob.targetId && target) {
-                // 💡 몬스터가 스턴이거나 어스바인드 상태면 이동 및 공격 불가
                 if (mob.stunnedUntil && now < mob.stunnedUntil) return;
 
                 let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
-
-                // 💡 1. 몬스터 타입별 원거리/마법 여부 및 공격 사거리 판정
                 let mName = mob.name || '';
                 let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;
                 let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || 
@@ -1285,8 +1287,8 @@ function processMonsterAI() {
                                  mName.includes('마법사') || mob.isMagicMob;
 
                 let stopDist = (mob.size || 20) + 40;
-                if (isBowMob) stopDist = 320;        // 활 몬스터 사거리
-                else if (isSpellMob) stopDist = 280;  // 마법 몬스터 사거리
+                if (isBowMob) stopDist = 320;        
+                else if (isSpellMob) stopDist = 280;  
 
                 if (dist > stopDist) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
@@ -1303,7 +1305,6 @@ function processMonsterAI() {
                         mob.angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                         let ownerSocketId = target.socketId || target.ownerSocketId;
 
-                        // [A] 보스 전용 장판 마법 연산 유지
                         let isBossMagic = mob.isBoss && (mob.isMagicBoss || Math.random() < 0.65);
                         if (isBossMagic) {
                             let hpPercent = mob.hp / mob.maxHp;
@@ -1372,7 +1373,6 @@ function processMonsterAI() {
                                 }
                             }, cfg.delay * 1000);
 
-                        // [B] 💡 일반 원거리 활 / 마법 투사체 발사 연산
                         } else if (isBowMob || isSpellMob) {
                             let isMagic = isSpellMob;
                             let spellName = isMagic ? (mName.includes('카스파') || mName.includes('발터') ? '파이어볼' : '에너지 볼트') : null;
@@ -1385,7 +1385,6 @@ function processMonsterAI() {
                             let basePower = (mob.atk || 20);
                             let calculatedDmg = Math.max(1, Math.floor(basePower * ratio) - targetReduc);
 
-                            // 화면에 화살/마법탄 날아가는 그래픽 브로드캐스트
                             io.to(mapId).emit('monster_attack_action', {
                                 monsterId: mob.id,
                                 hitType: isMagic ? 'magic_proj' : 'bow',
@@ -1398,7 +1397,6 @@ function processMonsterAI() {
                                 angle: mob.angle
                             });
 
-                            // 투사체 도달 지연 후 피해 적용
                             let flightTime = Math.max(200, Math.min(600, (dist / 400) * 1000));
                             setTimeout(() => {
                                 target.hp = Math.max(0, target.hp - calculatedDmg);
@@ -1412,7 +1410,6 @@ function processMonsterAI() {
                                 }
                             }, flightTime);
 
-                        // [C] 💡 기본 근접 평타
                         } else {
                             let targetDef = target.def || 0;
                             let targetReduc = target.totalDmgReduction || 0;
