@@ -349,28 +349,30 @@ function getGeneratedMap(mapId) {
 // ==========================================
 // [2. 원본 100% 그래픽 복구 (캐릭터/몬스터/마법)]
 // ==========================================
-function drawNameTag(ctx, text, x, y, isBoss, isNPC) { 
+function drawNameTag(ctx, text, x, y, isBoss, isNPC, customFontSize = null, customColor = null) { 
     if (!gameOptions.showNames) return; 
     ctx.save();
     ctx.textAlign = 'center'; 
     ctx.textBaseline = 'middle';
     
     let isMobile = window.innerWidth < 768;
-    // 💡 일반/NPC: PC 18px, 모바일 15px (보스는 PC 20px, 모바일 17px)
-    let fSize = isBoss ? (isMobile ? 17 : 20) : (isMobile ? 15 : 18);
+    let defaultSize = isBoss ? (isMobile ? 17 : 20) : (isMobile ? 15 : 18);
+    let fSize = customFontSize || defaultSize;
 
     ctx.font = `bold ${fSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
-    ctx.lineWidth = 4; // 글자 크기에 맞춰 테두리 굵게
+    ctx.lineWidth = 3; 
     ctx.strokeStyle = '#000000'; 
     
     let rx = Math.round(x);
     let ry = Math.round(y);
 
     ctx.strokeText(text, rx, ry); 
-    ctx.fillStyle = isBoss ? '#fbbf24' : (isNPC ? '#fed7aa' : '#ffffff'); 
+    ctx.fillStyle = customColor || (isBoss ? '#fbbf24' : (isNPC ? '#fed7aa' : '#ffffff')); 
     ctx.fillText(text, rx, ry); 
     ctx.restore();
 }
+
+
 function getArmorColor(charClass, grade) {
     if (grade >= 4) return ['#b91c1c', '#7f1d1d']; 
     if (grade === 3) return ['#9333ea', '#581c87']; 
@@ -1676,10 +1678,15 @@ function draw(timestamp) {
     for(let x = startX; x < camX + worldW; x += gridSize) { ctx.beginPath(); ctx.moveTo(x, camY); ctx.lineTo(x, camY + worldH); ctx.stroke(); } 
     for(let y = startY; y < camY + worldH; y += gridSize) { ctx.beginPath(); ctx.moveTo(camX, y); ctx.lineTo(camX + worldW, y); ctx.stroke(); }
     
-    if(mData.links) mData.links.forEach(l => { ctx.fillStyle = '#4af'; ctx.beginPath(); ctx.ellipse(l.x, l.y, 30 + Math.sin(timestamp/200)*5, 15 + Math.sin(timestamp/200)*2, 0, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = 'rgba(100, 150, 255, 0.4)'; ctx.beginPath(); ctx.ellipse(l.x, l.y - 20, 20, 40 + Math.sin(timestamp/150)*10, 0, 0, Math.PI*2); ctx.fill();
-    if(gameOptions.showNames) { drawNameTag(ctx, `${l.name} 이동`, l.x, l.y - 40, false, true); } });
+    if(mData.links) mData.links.forEach(l => { 
+        ctx.fillStyle = '#4af'; 
+        ctx.beginPath(); ctx.ellipse(l.x, l.y, 30 + Math.sin(timestamp/200)*5, 15 + Math.sin(timestamp/200)*2, 0, 0, Math.PI*2); ctx.fill(); 
+        ctx.fillStyle = 'rgba(100, 150, 255, 0.4)'; 
+        ctx.beginPath(); ctx.ellipse(l.x, l.y - 20, 20, 40 + Math.sin(timestamp/150)*10, 0, 0, Math.PI*2); ctx.fill();
+        if(gameOptions.showNames) { drawNameTag(ctx, `${l.name} 이동`, l.x, l.y - 40, false, true); } 
+    });
     
-    // 💡 [교체할 코드] 바닥 아이템 렌더링 (map 속성 누락 방어)
+    // 바닥 아이템 렌더링
     items.forEach(it => { 
         if (it && (it.map === currentMap || !it.map)) {
             if (it.x > camX - 50 && it.x < camX + worldW + 50 && it.y > camY - 50 && it.y < camY + worldH + 50) { 
@@ -1690,45 +1697,45 @@ function draw(timestamp) {
             } 
         }
     });
-    npcs.forEach(n => { if(n.map === currentMap) { drawNPC(ctx, n, timestamp); drawNameTag(ctx, n.name, n.x, n.y - 30, false, true); } });
-   
-       
 
-particles.forEach(p => {
-    
+    // NPC 렌더링
+    npcs.forEach(n => { 
+        if(n.map === currentMap) { 
+            drawNPC(ctx, n, timestamp); 
+            drawNameTag(ctx, n.name, n.x, n.y - 30, false, true); 
+        } 
+    });
 
-           // 💡 1. [몬스터 거대 검붉은 마법진 & 플레이어 은회색 마법진]
+    // 💡 [1] 바닥 장판 파티클 렌더링 (magic_circle, magic_telegraph)
+    particles.forEach(p => {
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
+        
+        let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
+        let fadeAlpha = Math.sin(progress * Math.PI); 
+        let r = p.size || 50; 
+
         if (p.type === 'magic_circle') {
-            let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
-            let fadeAlpha = Math.sin(progress * Math.PI); 
-            let r = p.size || 50; 
-
             ctx.save();
-            // 💡 [핵심 보정] 캐릭터 발과 그림자 기준점(y + 14px)으로 중심점 정렬
             ctx.translate(p.x, p.y + 14);
             ctx.scale(1, 0.42);
 
             let isMob = p.isMonster || p.color === 'red' || p.color === '#ff0000';
 
-            // 바닥 섀도우 결계 (밝은 맵에서도 룬이 또렷하게 보이도록 베이스 생성)
             ctx.fillStyle = isMob ? `rgba(40, 0, 0, ${fadeAlpha * 0.65})` : `rgba(0, 15, 35, ${fadeAlpha * 0.65})`;
             ctx.beginPath(); ctx.arc(0, 0, r * 1.05, 0, Math.PI * 2); ctx.fill();
 
-            // 네온 발광 및 룬 라인 설정
             ctx.shadowBlur = isMob ? 18 : 15;
             ctx.shadowColor = isMob ? '#ff0000' : '#00ffff';
             ctx.strokeStyle = isMob ? `rgba(255, 40, 40, ${fadeAlpha * 0.98})` : `rgba(0, 240, 255, ${fadeAlpha * 0.98})`;
             ctx.fillStyle = isMob ? `rgba(255, 80, 80, ${fadeAlpha * 0.95})` : `rgba(140, 240, 255, ${fadeAlpha * 0.95})`;
             ctx.lineWidth = 2.2;
 
-            // 외곽 이중 테두리
             ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
             ctx.lineWidth = 1.4;
             ctx.beginPath(); ctx.arc(0, 0, r * 0.94, 0, Math.PI * 2); ctx.stroke();
             ctx.beginPath(); ctx.arc(0, 0, r * 0.74, 0, Math.PI * 2); ctx.stroke();
             ctx.beginPath(); ctx.arc(0, 0, r * 0.70, 0, Math.PI * 2); ctx.stroke();
 
-            // 24개 고대 룬 문자
             let runes = ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛇ','ᛈ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ','ᛚ','ᛜ','ᛞ','ᛟ'];
             let fontSize = Math.max(9, Math.round(r * 0.12));
             ctx.font = `bold ${fontSize}px "Malgun Gothic", sans-serif`;
@@ -1746,7 +1753,6 @@ particles.forEach(p => {
                 ctx.restore();
             }
 
-            // 이중 육망성
             let drawDoubleTriangle = (rotOffset, rOuter, rInner) => {
                 ctx.lineWidth = isMob ? 1.8 : 1.5;
                 ctx.strokeStyle = isMob ? `rgba(255, 50, 50, ${fadeAlpha * 0.95})` : `rgba(0, 220, 255, ${fadeAlpha * 0.95})`;
@@ -1771,7 +1777,6 @@ particles.forEach(p => {
             drawDoubleTriangle(Math.PI / 6, r * 0.70, r * 0.65);
             drawDoubleTriangle(-Math.PI / 6, r * 0.70, r * 0.65);
 
-            // 중심 코어
             ctx.lineWidth = 1.4;
             ctx.strokeStyle = isMob ? `rgba(255, 30, 30, ${fadeAlpha * 0.9})` : `rgba(0, 200, 255, ${fadeAlpha * 0.9})`;
             ctx.beginPath();
@@ -1784,51 +1789,40 @@ particles.forEach(p => {
 
             ctx.lineWidth = 1.8; ctx.beginPath(); ctx.arc(0, 0, r * 0.22, 0, Math.PI * 2); ctx.stroke();
             ctx.restore();
-        }
-        // 💡 2. [충전식 공격 예고 장판]
-        else if (p.type === 'magic_telegraph') {
-            let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
-            let r = p.size || 110;
-
+            
+        } else if (p.type === 'magic_telegraph') {
+            let tr = p.size || 110;
             ctx.save();
             ctx.translate(p.x, p.y);
             ctx.scale(1, 0.42);
             ctx.shadowBlur = 15;
             ctx.shadowColor = '#ff2200';
 
-            // 바닥 위험 구역
             ctx.fillStyle = `rgba(255, 20, 20, ${0.15 + progress * 0.25})`;
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, tr, 0, Math.PI * 2); ctx.fill();
 
-            // 충전 게이지 (시간이 차오르는 효과)
             ctx.fillStyle = 'rgba(255, 60, 0, 0.35)';
-            ctx.beginPath(); ctx.arc(0, 0, r * progress, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, 0, tr * progress, 0, Math.PI * 2); ctx.fill();
 
-            // 외곽 경고 링
             ctx.strokeStyle = `rgba(255, 50, 50, ${0.7 + Math.sin(timestamp / 100) * 0.3})`;
             ctx.lineWidth = 3.5;
-            ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 0, tr, 0, Math.PI * 2); ctx.stroke();
 
-            // 중앙 크로스헤어
-            let cSize = Math.max(15, r * 0.22);
+            let cSize = Math.max(15, tr * 0.22);
             ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(-cSize, 0); ctx.lineTo(cSize, 0);
             ctx.moveTo(0, -cSize); ctx.lineTo(0, cSize);
             ctx.stroke();
-
             ctx.restore();
         }
     });
-    // 💡 마법진 코드 삽입 끝
 
-// 💡 [오라 일괄 렌더링] 본인 + 파티원 + 타 플레이어 + 용병 전체 광폭화/실프 오라 렌더링
+    // 💡 [2] 오라 일괄 렌더링
     let allAuraUnits = [player, ...entities.filter(e => e && (e.isPlayer || e.isMercenary || e.isOtherMerc || e.isSummon))];
-    
     allAuraUnits.forEach(unit => {
         if (!unit || unit.hp <= 0 || unit.isDead) return;
-
-        // 1. 기사/광폭화 황금빛 버서커 오라
+        // 기사/광폭화 황금빛 버서커 오라
         if (Date.now() < (unit.furyUntil || 0)) {
             ctx.save();
             ctx.translate(unit.x, unit.y + 10);
@@ -1843,8 +1837,7 @@ particles.forEach(p => {
             ctx.stroke();
             ctx.restore();
         }
-
-        // 2. 요정/실프의 폭풍 에메랄드 바람 오라
+        // 요정/실프의 폭풍 오라
         if ((unit.charClass === 'elf' || unit.mercType === 'elf') && Date.now() < (unit.elfFuryUntil || 0)) {
             ctx.save();
             ctx.translate(unit.x, unit.y + 10);
@@ -1861,14 +1854,14 @@ particles.forEach(p => {
         }
     });
 
-
-entities.forEach(e => {
+    // 💡 [3] 엔티티 렌더링 (플레이어 제외 타 유저, 몬스터, 용병)
+    entities.forEach(e => {
         if (!e || typeof e.x !== 'number' || typeof e.y !== 'number') return;
         if (e === player || (window.socket && e.id === window.socket.id)) return;
 
         if (e.map === currentMap && e.x > camX - 300 && e.x < camX + worldW + 300 && e.y > camY - 300 && e.y < camY + worldH + 300) {
             
-            // 타겟 표시 링
+            // 타겟 링
             if(player.target === e && !e.isDead) {
                 ctx.save();
                 ctx.translate(e.x, e.y);
@@ -1881,57 +1874,64 @@ entities.forEach(e => {
 
             drawEntity(ctx, e, timestamp);
 
-            // 💡 여기서 몬스터, 보스, 타 유저, 용병의 이름과 색상이 결정됩니다.
-          let sz = e.size || 20;
-            let tagColor = e.isBoss ? '#fbbf24' : (e.isPlayer ? '#5cf' : (e.isOtherMerc ? '#6ee' : (e.isSummon ? '#5f5' : '#ffffff')));
-            let displayName = e.isOtherMerc ? `[용병] ${e.name}` : e.name;
-            
-            let isMobile = window.innerWidth < 768;
-            let otherFontSize = 12;
-
-            // 💡 rx, ry 좌표를 먼저 선언하여 순서 오류 방지
+            let sz = e.size || 20;
+            let isMobile = window.innerWidth < 768; 
             let rx = Math.round(e.x);
-            let ry = Math.round(e.y - sz - (e.isPlayer ? 33 : 30));
 
-            if (e.isPlayer) {
-                otherFontSize = isMobile ? 15 : 18; 
-                displayName = e.alignment > 10000 ? `[정의] ${e.name}` : (e.alignment < -10000 ? `[악인] ${e.name}` : e.name);
-                tagColor = e.alignment > 10000 ? '#38bdf8' : (e.alignment < -10000 ? '#f87171' : '#ffffff');
-
-                // 💡 타 파티 소속 유저 머리 위 파티 뱃지 (괄호 짝 완벽 정돈)
-                if (e.partyId) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    
-    let isMobile = window.innerWidth < 768;
-    let badgeText = '👑 PARTY';
-    let badgeWidth = isMobile ? 54 : 64;
-    let badgeHeight = isMobile ? 14 : 16;
-    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 54));
-
-    // 1. 선명한 네온 외곽 발광 및 둥근 배경 박스
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#a855f7';
-    ctx.fillStyle = 'rgba(24, 10, 40, 0.9)';
-    ctx.strokeStyle = '#c084fc';
-    ctx.lineWidth = 1.5;
-
-    ctx.beginPath();
-    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
-    ctx.fill();
-    ctx.stroke();
-
-    // 2. 또렷한 텍스트
-    ctx.shadowBlur = 0;
-    ctx.font = `bold ${isMobile ? 9.5 : 11}px "Malgun Gothic", sans-serif`;
-    ctx.fillStyle = '#f5d0fe';
-    ctx.fillText(badgeText, rx, badgeY + 1);
-    ctx.restore();
-}
-
-            // 💡 [수정] 용병 및 소환수는 전용 HUD가 있으므로 머리 위 HP 바 제외 (몬스터, 보스, 타 플레이어만 표시)
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;
+
+           if (isMercOrSummon) {
+                // 용병 및 소환수
+                let ownerKey = e.ownerId || e.ownerSocketId || e.ownerName || (e.owner === player ? (window.socket?.id || player.name) : 'unknown');
+                let mercColor = getMercColorByOwner(ownerKey);
+                
+                // 💡 플레이어(모바일 15, PC 18)보다 작게 고정 폰트 사이즈 적용
+                let mercFontSize = isMobile ? 12 : 15; 
+                
+                // null 대신 mercFontSize를 전달하여 크기 축소
+                drawNameTag(ctx, e.name || '용병', rx, Math.round(e.y - sz - 15), false, false, mercFontSize, mercColor);
+            }
+            else if (e.isPlayer) {
+                let displayName = e.alignment > 10000 ? `[정의] ${e.name}` : (e.alignment < -10000 ? `[악인] ${e.name}` : e.name);
+                let tagColor = e.alignment > 10000 ? '#38bdf8' : (e.alignment < -10000 ? '#f87171' : '#ffffff');
+                drawNameTag(ctx, displayName, rx, Math.round(e.y - sz - 33), false, false, null, tagColor);
+                
+                if (e.partyId) {
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let badgeText = '👑 PARTY';
+                    let badgeWidth = isMobile ? 54 : 64;
+                    let badgeHeight = isMobile ? 14 : 16;
+                    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 54));
+
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = '#a855f7';
+                    ctx.fillStyle = 'rgba(24, 10, 40, 0.9)';
+                    ctx.strokeStyle = '#c084fc';
+                    ctx.lineWidth = 1.5;
+
+                    ctx.beginPath();
+                    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    ctx.shadowBlur = 0;
+                    ctx.font = `bold ${isMobile ? 9.5 : 11}px "Malgun Gothic", sans-serif`;
+                    ctx.fillStyle = '#f5d0fe';
+                    ctx.fillText(badgeText, rx, badgeY + 1);
+                    ctx.restore();
+                }
+            } 
+            else if (e.isBoss) {
+                drawNameTag(ctx, e.name, rx, Math.round(e.y - sz - 30), true, false);
+            } 
+            else {
+                if (gameOptions.showNames) {
+                    drawNameTag(ctx, e.name, rx, Math.round(e.y - sz - 25), false, false);
+                }
+            }
+
             if (!e.isDead && !isMercOrSummon) {
                 let safeMaxHp = e.maxHp || e.hp || 1; 
                 let hpRatio = Math.max(0, Math.min(1, e.hp / safeMaxHp));
@@ -1949,73 +1949,17 @@ entities.forEach(e => {
             }
         }
     });
-    
 
-if (player && Date.now() < (player.furyUntil || 0)) {
-        ctx.save();
-        ctx.translate(player.x, player.y + 10);
-        ctx.scale(1, 0.45);
-        
-        let pulse = Math.sin(timestamp / 70) * 5;
-        ctx.strokeStyle = 'rgba(251, 191, 36, 0.9)';
-        ctx.lineWidth = 3.5;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#f59e0b';
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 1.6 + pulse, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = 'rgba(245, 158, 11, 0.6)';
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 1.9 + pulse * 1.2, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.fillStyle = 'rgba(245, 158, 11, 0.22)';
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 1.4, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-
-
-// 🏹 요정 광폭화(실프의 폭풍) 에메랄드 바람 오라 렌더링
-    if (player && player.charClass === 'elf' && Date.now() < (player.elfFuryUntil || 0)) {
-        ctx.save();
-        ctx.translate(player.x, player.y + 10);
-        ctx.scale(1, 0.45);
-        
-        let pulse = Math.sin(timestamp / 60) * 6;
-        ctx.strokeStyle = 'rgba(52, 211, 153, 0.95)';
-        ctx.lineWidth = 3.5;
-        ctx.shadowBlur = 18;
-        ctx.shadowColor = '#10b981';
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 1.7 + pulse, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.strokeStyle = 'rgba(110, 231, 183, 0.6)';
-        ctx.lineWidth = 1.8;
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 2.0 + pulse * 1.3, 0, Math.PI * 2);
-        ctx.stroke();
-        
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.25)';
-        ctx.beginPath();
-        ctx.arc(0, 0, (player.size || 20) * 1.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-    }
-
-  drawEntity(ctx, player, timestamp); 
-  if(gameOptions.showNames) { 
+    // 💡 [4] 플레이어 본체 렌더링
+    drawEntity(ctx, player, timestamp); 
+    if(gameOptions.showNames) { 
         let pName = player.alignment > 10000 ? `[정의] ${player.name}` : (player.alignment < -10000 ? `[악인] ${player.name}` : player.name);
         ctx.save();
         ctx.textAlign = 'center'; 
         ctx.textBaseline = 'middle';
         
         let isMobile = window.innerWidth < 768;
-        let pFontSize = isMobile ? 15 : 18; // 💡 닉네임 크기 확대
+        let pFontSize = isMobile ? 15 : 18; 
 
         ctx.font = `bold ${pFontSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
         ctx.lineWidth = 4; 
@@ -2032,7 +1976,7 @@ if (player && Date.now() < (player.furyUntil || 0)) {
         if (badgeLevel > 0) {
             let badgeColors = ['#fff', '#5f5', '#5cf', '#f55', '#fd0', '#f0f'];
             let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
-           ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
+            ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
             ctx.font = isMobile ? '17px Arial' : '15px Arial';
             ctx.fillText(badgeIcon, rx, Math.round(player.y - player.size - 55)); 
         }        
@@ -2048,10 +1992,10 @@ if (player && Date.now() < (player.furyUntil || 0)) {
         ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(player.x - barW/2, player.y - player.size - 25, barW, 6);
     }
 
+    // 💡 [5] 액티브 마법 파티클 렌더링
     particles.forEach(p => { 
-         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
-        
-
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
+        if (p.type === 'magic_circle' || p.type === 'magic_telegraph') return; // 이미 바닥에 그림
 
         ctx.save();
         try {
@@ -2067,70 +2011,60 @@ if (player && Date.now() < (player.furyUntil || 0)) {
 
             if (p.isArrow) {
                 ctx.rotate(p.angle || 0);
-                
-                // 💡 [수정] 화살 가시성 대폭 상향 및 스킬 화살 색상 차별화
                 let isSkill = p.color && p.color !== '#ffffff';
-                let mainColor = isSkill ? p.color : '#fde047'; // 스킬은 고유색(파랑/초록 등), 일반은 황금색
+                let mainColor = isSkill ? p.color : '#fde047'; 
                 let glowColor = isSkill ? p.color : '#ffaa00';
                 
                 ctx.shadowBlur = isSkill ? 15 : 8;
                 ctx.shadowColor = glowColor;
 
-                // 화살 몸통 (더 굵게)
                 ctx.fillStyle = mainColor; 
                 ctx.fillRect(-14, -2, 22, isSkill ? 4 : 3); 
                 
-                // 화살 촉 (더 크고 뚜렷하게)
                 ctx.fillStyle = '#ffffff'; 
                 ctx.beginPath(); 
                 ctx.moveTo(8, -5); ctx.lineTo(18, 0); ctx.lineTo(8, 5); ctx.fill(); 
                 
-                // 화살 잔상 꼬리 (더 길고 밝게)
                 let trailGrad = ctx.createLinearGradient(-35, 0, -14, 0);
                 trailGrad.addColorStop(0, 'rgba(255,255,255,0)');
                 trailGrad.addColorStop(1, isSkill ? p.color : 'rgba(255,255,255,0.7)');
                 ctx.fillStyle = trailGrad; 
                 ctx.fillRect(-35, -2.5, 21, isSkill ? 5 : 4);
             }
+            else if (p.type === 'stun_effect') {
+                let r = p.size || 60;
+                ctx.save();
+                ctx.scale(1, 0.45);
+                ctx.strokeStyle = `rgba(255, 230, 0, ${1 - progress})`;
+                ctx.lineWidth = 5 * (1 - progress);
+                ctx.beginPath();
+                ctx.arc(0, 0, r * (0.4 + progress * 0.9), 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.restore();
 
+                ctx.strokeStyle = '#fff';
+                ctx.fillStyle = '#ffea00';
+                ctx.lineWidth = 2.5;
+                for (let k = 0; k < 4; k++) {
+                    let ang = (Math.PI / 2) * k + (progress * 12);
+                    let sx = Math.cos(ang) * (r * 0.5);
+                    let sy = Math.sin(ang) * (r * 0.25) - 35;
+                    ctx.beginPath();
+                    ctx.arc(sx, sy, 5 * (1 - progress * 0.5), 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                }
 
-        else if (p.type === 'stun_effect') {
-        let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
-        let r = p.size || 60;
-        
-        ctx.save();
-        ctx.scale(1, 0.45);
-        ctx.strokeStyle = `rgba(255, 230, 0, ${1 - progress})`;
-        ctx.lineWidth = 5 * (1 - progress);
-        ctx.beginPath();
-        ctx.arc(0, 0, r * (0.4 + progress * 0.9), 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
-
-        ctx.strokeStyle = '#fff';
-        ctx.fillStyle = '#ffea00';
-        ctx.lineWidth = 2.5;
-        for (let k = 0; k < 4; k++) {
-            let ang = (Math.PI / 2) * k + (progress * 12);
-            let sx = Math.cos(ang) * (r * 0.5);
-            let sy = Math.sin(ang) * (r * 0.25) - 35;
-            ctx.beginPath();
-            ctx.arc(sx, sy, 5 * (1 - progress * 0.5), 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
-        }
-
-        if (progress < 0.3) {
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 4;
-            ctx.beginPath();
-            ctx.moveTo(0, -120);
-            ctx.lineTo((Math.random() - 0.5) * 20, -70);
-            ctx.lineTo(0, -25);
-            ctx.stroke();
-        }
-    }
-
+                if (progress < 0.3) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -120);
+                    ctx.lineTo((Math.random() - 0.5) * 20, -70);
+                    ctx.lineTo(0, -25);
+                    ctx.stroke();
+                }
+            }
             else if (p.type === 'energy_bolt') {
                 ctx.rotate(p.angle || 0);
                 ctx.shadowBlur = 18; ctx.shadowColor = '#0055ff';
@@ -2164,11 +2098,8 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 }
                 ctx.stroke();
             }
-// 🌪️ 스톰 블레이드 360도 풍압 칼날 링
             else if (p.type === 'storm_blade_ring') {
-                let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
                 let r = (p.size || 120) * progress;
-                
                 ctx.save();
                 ctx.scale(1, 0.45);
                 ctx.strokeStyle = `rgba(52, 211, 153, ${1 - progress})`;
@@ -2177,7 +2108,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.arc(0, 0, r, 0, Math.PI * 2);
                 ctx.stroke();
 
-                // 8방향 바람 칼날
                 for (let k = 0; k < 8; k++) {
                     let ang = (Math.PI / 4) * k + (progress * 8);
                     let bx = Math.cos(ang) * r;
@@ -2189,16 +2119,14 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 }
                 ctx.restore();
             }
-
             else if (p.type === 'eruption') { 
                 let r = p.size || 95;
                 ctx.save(); ctx.scale(1, 0.42); 
                 ctx.shadowBlur = 15; ctx.shadowColor = '#991b1b'; 
 
                 ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 3.5;
-                let crackCount = 5; 
-                for (let k = 0; k < crackCount; k++) {
-                    let angle = (Math.PI * 2 / crackCount) * k + (k % 2 === 0 ? 0.3 : -0.3);
+                for (let k = 0; k < 5; k++) {
+                    let angle = (Math.PI * 2 / 5) * k + (k % 2 === 0 ? 0.3 : -0.3);
                     let maxLen = r * (0.8 + (k % 2) * 0.3) * progress; 
                     ctx.beginPath(); ctx.moveTo(0, 0);
                     ctx.lineTo(Math.cos(angle) * (maxLen * 0.4), Math.sin(angle) * (maxLen * 0.4));
@@ -2223,12 +2151,10 @@ if (player && Date.now() < (player.furyUntil || 0)) {
             }
             else if (p.type === 'lightning') { 
                 if (progress % 0.2 < 0.12) {
-                    let r = p.size || 90; // 콜 라이트닝은 작게, 라이트닝 스톰은 크게 적용
+                    let r = p.size || 90; 
                     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 7; ctx.shadowBlur = 35; ctx.shadowColor = '#00ffff';
                     
-                    // 스톰같이 반경이 크면 번개를 3갈래로 내리침
                     let boltCount = r > 150 ? 3 : 1; 
-                    
                     for(let b = 0; b < boltCount; b++) {
                         let offsetX = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.8) : 0;
                         let offsetY = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.3) : 0;
@@ -2242,7 +2168,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                         ctx.lineTo(offsetX, offsetY); ctx.stroke();
                     }
                     
-                    // 범위 링 표시
                     let ringR = r * easeOut;
                     ctx.strokeStyle = '#88ffff'; ctx.lineWidth = 4.5;
                     ctx.beginPath(); ctx.ellipse(0, 0, ringR, ringR * 0.4, 0, 0, Math.PI * 2); ctx.stroke();
@@ -2252,7 +2177,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 let h = 900;
                 let beamWidth = 35 * Math.sin(progress * Math.PI);
 
-                // 지면 충격파 링[cite: 6]
                 let impactR = 120 * easeOut;
                 ctx.save();
                 ctx.scale(1, 0.42);
@@ -2264,7 +2188,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.beginPath(); ctx.arc(0, 0, impactR * 0.6, 0, Math.PI * 2); ctx.stroke();
                 ctx.restore();
 
-                // 하늘에서 지면으로 수직 낙하하는 메인 광선 기둥[cite: 6]
                 ctx.shadowBlur = 45; 
                 ctx.shadowColor = '#a855f7';
 
@@ -2283,24 +2206,21 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.closePath();
                 ctx.fill();
 
-                // 중심 코어 백색 기둥[cite: 6]
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(-beamWidth * 0.4, -h, beamWidth * 0.8, h);
             }
-         else if (p.type === 'ice_spike') {
+            else if (p.type === 'ice_spike') {
                 let r = p.size || 80;
                 let h = 180 * Math.sin(progress * Math.PI);
                 ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff';
                 ctx.fillStyle = `rgba(180, 255, 255, ${1 - progress})`;
                 
-                // 날카로운 얼음 기둥
                 ctx.beginPath();
                 ctx.moveTo(0, -h);
                 ctx.lineTo(-r * 0.3, 0);
                 ctx.lineTo(r * 0.3, 0);
                 ctx.fill();
                 
-                // 흩날리는 얼음 가루
                 ctx.fillStyle = '#ffffff';
                 for(let k = 0; k < 6; k++) {
                     let px = Math.cos(k * 1.2) * (r * 0.4 * progress);
@@ -2324,33 +2244,31 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 }
             }
             else if (p.type === 'blizzard') { 
-    let r = p.size || 300;
-    let ring1 = r * easeOut;
-    
-    // shadowBlur 제거 -> 반투명 이중 원형 스트로크로 렉 없는 발광 구현
-    ctx.strokeStyle = `rgba(100, 230, 255, ${0.9 * (1 - progress)})`; 
-    ctx.lineWidth = 3;
-    ctx.beginPath(); 
-    ctx.ellipse(0, 0, ring1, ring1 * 0.45, 0, 0, Math.PI * 2); 
-    ctx.stroke();
+                let r = p.size || 300;
+                let ring1 = r * easeOut;
+                
+                ctx.strokeStyle = `rgba(100, 230, 255, ${0.9 * (1 - progress)})`; 
+                ctx.lineWidth = 3;
+                ctx.beginPath(); 
+                ctx.ellipse(0, 0, ring1, ring1 * 0.45, 0, 0, Math.PI * 2); 
+                ctx.stroke();
 
-    let ring2 = (r * 0.65) * easeOut;
-    ctx.strokeStyle = `rgba(200, 255, 255, ${0.7 * (1 - progress)})`; 
-    ctx.lineWidth = 2;
-    ctx.beginPath(); 
-    ctx.ellipse(0, 0, ring2, ring2 * 0.45, 0, 0, Math.PI * 2); 
-    ctx.stroke();
+                let ring2 = (r * 0.65) * easeOut;
+                ctx.strokeStyle = `rgba(200, 255, 255, ${0.7 * (1 - progress)})`; 
+                ctx.lineWidth = 2;
+                ctx.beginPath(); 
+                ctx.ellipse(0, 0, ring2, ring2 * 0.45, 0, 0, Math.PI * 2); 
+                ctx.stroke();
 
-    // 35회 난수 생성 루프를 고정 12개 결정체로 최적화
-    ctx.fillStyle = `rgba(230, 250, 255, ${1 - progress})`;
-    for(let k = 0; k < 12; k++) {
-        let ang = (k * Math.PI / 6) + (progress * 8);
-        let dist = r * (0.2 + (k % 4) * 0.2) * easeOut;
-        let px = Math.cos(ang) * dist;
-        let py = Math.sin(ang) * dist * 0.45 - (progress * 40);
-        ctx.fillRect(px - 2, py - 2, 4, 4);
-    }
-}
+                ctx.fillStyle = `rgba(230, 250, 255, ${1 - progress})`;
+                for(let k = 0; k < 12; k++) {
+                    let ang = (k * Math.PI / 6) + (progress * 8);
+                    let dist = r * (0.2 + (k % 4) * 0.2) * easeOut;
+                    let px = Math.cos(ang) * dist;
+                    let py = Math.sin(ang) * dist * 0.45 - (progress * 40);
+                    ctx.fillRect(px - 2, py - 2, 4, 4);
+                }
+            }
             else if (p.type === 'cancellation') {
                 ctx.shadowBlur = 30; ctx.shadowColor = '#ff0000';
                 ctx.strokeStyle = '#ff1111'; ctx.lineWidth = 7;
@@ -2503,9 +2421,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.beginPath(); ctx.moveTo(px - starSize, py); ctx.lineTo(px + starSize, py); ctx.stroke();
                 ctx.beginPath(); ctx.arc(px, py, starSize*0.4, 0, Math.PI*2); ctx.fill();
             }
-            else if (p.type === 'hit_spark') {
-                //ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 20 * (1-progress), 0, Math.PI*2); ctx.fill();
-            }
             else if (p.type === 'fireball_pixel') {
                 ctx.shadowBlur = 0; 
                 ctx.globalAlpha = p.life / p.maxLife;
@@ -2531,12 +2446,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
                 ctx.fillStyle = p.color || '#ff2200';
                 ctx.beginPath(); ctx.arc(0, 0, p.size * alpha, 0, Math.PI*2); ctx.fill();
             }
-            else if (p.type === 'magic_circle' || p.type === 'magic_telegraph') {
-                // 바닥 장판은 첫 번째 루프에서 처리
-            }
-            else {
-               // ctx.fillStyle = p.color || '#fff'; ctx.beginPath(); ctx.arc(0, 0, (p.size||6)*(1-progress), 0, Math.PI*2); ctx.fill();
-            }
         } catch(err) {
             console.error("이펙트 렌더링 에러 격리:", p.type, err);
         } finally {
@@ -2544,6 +2453,7 @@ if (player && Date.now() < (player.furyUntil || 0)) {
         }
     });
 
+    // 💡 [6] 데미지 텍스트 렌더링
     dmgTexts.forEach(d => {
         ctx.save();
         ctx.globalAlpha = Math.max(0, Math.min(1, d.life));
@@ -2556,9 +2466,10 @@ if (player && Date.now() < (player.furyUntil || 0)) {
         ctx.fillText(d.text, d.x, d.y);
         ctx.restore();
     });
+
     ctx.restore(); 
 
-    // game.js -> draw() 내부 상단 타겟 HP 바 렌더링[cite: 6]
+    // 💡 [7] 상단 타겟 정보 HUD
     if (player.target && player.target.hp > 0 && !player.target.isDead) {
         if (!(player.target.isSummon && player.target.owner === player)) {
             let ty = width < 768 ? 45 : 75;
@@ -2576,7 +2487,6 @@ if (player && Date.now() < (player.furyUntil || 0)) {
             ctx.font = 'bold 12px "Malgun Gothic"';
             ctx.textAlign = 'center';
             ctx.fillStyle = tColor;
-            // 💡 터치/클릭 시 해제됨을 시각적으로 안내[cite: 6]
             ctx.fillText(`${tName} [✕해제]`, tx, ty + 15);
 
             let targetMaxHp = player.target.maxHp || player.target.hp;
@@ -2595,6 +2505,7 @@ if (player && Date.now() < (player.furyUntil || 0)) {
         }
     }
 
+    // 💡 [8] 미니맵 렌더링
     if(mCtx) {
         mCtx.setTransform(1, 0, 0, 1, 0, 0); 
         mCtx.clearRect(0, 0, 150, 150); 
@@ -2674,7 +2585,7 @@ if (player && Date.now() < (player.furyUntil || 0)) {
 // [4. 전투 및 이벤트 시스템]
 // ==========================================
 window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName = null) {
-    // 💡 [필수 방어 코드] 대상(e)이나 공격자(attacker)가 없으면 함수를 안전하게 종료
+  
     if (!e || typeof e.x === 'undefined' || typeof e.y === 'undefined' || e.isDead) return; 
     if (!attacker) return;
 
@@ -2693,6 +2604,11 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
             });
         }
     }
+       if (typeof window.processKnightVampireAndCleave === 'function') {
+        window.processKnightVampireAndCleave(attacker, e, dmg);
+    }
+
+
 };
 function createFireballExplosionEffect(x, y, aoeRadius) {
     if (typeof isBgTick !== 'undefined' && isBgTick) return;
@@ -3238,6 +3154,73 @@ window.handleItemDropOnMercenary = function(merc, itemIndex, itemData) {
 };
 
 
+// ==========================================
+// 💡 [기사 광폭화 및 밸런스 패치 함수 정의]
+// ==========================================
+window.processKnightBerserkFury = function(player, data, rawDamage) {
+    if (player.charClass !== 'knight' || player.isDead) return;
+    
+    let now = Date.now();
+    let isCoolingDown = now < (player.furyCooldownUntil || 0);
+    let isAlreadyFury = now < (player.furyUntil || 0);
+
+    if (!isAlreadyFury && !isCoolingDown) {
+        player.recentHitDetails = player.recentHitDetails || [];
+        let attackerId = data.attackerMonsterId || ('unknown_' + Math.random());
+        player.recentHitDetails.push({ time: now, id: attackerId });
+        player.recentHitDetails = player.recentHitDetails.filter(h => now - h.time <= 2000);
+
+        let pMaxHp = window.currentMaxHp || player.maxHp || 1000;
+        let isBigHit = rawDamage >= (pMaxHp * 0.15); // 조건 완화 (25% -> 15%)
+        let uniqueAttackers = new Set(player.recentHitDetails.map(h => h.id));
+        let isCrowded = (player.recentHitDetails.length >= 3) && (uniqueAttackers.size >= 2);
+
+        if (isBigHit || isCrowded) {
+            player.recentHitDetails = [];
+            player.furyUntil = now + 5000; // 지속시간 5초
+            player.furyCooldownUntil = now + 8000; 
+
+            if (typeof triggerPassiveBroadcast === 'function') {
+                triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", player.x, player.y, null, 'ultimate', player, 20);
+            }
+            if (typeof playSound === 'function') playSound('spell');
+        }
+    }
+};
+
+window.calculateEntityDefWithAdvantages = function(entity, targetMob) {
+    let baseDef = entity.def || 0;
+
+    if (entity === player && targetMob && !targetMob.isPlayer) {
+        let distToTarget = Math.hypot(targetMob.x - entity.x, targetMob.y - entity.y);
+        if (entity.charClass === 'knight' && distToTarget <= 60) {
+            baseDef += 8; // 근접 시 추가 AC 보정
+            entity.totalDmgReduction = (entity.totalDmgReduction || 0) + 3; // 추가 대미지 감소 리덕션
+        }
+    }
+    return baseDef;
+};
+
+window.processKnightVampireAndCleave = function(attacker, target, finalDmg) {
+    if (attacker === player && Date.now() < (player.furyUntil || 0)) {
+        // 💡 [핵심 방어] 클리브 대미지 내부에서 재귀 호출이 일어나는 것을 방지하는 락(Lock)
+        if (attacker._isCleaving) return; 
+
+        let hpHeal = Math.max(1, Math.floor(finalDmg * 0.08)); // 8% 흡혈
+        player.hp = Math.min(window.currentMaxHp || player.maxHp, player.hp + hpHeal);
+
+        let splashTargets = entities.filter(e => e && e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && e !== target && Math.hypot(e.x - target.x, e.y - target.y) <= 150);
+        let subDmg = Math.floor(finalDmg * 0.6); // 주변 적 60% 대미지 전파
+
+        attacker._isCleaving = true;
+        splashTargets.forEach(st => {
+            if (typeof damageEntity === 'function') {
+                damageEntity(st, subDmg, attacker, 'physical', '광폭화 클리브');
+            }
+        });
+        attacker._isCleaving = false;
+    }
+};
 
 // ==========================================
 // [5. 메인 게임 루프 (AI 및 이동)]
@@ -3248,34 +3231,31 @@ function update(timestamp) {
     lastTime = timestamp;
     const now = Date.now();
 
-  if (typeof window.processAutoConsumablesAndBuffs === 'function') {
+    if (typeof window.processAutoConsumablesAndBuffs === 'function') {
         window.processAutoConsumablesAndBuffs();
     }
 
-    // 1. 엔티티 부드러운 보간 이동 (보스 포함)
     let moveDelta = Math.min(1.0, (dt / 1000) * 3.2);
 
-for (let i = 0; i < entities.length; i++) {
-    let e = entities[i];
-    if (!e) continue;
-    if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
-        let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
-        if (dist > 1.5) {
-            e.x += (e.moveX - e.x) * moveDelta;
-            e.y += (e.moveY - e.y) * moveDelta;
-            e.isMoving = true;
-            e.lastMoveAnimTime = timestamp;
-            e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
-        } else { 
-            if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
-                e.isMoving = false; 
+    for (let i = 0; i < entities.length; i++) {
+        let e = entities[i];
+        if (!e) continue;
+        if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
+            let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
+            if (dist > 1.5) {
+                e.x += (e.moveX - e.x) * moveDelta;
+                e.y += (e.moveY - e.y) * moveDelta;
+                e.isMoving = true;
+                e.lastMoveAnimTime = timestamp;
+                e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
+            } else { 
+                if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
+                    e.isMoving = false; 
+                }
             }
         }
     }
-}
-    
 
-    // 2. 플레이어 자연 회복 (HP / MP)
     if (timestamp - (player.lastRegen || 0) > 2000) {
         player.lastRegen = timestamp;
         let hpRegenAmt = 1 + (player.totalHpRegen || 0);
@@ -3286,101 +3266,92 @@ for (let i = 0; i < entities.length; i++) {
         if (typeof updateUI === 'function') updateUI();
     }
 
-    // 3. 안전지대 판정 및 UI 표시
     let playerInSafeZone = typeof isInSafeZone === 'function' ? isInSafeZone(currentMap, player.x, player.y) : false;
-let zoneEl = document.getElementById('zone-indicator');
-if (playerInSafeZone) {
-    if (zoneEl && zoneEl.innerText !== '[ 안전 지대 ]') { zoneEl.innerText = '[ 안전 지대 ]'; zoneEl.style.color = '#5f5'; }
-    if (player.autoHunt || player.autoPotion) { 
-        player.autoHunt = false; 
-        player.autoPotion = false; // 💡 안전지대 워프 시 물약/사냥 모두 OFF
-        player.target = null; 
-        player.isMoving = false; 
-        if (typeof addMessage === 'function') addMessage("[안전지대 진입] 자동사냥 및 자동물약이 해제되었습니다.", '#f55'); 
-        if (typeof updateUI === 'function') updateUI(); 
-    }
+    let zoneEl = document.getElementById('zone-indicator');
+    if (playerInSafeZone) {
+        if (zoneEl && zoneEl.innerText !== '[ 안전 지대 ]') { zoneEl.innerText = '[ 안전 지대 ]'; zoneEl.style.color = '#5f5'; }
+        if (player.autoHunt || player.autoPotion) { 
+            player.autoHunt = false; 
+            player.autoPotion = false; 
+            player.target = null; 
+            player.isMoving = false; 
+            if (typeof addMessage === 'function') addMessage("[안전지대 진입] 자동사냥 및 자동물약이 해제되었습니다.", '#f55'); 
+            if (typeof updateUI === 'function') updateUI(); 
+        }
     } else {
         if (zoneEl && zoneEl.innerText !== '[ 전투 지대 ]') { zoneEl.innerText = '[ 전투 지대 ]'; zoneEl.style.color = '#f55'; }
     }
 
     isBgTick = document.visibilityState !== 'visible';
-    
- 
-   // ========================================================
-    // 4. 타겟 유효성 및 수동 도망 시 어그로 이탈 검사
-    // ========================================================
-   if (player.target) {
-    let liveTarget = entities.find(e => e && e.id === player.target.id && e.hp > 0 && !e.isDead);
-    
-    if (!liveTarget || liveTarget.map !== currentMap || liveTarget.isPlayer || (liveTarget.isSummon && liveTarget.owner === player)) {
-        player.target = null;
-        player.isMoving = false;
-    } else {
-        player.target = liveTarget; 
+
+    if (player.target) {
+        let liveTarget = entities.find(e => e && e.id === player.target.id && e.hp > 0 && !e.isDead);
         
-        let distToTarget = Math.hypot(liveTarget.x - player.x, liveTarget.y - player.y);
-        // 💡 [수정] 파티 점사 중일 때는 거리가 멀어져도 타겟을 끊지 않고 끝까지 추적 (화면 밖 해제 방지)
-        let isPartyFocus = window.currentPartyData?.party?.mode === 'focus' && window.currentPartyData.party.leader !== (window.socket ? window.socket.id : null);
-        
-        if (!player.autoHunt && !isPartyFocus && distToTarget > 650) {
+        if (!liveTarget || liveTarget.map !== currentMap || liveTarget.isPlayer || (liveTarget.isSummon && liveTarget.owner === player)) {
             player.target = null;
-            if (typeof addMessage === 'function') addMessage("몬스터와 거리가 멀어져 타겟이 해제되었습니다.", "#aaa");
+            player.isMoving = false;
+        } else {
+            player.target = liveTarget; 
+            
+            let distToTarget = Math.hypot(liveTarget.x - player.x, liveTarget.y - player.y);
+            let isPartyFocus = window.currentPartyData?.party?.mode === 'focus' && window.currentPartyData.party.leader !== (window.socket ? window.socket.id : null);
+            
+            if (!player.autoHunt && !isPartyFocus && distToTarget > 650) {
+                player.target = null;
+                if (typeof addMessage === 'function') addMessage("몬스터와 거리가 멀어져 타겟이 해제되었습니다.", "#aaa");
+            }
         }
     }
-}
 
-if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
-    window._lastHudUpdateTime = timestamp;
-    if (typeof window.renderMercenaryHUD === 'function') window.renderMercenaryHUD();
-    if (typeof window.renderPartyHUD === 'function') window.renderPartyHUD(); // 💡 파티원 HP 실시간 갱신 연동
-    if (document.getElementById('win-pet') && document.getElementById('win-pet').style.display === 'flex' && typeof window.updatePetUI === 'function') window.updatePetUI();
-}
-
-
-if (typeof updateMercenaryAI === 'function') updateMercenaryAI();
-
-if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100) {
-    window._lastSocketSendTime = timestamp;
-    // 💡 [수정] 제자리 사냥 중이어도 용병의 물약 복용/현재 HP가 서버에 실시간으로 반영되도록 조건 완화
-    if (window.socket && currentUser) {
-let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
-        window.socket.emit('player_update', {
-            name: player.name,
-            charClass: player.charClass,
-            x: player.x,
-            y: player.y,
-            hp: player.hp,
-            maxHp: currentMaxHp,
-            atk: player.atk || 20,       // 💡 실제 최종 연산 공격력 전송
-            def: player.def || 0,        // 💡 실제 최종 연산 방어력 전송
-            str: player.str || 18,
-            dex: player.dex || 14,
-            int: player.int || 8,
-            level: player.level || 1,
-            map: currentMap,
-            equip: player.equip,
-            mercs: myActiveMercs.map(m => ({
-                id: m.id,
-                name: m.name,
-                mercType: m.mercType || 'knight',
-                charClass: m.mercType || m.charClass || 'knight',
-                ownerId: window.socket.id,
-                ownerName: player.name,
-                x: m.x,
-                y: m.y,
-                hp: m.hp,
-                maxHp: m.maxHp,
-                atk: m.atk || 15,        // 💡 용병 실시간 공격력
-                def: m.def || 5,         // 💡 용병 실시간 방어력
-                equip: m.equip || { weapon: null, armor: null, helmet: null, cloak: null },
-                angle: m.angle || 0,
-                isMoving: m.isMoving || false
-            }))
-        });
+    if (!window._lastHudUpdateTime || timestamp - window._lastHudUpdateTime > 200) {
+        window._lastHudUpdateTime = timestamp;
+        if (typeof window.renderMercenaryHUD === 'function') window.renderMercenaryHUD();
+        if (typeof window.renderPartyHUD === 'function') window.renderPartyHUD(); 
+        if (document.getElementById('win-pet') && document.getElementById('win-pet').style.display === 'flex' && typeof window.updatePetUI === 'function') window.updatePetUI();
     }
-}
 
-    // 7. 파티클 수명 및 물리 연산
+    if (typeof updateMercenaryAI === 'function') updateMercenaryAI();
+
+    if (!window._lastSocketSendTime || timestamp - window._lastSocketSendTime > 100) {
+        window._lastSocketSendTime = timestamp;
+        if (window.socket && currentUser) {
+            let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
+            window.socket.emit('player_update', {
+                name: player.name,
+                charClass: player.charClass,
+                x: player.x,
+                y: player.y,
+                hp: player.hp,
+                maxHp: currentMaxHp,
+                atk: player.atk || 20,       
+                def: player.def || 0,        
+                str: player.str || 18,
+                dex: player.dex || 14,
+                int: player.int || 8,
+                level: player.level || 1,
+                map: currentMap,
+                equip: player.equip,
+                mercs: myActiveMercs.map(m => ({
+                    id: m.id,
+                    name: m.name,
+                    mercType: m.mercType || 'knight',
+                    charClass: m.mercType || m.charClass || 'knight',
+                    ownerId: window.socket.id,
+                    ownerName: player.name,
+                    x: m.x,
+                    y: m.y,
+                    hp: m.hp,
+                    maxHp: m.maxHp,
+                    atk: m.atk || 15,        
+                    def: m.def || 5,         
+                    equip: m.equip || { weapon: null, armor: null, helmet: null, cloak: null },
+                    angle: m.angle || 0,
+                    isMoving: m.isMoving || false
+                }))
+            });
+        }
+    }
+
     if (typeof particles !== 'undefined' && Array.isArray(particles)) {
         let delta = (typeof dt === 'number' && dt > 0) ? (dt / 1000) : 0.016;
         for (let i = particles.length - 1; i >= 0; i--) {
@@ -3399,7 +3370,6 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
         }
     }
 
-    // 8. 데미지 텍스트 갱신
     if (typeof dmgTexts !== 'undefined' && Array.isArray(dmgTexts)) {
         let delta = (typeof dt === 'number' && dt > 0) ? (dt / 1000) : 0.016;
         for (let i = dmgTexts.length - 1; i >= 0; i--) {
@@ -3411,7 +3381,6 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
         }
     }
 
-    // 9. 투사체(발사체) 이동 및 충돌 판정
     if (typeof particles !== 'undefined' && Array.isArray(particles)) {
         for (let i = particles.length - 1; i >= 0; i--) {
             let p = particles[i];
@@ -3435,25 +3404,24 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
                     });
                 }
 
-        if (p.target && typeof p.target.x === 'number' && typeof p.target.y === 'number' && !p.isHit) {
-            if (Math.hypot(p.target.x - p.x, p.target.y - p.y) < 35) {
-                p.isHit = true;
-                p.life = 0;
+                if (p.target && typeof p.target.x === 'number' && typeof p.target.y === 'number' && !p.isHit) {
+                    if (Math.hypot(p.target.x - p.x, p.target.y - p.y) < 35) {
+                        p.isHit = true;
+                        p.life = 0;
 
-                // 💡 [핵심] 화살이나 마법 투사체가 명중하는 순간에도 피격 번쩍임 적용
-                p.target.hitTime = performance.now();
-                p.target.angle = p.angle || Math.atan2(p.target.y - p.y, p.target.x - p.x);
+                        p.target.hitTime = performance.now();
+                        p.target.angle = p.angle || Math.atan2(p.target.y - p.y, p.target.x - p.x);
 
-                const isArrowType = p.isArrow || p.type === 'arrow';
-                if (typeof damageEntity === 'function') {
-                    if (!isArrowType || p.rollHit) {
-                        damageEntity(p.target, p.dmg, p.attacker, isArrowType ? 'physical' : 'magic');
+                        const isArrowType = p.isArrow || p.type === 'arrow';
+                        if (typeof damageEntity === 'function') {
+                            if (!isArrowType || p.rollHit) {
+                                damageEntity(p.target, p.dmg, p.attacker, isArrowType ? 'physical' : 'magic');
+                            }
+                        }
+                        particles.splice(i, 1);
+                        continue;
                     }
                 }
-                particles.splice(i, 1);
-                continue;
-            }
-        }
             }
             else if (p.type === 'fireball_spark') {
                 p.x += p.vx || 0;
@@ -3492,26 +3460,23 @@ let myActiveMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === 
         }
     }
 
-    // 10. 바닥 아이템 드랍 수명 및 렌더링
-  if (typeof items !== 'undefined' && Array.isArray(items)) {
-    for (let i = items.length - 1; i >= 0; i--) {
-        let it = items[i];
-        if (!it) { items.splice(i, 1); continue; }
-        if (it.spawnTime === undefined) it.spawnTime = Date.now();
-        if (Date.now() - it.spawnTime > 60000) { items.splice(i, 1); continue; }
+    if (typeof items !== 'undefined' && Array.isArray(items)) {
+        for (let i = items.length - 1; i >= 0; i--) {
+            let it = items[i];
+            if (!it) { items.splice(i, 1); continue; }
+            if (it.spawnTime === undefined) it.spawnTime = Date.now();
+            if (Date.now() - it.spawnTime > 60000) { items.splice(i, 1); continue; }
+        }
     }
-}
 
-    // 버프에 따른 속도 및 공격 딜레이 보정
     let pSpeed = player.currentSpeed || 130;
-let atkDelay = player.currentAtkDelay || 800;
-if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 50; atkDelay -= 150; }
+    let atkDelay = player.currentAtkDelay || 800;
+    if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 50; atkDelay -= 150; }
     if (player.buffs && player.buffs['용기물약']) atkDelay -= 100;
     if (player.buffs && player.buffs['엘븐와퍼']) atkDelay -= 100;
 
     let target = player.target;
 
-    // 11. [기사 전용 패시브] 돌진(Rush)
     if (player.charClass === 'knight' && target && !player.isMoving) {
         let rushDist = Math.hypot(target.x - player.x, target.y - player.y);
         if (rushDist > 55 && rushDist <= 350 && (!player.lastRushTime || now - player.lastRushTime > 2000)) {
@@ -3522,7 +3487,6 @@ if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 50; atkDel
             }
             if (typeof playSound === 'function') playSound('spell');
 
-            // 💡 [수정] 돌진 시 타겟을 바라보는 현재 각도를 정확히 계산하여 엇나가지 않게 처리
             let rushAngle = Math.atan2(target.y - player.y, target.x - player.x);
             player.angle = rushAngle; 
             player.x = target.x - Math.cos(rushAngle) * 30;
@@ -3541,79 +3505,73 @@ if (player.buffs && player.buffs['가속(헤이스트)']) { pSpeed += 50; atkDel
         }
     }
 
-// game.js - update() 함수 내부 (삭제된 12, 13번 자리)
+    if (player.autoHunt || (player.target && !player.target.isDead)) {
+        let atkDelay = player.currentAtkDelay || 800;
+        if (player.buffs && player.buffs['가속(헤이스트)']) atkDelay -= 200;
+        if (player.buffs && player.buffs['용기물약']) atkDelay -= 100;
+        if (player.buffs && player.buffs['엘븐와퍼']) atkDelay -= 100;
 
-if (player.autoHunt || (player.target && !player.target.isDead)) {
-    let atkDelay = player.currentAtkDelay || 800;
-    if (player.buffs && player.buffs['가속(헤이스트)']) atkDelay -= 200;
-    if (player.buffs && player.buffs['용기물약']) atkDelay -= 100;
-    if (player.buffs && player.buffs['엘븐와퍼']) atkDelay -= 100;
-
-    let env = {
-        now: performance.now(),
-        currentMap: currentMap,
-        mapSize: mapSize,
-        entities: entities,
-        items: items,
-        minLootGrade: gameOptions.minLootGrade || 0,
-        atkDelay: atkDelay,
-        party: window.currentPartyData?.party ? {
-            isFocusMode: window.currentPartyData.party.mode === 'focus',
-            leaderId: window.currentPartyData.party.leader,
-            leaderTargetId: window.currentPartyData.party.leaderTargetId,
-            leaderEnt: entities.find(e => e.id === window.currentPartyData.party.leader)
-        } : null,
-        isInSafeZone: isInSafeZone,
-        playSound: playSound,
-        spawnParticle: (x, y, type) => particles.push({ x, y, life: 0.4, maxLife: 0.4, type, size: 40 }),
-        spawnArrow: (from, to, dmg, color) => {
-            if (!isBgTick) {
-                particles.push({ 
-                    x: from.x, y: from.y, speed: 28, life: 1.5, maxLife: 1.5, 
-                    color: color || '#ffffff', isProj: true, isArrow: true, homing: true, 
-                    type: 'arrow', target: to, dmg: dmg, attacker: from, rollHit: true 
-                });
+        let env = {
+            now: performance.now(),
+            currentMap: currentMap,
+            mapSize: mapSize,
+            entities: entities,
+            items: items,
+            minLootGrade: gameOptions.minLootGrade || 0,
+            atkDelay: atkDelay,
+            party: window.currentPartyData?.party ? {
+                isFocusMode: window.currentPartyData.party.mode === 'focus',
+                leaderId: window.currentPartyData.party.leader,
+                leaderTargetId: window.currentPartyData.party.leaderTargetId,
+                leaderEnt: entities.find(e => e.id === window.currentPartyData.party.leader)
+            } : null,
+            isInSafeZone: isInSafeZone,
+            playSound: playSound,
+            spawnParticle: (x, y, type) => particles.push({ x, y, life: 0.4, maxLife: 0.4, type, size: 40 }),
+            spawnArrow: (from, to, dmg, color) => {
+                if (!isBgTick) {
+                    particles.push({ 
+                        x: from.x, y: from.y, speed: 28, life: 1.5, maxLife: 1.5, 
+                        color: color || '#ffffff', isProj: true, isArrow: true, homing: true, 
+                        type: 'arrow', target: to, dmg: dmg, attacker: from, rollHit: true 
+                    });
+                }
+                
+                if (window.socket && currentUser && from === player) {
+                    let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
+                    window.socket.emit('player_attack_action', {
+                        casterId: window.socket.id,
+                        angle: aimAngle,
+                        targetId: to.id,
+                        targetX: to.x,
+                        targetY: to.y,
+                        isBow: true,
+                        actionType: 'shoot',
+                        color: color || '#ffffff' 
+                    });
+                }
+            },
+            spawnText: (x, y, text, color, size = 13) => {
+                if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: x + (Math.random() * 16 - 8), y, text, life: 0.9, color, fontSize: size });
+            },
+            triggerPassiveBroadcast: triggerPassiveBroadcast,
+            damageEntity: damageEntity,
+            castAttackSpell: castAttackSpell,
+            getSmartAutoCombatSpell: window.getSmartAutoCombatSpell,
+            lootItem: (it) => {
+                if (window.socket && currentUser && (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300)) {
+                    player.lastLootAttempt = Date.now();
+                    window.socket.emit('player_loot_item', { itemId: it.id });
+                }
+            },
+            shareTarget: (id) => {
+                if (window.socket && currentUser) window.socket.emit('player_target', { targetId: id });
             }
-            
-            // 💡 [추가] 다른 사람들에게도 내 평타 화살(및 특수 색상)이 실시간으로 날아가도록 소켓 전송
-            if (window.socket && currentUser && from === player) {
-                let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
-                window.socket.emit('player_attack_action', {
-                    casterId: window.socket.id,
-                    angle: aimAngle,
-                    targetId: to.id,
-                    targetX: to.x,
-                    targetY: to.y,
-                    isBow: true,
-                    actionType: 'shoot',
-                    color: color || '#ffffff' // 화살 색상 데이터 포함
-                });
-            }
-        },
-        spawnText: (x, y, text, color, size = 13) => {
-            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: x + (Math.random() * 16 - 8), y, text, life: 0.9, color, fontSize: size });
-        },
-        triggerPassiveBroadcast: triggerPassiveBroadcast,
-        damageEntity: damageEntity,
-        castAttackSpell: castAttackSpell,
-        getSmartAutoCombatSpell: window.getSmartAutoCombatSpell,
-        lootItem: (it) => {
-            if (window.socket && currentUser && (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300)) {
-                player.lastLootAttempt = Date.now();
-                window.socket.emit('player_loot_item', { itemId: it.id });
-            }
-        },
-        shareTarget: (id) => {
-            if (window.socket && currentUser) window.socket.emit('player_target', { targetId: id });
-        }
-    };
+        };
 
-    SharedAI.processRoutine(player, env);
-}
+        SharedAI.processRoutine(player, env);
+    }
 
-
-
-    // 💡 14. [플레이어 실제 이동 적용] - 누락되었던 핵심 이동 연산 복구!
     if (player.moveX === undefined || player.moveY === undefined) {
         player.isMoving = false;
     } else {
@@ -3634,25 +3592,21 @@ if (player.autoHunt || (player.target && !player.target.isDead)) {
         }
     }
 
-    // 맵 테두리 제한
     let margin = 30;
     player.x = Math.max(margin, Math.min(mapSize - margin, player.x));
     player.y = Math.max(margin, Math.min(mapSize - margin, player.y));
 
-    // 15. 안티 스턱 (끼임 방지) 체크
-    // 💡 [수정] 플레이어가 '이동 중(isMoving)'일 때만 끼임 판정이 작동하도록 조건 변경
     if (player.autoHunt && player.isMoving) {
         if (!player.stuckCheckTime) player.stuckCheckTime = performance.now();
         if (!player.lastX) { player.lastX = player.x; player.lastY = player.y; }
 
-        if (performance.now() - player.stuckCheckTime > 2000) { // 체크 주기를 2초로 완화
+        if (performance.now() - player.stuckCheckTime > 2000) { 
             let movedDist = Math.hypot(player.x - player.lastX, player.y - player.lastY);
             if (movedDist < 5) { 
-                // 💡 맵 가장자리(Margin) 안쪽으로 안전하게 텔레포트 및 탈출하도록 보정
                 player.x = Math.max(200, Math.min(mapSize - 200, player.x + (Math.random() - 0.5) * 150));
                 player.y = Math.max(200, Math.min(mapSize - 200, player.y + (Math.random() - 0.5) * 150));
                 player.target = null; 
-                player.manualOverrideUntil = performance.now() + 1000; // 강제 이동 딜레이 부여
+                player.manualOverrideUntil = performance.now() + 1000; 
                 if (typeof addMessage === 'function') addMessage("지형 끼임 감지 -> 안전한 위치로 탈출합니다.", "#5f5");
             }
             player.lastX = player.x;
@@ -3663,41 +3617,37 @@ if (player.autoHunt || (player.target && !player.target.isDead)) {
         player.stuckCheckTime = performance.now();
     }
 
- // ========================================================
-// 16. 발밑 근접 아이템 습득 처리
-// ========================================================
-if (typeof items !== 'undefined' && Array.isArray(items)) {
-    let nearbyItem = null;
+    if (typeof items !== 'undefined' && Array.isArray(items)) {
+        let nearbyItem = null;
 
-    if (player.autoHunt) {
-        nearbyItem = player.targetItem || items.find(it => {
-            if (!it || (it.map && it.map !== currentMap)) return false;
-            if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
-            let itemGrade = (typeof it.grade === 'number') ? it.grade : 0;
-            let isAlwaysLoot = ['scroll', 'book', 'potion', 'currency'].includes(it.type);
-            let minGrade = (typeof gameOptions !== 'undefined' && gameOptions.minLootGrade) || 0;
-            return (isAlwaysLoot || (itemGrade >= minGrade)) && Math.hypot(it.x - player.x, it.y - player.y) <= 35;
-        });
-    } else {
-        nearbyItem = items.find(it => {
-            if (!it || (it.map && it.map !== currentMap)) return false;
-            if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
-            return Math.hypot(it.x - player.x, it.y - player.y) <= 35;
-        });
-    }
+        if (player.autoHunt) {
+            nearbyItem = player.targetItem || items.find(it => {
+                if (!it || (it.map && it.map !== currentMap)) return false;
+                if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
+                let itemGrade = (typeof it.grade === 'number') ? it.grade : 0;
+                let isAlwaysLoot = ['scroll', 'book', 'potion', 'currency'].includes(it.type);
+                let minGrade = (typeof gameOptions !== 'undefined' && gameOptions.minLootGrade) || 0;
+                return (isAlwaysLoot || (itemGrade >= minGrade)) && Math.hypot(it.x - player.x, it.y - player.y) <= 35;
+            });
+        } else {
+            nearbyItem = items.find(it => {
+                if (!it || (it.map && it.map !== currentMap)) return false;
+                if (it.dropperId === (window.socket ? window.socket.id : 'me') && Date.now() - (it.droppedTime || 0) < 5000) return false;
+                return Math.hypot(it.x - player.x, it.y - player.y) <= 35;
+            });
+        }
 
-    if (nearbyItem && Math.hypot(nearbyItem.x - player.x, nearbyItem.y - player.y) <= 35) {
-        if (window.socket && currentUser) {
-            if (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300) {
-                player.lastLootAttempt = Date.now();
-                window.socket.emit('player_loot_item', { itemId: nearbyItem.id });
-                player.targetItem = null;
+        if (nearbyItem && Math.hypot(nearbyItem.x - player.x, nearbyItem.y - player.y) <= 35) {
+            if (window.socket && currentUser) {
+                if (!player.lastLootAttempt || Date.now() - player.lastLootAttempt > 300) {
+                    player.lastLootAttempt = Date.now();
+                    window.socket.emit('player_loot_item', { itemId: nearbyItem.id });
+                    player.targetItem = null;
+                }
             }
         }
-    }
-} 
+    } 
 
-    // 17. 사망 엔티티 제거 (보스/일반 몬스터 공통 1.5초 후 화면에서 삭제)
     for (let i = entities.length - 1; i >= 0; i--) {
         let e = entities[i];
         if (e && e.isDead && (timestamp - e.deadTime > 1500)) {
@@ -3705,7 +3655,7 @@ if (typeof items !== 'undefined' && Array.isArray(items)) {
         }
     }
 
-if (document.visibilityState === 'visible') {
+    if (document.visibilityState === 'visible') {
         try {
             if (typeof draw === 'function') draw(timestamp);
         } catch (renderErr) {
@@ -3812,7 +3762,6 @@ function levelUpMercenary(merc) {
     addMessage(`✨ [용병 성장] ${merc.name}이(가) Lv.${merc.level}로 레벨업했습니다!`, '#ff0');
 }
 
-
 function spawnFloorItem(itemTemplate, mob) {
     if (!items || !Array.isArray(items)) return;
 
@@ -3826,9 +3775,7 @@ function spawnFloorItem(itemTemplate, mob) {
     items.push(newItem);
 }
 
-
 if (window.socket) {
-    // 💡 [추가] 서버 재부팅 1분 전 경고 수신 시 강제 DB 저장
     window.socket.on('force_client_save', async () => {
         if (gameStarted && currentUser) {
             if (typeof addMessage === 'function') {
@@ -3839,7 +3786,6 @@ if (window.socket) {
         }
     });
 
-    // 1. 타 플레이어 및 용병 타격 모션 동기화
     window.socket.on('sync_player_action', (data) => {
         let p = entities.find(e => e.id === data.socketId || e.socketId === data.socketId);
         if (!p || isBgTick) return;
@@ -3853,7 +3799,7 @@ if (window.socket) {
         let calcAngle = Math.atan2(ty - p.y, tx - p.x);
 
         if (data.isBow || (p.equip && p.equip.weapon && p.equip.weapon.isBow)) {
-            let arrowColor = data.color || '#ffffff'; // 💡 상대방이 보낸 특수 색상 적용
+            let arrowColor = data.color || '#ffffff'; 
             let shootArrow = (delay = 0) => {
                 setTimeout(() => {
                     if (typeof particles !== 'undefined') {
@@ -3887,18 +3833,9 @@ if (window.socket) {
         }
     });
 
-   
-
-
-
-
-// ========================================================
-    // 💡 [통합] 40여 종 모든 마법 1:1 고유 이펙트 중앙 생성기
-    // ========================================================
     window.spawnMagicParticle = function(cX, cY, mName, angle = 0, tX = cX, tY = cY) {
         if (typeof particles === 'undefined' || window.isBgTick) return;
 
-        // 1. 공격 마법류 고유 이펙트
         if (mName === '파이어볼') {
             if (typeof createFireballExplosionEffect === 'function') createFireballExplosionEffect(tX, tY, 150);
         } else if (mName === '선버스트') {
@@ -3916,7 +3853,6 @@ if (window.socket) {
         } else if (mName.includes('광폭화') || mName === '광폭화 클리브') {
             particles.push({ x: tX, y: tY, life: 0.5, maxLife: 0.5, type: 'explosion', size: 150, color: '#ff2200' });
         } else if (mName === '트리플 애로우') {
-            // 💡 [추가] 다른 유저가 트리플 애로우 시전 시 내 화면에도 푸른 화살 3연발 렌더링
             let shootTriple = (delay) => {
                 setTimeout(() => {
                     if (typeof particles !== 'undefined' && !window.isBgTick) {
@@ -3945,7 +3881,7 @@ if (window.socket) {
                 angle: aimAngle, 
                 target: { x: tX, y: tY } 
             });
-        }else if (mName === '디스인티그레이트') {
+        } else if (mName === '디스인티그레이트') {
             particles.push({ x: tX, y: tY, angle: angle, life: 0.8, maxLife: 0.8, type: 'disintegrate' });
         } else if (mName === '미티어 스트라이크') {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'meteor', size: 350 });
@@ -3957,9 +3893,7 @@ if (window.socket) {
             particles.push({ x: tX, y: tY, life: 1.2, maxLife: 1.2, type: 'judgment', size: 400 });
         } else if (mName === '쇼크 스턴') {
             particles.push({ x: tX, y: tY, life: 0.9, maxLife: 0.9, type: 'stun_effect', size: 70 });
-        } 
-        // 2. 디버프 및 군중제어
-        else if (['어스 바인드'].includes(mName)) {
+        } else if (['어스 바인드'].includes(mName)) {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'earth_bind' });
         } else if (['커스 파라다이스', '폴루트 워터', '커스 디지즈', '다크니스', '사일런스', '슬로우'].includes(mName)) {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'curse_poison' });
@@ -3969,9 +3903,7 @@ if (window.socket) {
             particles.push({ x: mName === '블러드 투 소울' ? cX : tX, y: mName === '블러드 투 소울' ? cY : tY, life: 0.8, maxLife: 0.8, type: 'drain' });
         } else if (['캔슬레이션'].includes(mName)) {
             particles.push({ x: tX, y: tY, life: 0.8, maxLife: 0.8, type: 'cancellation' });
-        } 
-        // 3. 힐, 버프 및 오라
-        else if (mName.includes('힐') || mName === '네이쳐스 터치') {
+        } else if (mName.includes('힐') || mName === '네이쳐스 터치') {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'classic_heal', color: '#10b981' });
         } else if (mName === '워터 라이프' || mName === '아쿠아 프로텍트') {
             particles.push({ x: tX, y: tY, life: 1.0, maxLife: 1.0, type: 'water_shield' });
@@ -4003,9 +3935,6 @@ if (window.socket) {
         }
     };
 
-    
-
-// 💡 [타인/용병 마법 및 오라 동기화 리스너]
     window.socket.on('sync_player_magic', (data) => {
         if (!gameStarted) return;
         let mName = data.magicName;
@@ -4024,7 +3953,6 @@ if (window.socket) {
             caster.lastAttack = performance.now(); 
             caster.angle = aimAngle; 
 
-            // 💡 타 플레이어 및 용병의 광폭화 / 실프의 폭풍 오라 상태 실시간 동기화
             if (mName.includes('광폭화') || mName.includes('BERSERK')) {
                 caster.furyUntil = Date.now() + 4000;
             } else if (mName.includes('실프의 폭풍') || mName.includes('SYLPH')) {
@@ -4032,7 +3960,6 @@ if (window.socket) {
             }
         }
 
-        // 스킬 텍스트 폰트/티어 설정
         let customTier = data.tier || 'normal';
         let customSize = data.fontSize || null;
 
@@ -4040,7 +3967,7 @@ if (window.socket) {
         else if (mName.includes('SYLPH TEMPEST') || mName.includes('실프의 폭풍')) { customTier = 'elf'; customSize = 20; } 
         else if (mName === '돌진') { customTier = 'high'; customSize = 16; }
 
-     if (typeof addSkillText === 'function') {
+        if (typeof addSkillText === 'function') {
             let isKeyPassive = mName.includes('광폭화') || mName.includes('BERSERK') || 
                                mName.includes('실프') || mName.includes('SYLPH') || 
                                mName === '돌진';
@@ -4049,16 +3976,14 @@ if (window.socket) {
             }
         }
 
-        // 💡 1번 중앙 파티클 생성기 즉시 호출
         if (typeof window.spawnMagicParticle === 'function') {
             window.spawnMagicParticle(realCasterX, realCasterY, mName, aimAngle, tx, ty);
         }
         
-        // 사운드 매핑
         if (typeof playSound === 'function') {
             if (mName.includes('파이어') || mName === '선버스트' || mName === '이럽션') playSound('fireball');
             else if (mName.includes('라이트닝') || mName === '쇼크 스턴') playSound('lightning');
-            else if (mName.includes('블리자드') || mName.includes('아이스') || mName === '헤일 스톰') playSound('blizzard');
+            else if (mName.includes('블리자드') || mName === '아이스' || mName === '헤일 스톰') playSound('blizzard');
             else if (mName === '디스인티그레이트') playSound('disintegrate');
             else if (mName.includes('힐') || mName === '네이쳐스 터치') playSound('heal');
             else if (mName.includes('애로우') || mName.includes('실프의 폭풍')) playSound('bow');
@@ -4068,10 +3993,6 @@ if (window.socket) {
         }
     });
 
-
-
-
-    // 3. 타 유저 물약 이펙트
     window.socket.on('sync_player_potion', (data) => {
         let p = entities.find(e => e.isPlayer && (e.id === data.socketId || e.socketId === data.socketId));
         if (p) {
@@ -4089,12 +4010,11 @@ if (window.socket) {
     });
 
     window.socket.on('system_message', (data) => {
-  
-    let msgType = data.message.includes('[현재 월드 접속자]') ? 'normal' : 'system';
-    if (typeof addMessage === 'function') addMessage(data.message, data.color || '#fd0', msgType);
-});
+        let msgType = data.message.includes('[현재 월드 접속자]') ? 'normal' : 'system';
+        if (typeof addMessage === 'function') addMessage(data.message, data.color || '#fd0', msgType);
+    });
+
     window.socket.on('sync_map_state', (data) => {
-        // 💡 배열 재할당(=)을 하면 전역 window.entities 참조가 끊겨 용병이 맵 이동 시 사라짐. splice로 원본 배열 수정!
         for (let i = entities.length - 1; i >= 0; i--) {
             if (!entities[i].isSummon) entities.splice(i, 1);
         }
@@ -4109,145 +4029,170 @@ if (window.socket) {
     });
 
     window.socket.on('sync_entities', (data) => {
-    if (!gameStarted || !currentUser) return;
+        if (!gameStarted || !currentUser) return;
 
-    // 1. 플레이어 동기화
-    data.players.forEach(sp => {
-        if (window.socket && sp.socketId === window.socket.id) return;
-        
-        let existingPlayer = entities.find(e => e.isPlayer && (e.id === sp.socketId || e.socketId === sp.socketId));
-        if (existingPlayer) {
-            existingPlayer.moveX = sp.x; 
-            existingPlayer.moveY = sp.y;
-            existingPlayer.hp = sp.hp;
-            existingPlayer.maxHp = sp.maxHp;
-            existingPlayer.targetId = sp.targetId;
-            existingPlayer.partyId = sp.partyId;
-            existingPlayer.charClass = sp.charClass || 'knight';
-            existingPlayer.equip = sp.equip || existingPlayer.equip;
-            existingPlayer.name = sp.name || existingPlayer.name;
-        } else {
-            entities.push({
-                id: sp.socketId, socketId: sp.socketId, isPlayer: true, name: sp.name, charClass: sp.charClass || 'knight',
-                x: sp.x, y: sp.y, moveX: sp.x, moveY: sp.y,
-                hp: sp.hp, maxHp: sp.maxHp, size: 20, map: currentMap,
-                equip: sp.equip || { weapon: null, armor: null }, partyId: sp.partyId, targetId: sp.targetId, angle: 0
+        // 💡 1. 몬스터 동기화 (새로 리스폰된 몬스터 추가 및 렉 유발 유령 몬스터 제거)
+        if (data.monsters) {
+            const serverMobIds = data.monsters.map(m => m.id);
+            data.monsters.forEach(sm => {
+                let existingMob = entities.find(e => !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.id === sm.id);
+                if (existingMob) {
+                    existingMob.hp = sm.hp;
+                    if (sm.maxHp) existingMob.maxHp = sm.maxHp;
+                    existingMob.angle = sm.angle;
+                    
+                    // 움직임 및 위치 동기화
+                    if (sm.x !== undefined && sm.y !== undefined) {
+                        let dist = Math.hypot(sm.x - existingMob.x, sm.y - existingMob.y);
+                        if (dist > 150) {
+                            existingMob.x = sm.x;
+                            existingMob.y = sm.y;
+                        }
+                        existingMob.moveX = sm.x;
+                        existingMob.moveY = sm.y;
+                    }
+                } else {
+                    // 서버에서 새로 생성(리스폰)된 몬스터를 화면에 추가
+                    entities.push({
+                        ...sm,
+                        map: currentMap,
+                        moveX: sm.x,
+                        moveY: sm.y
+                    });
+                }
             });
-        }
-    });
-    
-    // 서버 목록에 없는 타 플레이어 안전 제거
-    const serverPlayerIds = data.players.map(p => p.socketId);
-    for (let i = entities.length - 1; i >= 0; i--) { 
-        if (entities[i].isPlayer && !serverPlayerIds.includes(entities[i].id) && !serverPlayerIds.includes(entities[i].socketId)) {
-            if (player.target && player.target.id === entities[i].id) {
-                player.target = null;
+
+            // 클라이언트에만 남아있는 유령 몬스터 삭제 (렉 원인 제거)
+            for (let i = entities.length - 1; i >= 0; i--) {
+                let ent = entities[i];
+                if (!ent.isPlayer && !ent.isSummon && !ent.isOtherMerc && !ent.isBoss) {
+                    if (!serverMobIds.includes(ent.id)) {
+                        if (player.target && player.target.id === ent.id) player.target = null;
+                        entities.splice(i, 1);
+                    }
+                }
             }
-            entities.splice(i, 1); 
         }
-    }
 
-    // 2. 용병 및 소환수 동기화 (기존 로직 유지)
-    const serverMercIds = data.mercs ? data.mercs.map(m => m.id) : [];
-    if (data.mercs) {
-        data.mercs.forEach(sm => {
-            if (window.socket && sm.ownerId === window.socket.id) return;
-            let existingMerc = entities.find(e => e.isOtherMerc && e.id === sm.id);
-            if (existingMerc) {
-                existingMerc.moveX = sm.x;
-                existingMerc.moveY = sm.y;
-                existingMerc.hp = sm.hp;
-                existingMerc.maxHp = sm.maxHp;
-                existingMerc.angle = sm.angle;
-                existingMerc.isMoving = sm.isMoving;
-                existingMerc.equip = sm.equip || existingMerc.equip;
-                existingMerc.mercType = sm.mercType || existingMerc.mercType || 'knight';
-                existingMerc.charClass = sm.charClass || sm.mercType || existingMerc.charClass || 'knight';
-                existingMerc.name = sm.name || existingMerc.name;
-                existingMerc.ownerName = sm.ownerName || existingMerc.ownerName;
-            } else {
-                entities.push({
-                    ...sm,
-                    isOtherMerc: true,
-                    isSummon: true,
-                    size: 20,
-                    map: currentMap,
-                    moveX: sm.x,
-                    moveY: sm.y,
-                    charClass: sm.charClass || sm.mercType || 'knight',
-                    mercType: sm.mercType || 'knight',
-                    equip: sm.equip || { weapon: null, armor: null, helmet: null, cloak: null }
-                });
-            }
-        });
-    }
-    for (let i = entities.length - 1; i >= 0; i--) {
-        if (entities[i].isOtherMerc && !serverMercIds.includes(entities[i].id)) entities.splice(i, 1);
-    }
-
-    // 3. 몬스터 동기화 (기존 로직 유지)
-    const serverMobIds = data.monsters.map(sm => sm.id);
-    data.monsters.forEach(sm => {
-        let existingMob = entities.find(e => !e.isSummon && !e.isPlayer && e.id === sm.id);
-        if (existingMob) {
-            let distMoved = Math.hypot(existingMob.moveX - sm.x, existingMob.moveY - sm.y);
-            if (distMoved > 1) {
-                existingMob.isMoving = true;
-                existingMob.lastMoveAnimTime = performance.now();
-            }
-
-            existingMob.moveX = sm.x; 
-            existingMob.moveY = sm.y;
-            existingMob.hp = sm.hp;
-            existingMob.maxHp = sm.maxHp || existingMob.maxHp;
-            existingMob.name = sm.name || existingMob.name;
-            existingMob.map = currentMap; 
-            existingMob.color = existingMob.color || sm.color || '#ff3333'; 
-        } else {
-            entities.push({ 
-                id: sm.id, 
-                name: sm.name || '몬스터', 
-                x: sm.x, 
-                y: sm.y, 
-                moveX: sm.x, 
-                moveY: sm.y, 
-                hp: sm.hp || 100, 
-                maxHp: sm.maxHp || 100, 
-                isBoss: sm.isBoss || false, 
-                color: sm.color || '#ff3333', 
-                angle: sm.angle || 0, 
-                size: sm.size || (sm.isBoss ? 35 : 20), 
-                map: currentMap,
-                isMoving: false 
-            });
-        }
-    });
-    
-    for (let i = entities.length - 1; i >= 0; i--) { 
-        if (entities[i] && !entities[i].isSummon && !entities[i].isPlayer && !serverMobIds.includes(entities[i].id)) {
-            entities.splice(i, 1); 
-        }
-    }
-});
-
-window.socket.on('monster_hit', (data) => {
-        let mob = entities.find(e => e.id === data.monsterId);
-        if (mob && gameOptions.showDamage && typeof dmgTexts !== 'undefined') {
-            dmgTexts.push({ 
-                x: mob.x + (Math.random() * 20 - 10), 
-                y: mob.y - 25, 
-                text: data.damage, 
-                life: 1.0, 
-                color: data.hitType === 'magic' ? '#38bdf8' : '#ffffff' 
+        // 💡 2. 플레이어/에이전트 동기화 (기사 돌진 시 원거리에서 때리는 버그 수정)
+        if (data.players) {
+            const serverPlayerIds = data.players.map(p => p.socketId);
+            data.players.forEach(sp => {
+                if (window.socket && sp.socketId === window.socket.id) return;
+                
+                let existingPlayer = entities.find(e => e.isPlayer && (e.id === sp.socketId || e.socketId === sp.socketId));
+                if (existingPlayer) {
+                    if (sp.x !== undefined && sp.y !== undefined) {
+                        let dist = Math.hypot(sp.x - existingPlayer.x, sp.y - existingPlayer.y);
+                        // 에이전트가 돌진 시 미끄러지지 않고 즉시 이동
+                        if (dist > 120) { 
+                            existingPlayer.x = sp.x;
+                            existingPlayer.y = sp.y;
+                        }
+                        existingPlayer.moveX = sp.x; 
+                        existingPlayer.moveY = sp.y;
+                    }
+                    existingPlayer.hp = sp.hp;
+                    if (sp.maxHp) existingPlayer.maxHp = sp.maxHp;
+                    if (sp.targetId !== undefined) existingPlayer.targetId = sp.targetId;
+                    if (sp.partyId !== undefined) existingPlayer.partyId = sp.partyId;
+                    if (sp.charClass) existingPlayer.charClass = sp.charClass;
+                    if (sp.equip) existingPlayer.equip = sp.equip;
+                    if (sp.name) existingPlayer.name = sp.name;
+                    if (sp.angle !== undefined) existingPlayer.angle = sp.angle;
+                } else {
+                    entities.push({
+                        id: sp.socketId, socketId: sp.socketId, isPlayer: true, name: sp.name, charClass: sp.charClass || 'knight',
+                        x: sp.x, y: sp.y, moveX: sp.x, moveY: sp.y,
+                        hp: sp.hp, maxHp: sp.maxHp, size: 20, map: currentMap,
+                        equip: sp.equip || { weapon: null, armor: null }, partyId: sp.partyId, targetId: sp.targetId, angle: sp.angle || 0
+                    });
+                }
             });
             
-            // 타 유저 공격 적중 시에도 스파크 발생
-            if (typeof particles !== 'undefined') {
-                particles.push({ x: mob.x, y: mob.y, life: 0.25, maxLife: 0.25, type: 'hit_spark' });
+            for (let i = entities.length - 1; i >= 0; i--) { 
+                if (entities[i].isPlayer && !serverPlayerIds.includes(entities[i].id) && !serverPlayerIds.includes(entities[i].socketId)) {
+                    if (player.target && player.target.id === entities[i].id) player.target = null;
+                    entities.splice(i, 1); 
+                }
             }
-            if (typeof playSound === 'function') playSound(data.hitType === 'magic' ? 'magic_hit' : 'monster_hit', mob);
+        }
+
+        // 💡 3. 타 유저의 용병/소환수 동기화
+        if (data.mercs) {
+            const serverMercIds = data.mercs.map(m => m.id);
+            data.mercs.forEach(sm => {
+                let myId = window.socket ? window.socket.id : null;
+                let myUserId = window.currentUser ? window.currentUser.id : null;
+                if (sm.ownerId === myId || sm.ownerId === myUserId || sm.ownerSocketId === myId || sm.ownerName === player.name) return;
+
+                let existingMerc = entities.find(e => e.isOtherMerc && e.id === sm.id);
+                if (existingMerc) {
+                    if (sm.x !== undefined && sm.y !== undefined) {
+                        let dist = Math.hypot(sm.x - existingMerc.x, sm.y - existingMerc.y);
+                        if (dist > 150) {
+                            existingMerc.x = sm.x;
+                            existingMerc.y = sm.y;
+                        }
+                        existingMerc.moveX = sm.x;
+                        existingMerc.moveY = sm.y;
+                    }
+                    existingMerc.hp = sm.hp;
+                    if (sm.maxHp) existingMerc.maxHp = sm.maxHp;
+                    if (sm.angle !== undefined) existingMerc.angle = sm.angle;
+                    if (sm.isMoving !== undefined) existingMerc.isMoving = sm.isMoving;
+                    if (sm.equip) existingMerc.equip = sm.equip;
+                    if (sm.mercType) existingMerc.mercType = sm.mercType;
+                    if (sm.charClass) existingMerc.charClass = sm.charClass;
+                    if (sm.name) existingMerc.name = sm.name;
+                    if (sm.ownerName) existingMerc.ownerName = sm.ownerName;
+                } else {
+                    entities.push({
+                        ...sm, isOtherMerc: true, isSummon: true, size: 20, map: currentMap,
+                        moveX: sm.x, moveY: sm.y, charClass: sm.charClass || sm.mercType || 'knight',
+                        mercType: sm.mercType || 'knight', equip: sm.equip || { weapon: null, armor: null, helmet: null, cloak: null }
+                    });
+                }
+            });
+
+            for (let i = entities.length - 1; i >= 0; i--) {
+                let ent = entities[i];
+                if (ent && ent.isSummon && ent.owner === player) {
+                    let firstIndex = entities.findIndex(e => e.id === ent.id);
+                    if (firstIndex > -1 && firstIndex < i) entities.splice(i, 1);
+                } else if (ent.isOtherMerc && !serverMercIds.includes(ent.id)) {
+                    entities.splice(i, 1);
+                }
+            }
         }
     });
+
+
+    window.socket.on('monster_hit', (data) => {
+        let mob = entities.find(e => e.id === data.monsterId);
+        if (mob) {
+            // 💡 [핵심 추가] 서버에서 받아온 깎인 체력을 화면의 몬스터에게 적용
+            if (data.hpRemaining !== undefined) {
+                mob.hp = data.hpRemaining;
+            }
+            
+            if (gameOptions.showDamage && typeof dmgTexts !== 'undefined') {
+                dmgTexts.push({ 
+                    x: mob.x + (Math.random() * 20 - 10), 
+                    y: mob.y - 25, 
+                    text: data.damage, 
+                    life: 1.0, 
+                    color: data.hitType === 'magic' ? '#38bdf8' : '#ffffff' 
+                });
+                
+                if (typeof particles !== 'undefined') {
+                    particles.push({ x: mob.x, y: mob.y, life: 0.25, maxLife: 0.25, type: 'hit_spark' });
+                }
+                if (typeof playSound === 'function') playSound(data.hitType === 'magic' ? 'magic_hit' : 'monster_hit', mob);
+            }
+        }
+    });
+
     window.socket.on('player_hp_sync', (data) => {
         player.hp = data.hp;
         if (data.type === 'drain' && typeof dmgTexts !== 'undefined') {
@@ -4284,33 +4229,10 @@ window.socket.on('monster_hit', (data) => {
         player.hp = Math.max(0, (data.hpRemaining !== undefined ? data.hpRemaining : player.hp - rawDamage));
         player.hitTime = performance.now();
 
+        // 💡 [기사 광폭화 합리화 함수 연동]
         if (player.charClass === 'knight' && !player.isDead) {
-            let now = Date.now();
-
-            let isCoolingDown = now < (player.furyCooldownUntil || 0);
-            let isAlreadyFury = now < (player.furyUntil || 0);
-
-            if (!isAlreadyFury && !isCoolingDown) {
-                player.recentHitDetails = player.recentHitDetails || [];
-                let attackerId = data.attackerMonsterId || ('unknown_' + Math.random());
-                player.recentHitDetails.push({ time: now, id: attackerId });
-                player.recentHitDetails = player.recentHitDetails.filter(h => now - h.time <= 2000);
-
-                let pMaxHp = window.currentMaxHp || player.maxHp || 1000;
-                let isBigHit = rawDamage >= (pMaxHp * 0.25);
-
-                let uniqueAttackers = new Set(player.recentHitDetails.map(h => h.id));
-                let isCrowded = (player.recentHitDetails.length >= 4) && (uniqueAttackers.size >= 3);
-
-                if (isBigHit || isCrowded) {
-                    player.recentHitDetails = [];
-                    player.furyUntil = now + 4000;
-                    player.furyCooldownUntil = now + 6000;
-                    player.furyCleavedThisCycle = false;
-
-                    triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", player.x, player.y, null, 'ultimate', player, 20);
-                    if (typeof playSound === 'function') playSound('spell');
-                }
+            if (typeof window.processKnightBerserkFury === 'function') {
+                window.processKnightBerserkFury(player, data, rawDamage);
             }
         }
 
@@ -4342,9 +4264,7 @@ window.socket.on('monster_hit', (data) => {
         if (typeof updateUI === 'function') updateUI();
     });
 
-
-
-        window.socket.on('monster_attack_action', (data) => {
+    window.socket.on('monster_attack_action', (data) => {
         if (!gameStarted) return;
 
         let mob = entities.find(e => e.id === data.monsterId);
@@ -4355,14 +4275,13 @@ window.socket.on('monster_hit', (data) => {
         let targetY = (typeof data.targetY === 'number') ? data.targetY : mob.y;
         mob.angle = Math.atan2(targetY - mob.y, targetX - mob.x);
 
-        // 💡 [추가] 1. 원거리 활 몬스터가 쏘는 붉은빛 화살 투사체 생성
         if (data.hitType === 'bow') {
             if (typeof particles !== 'undefined') {
                 particles.push({
                     x: mob.x, y: mob.y,
                     speed: 22,
                     life: 1.2, maxLife: 1.2,
-                    color: '#f87171', // 몬스터 화살은 붉은빛
+                    color: '#f87171',
                     isProj: true, isArrow: true, homing: true,
                     type: 'arrow',
                     angle: mob.angle,
@@ -4373,7 +4292,6 @@ window.socket.on('monster_hit', (data) => {
             return;
         }
 
-        // 💡 [추가] 2. 원거리 마법 몬스터(장로, 카스파)가 쏘는 마법 구체 투사체 생성
         if (data.hitType === 'magic_proj') {
             if (typeof particles !== 'undefined') {
                 let isFire = data.magicName === '파이어볼';
@@ -4484,14 +4402,14 @@ window.socket.on('monster_hit', (data) => {
     });
 
     window.socket.on('monster_dead', (data) => {
-    let mobIndex = entities.findIndex(e => e.id === data.monsterId);
-    if (mobIndex > -1) { 
-        let mob = entities[mobIndex];
-        mob.isDead = true; 
-        mob.deadTime = performance.now(); 
-        if (typeof playSound === 'function') playSound('monster_dead', mob);
-    }
-});
+        let mobIndex = entities.findIndex(e => e.id === data.monsterId);
+        if (mobIndex > -1) { 
+            let mob = entities[mobIndex];
+            mob.isDead = true; 
+            mob.deadTime = performance.now(); 
+            if (typeof playSide === 'function') playSound('monster_dead', mob);
+        }
+    });
 
     window.socket.on('player_exp_gain', (data) => {
         let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0 && !ent.isDead);
@@ -4542,32 +4460,28 @@ window.socket.on('monster_hit', (data) => {
     });
 
     window.socket.on('item_looted_success', (data) => {
-    let loot = data.item;
-    if (loot.type === 'currency' && loot.name === '아데나') {
-        player.adena += loot.count;
-       // if (typeof addMessage === 'function') addMessage(`${loot.count} 아데나 획득`, '#fd0');
-        if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${loot.count} 💰`, life: 1.5, color: '#fd0' });
-        // 💡 아데나 획득음 제거 완료
-    } else {
-        let existingIdx = player.inv.findIndex(p => getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
-        if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc'].includes(loot.type)) {
-            player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (loot.count || 1);
-        } else { player.inv.push(JSON.parse(JSON.stringify(loot))); }
-        if (typeof addMessage === 'function') addMessage(`[루팅] ${loot.name} 획득!`, '#af5');
-        if (typeof playSound === 'function') playSound('click');
-    }
-    if (typeof updateUI === 'function') updateUI();
-});
+        let loot = data.item;
+        if (loot.type === 'currency' && loot.name === '아데나') {
+            player.adena += loot.count;
+            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: player.x, y: player.y - 40, text: `+${loot.count} 💰`, life: 1.5, color: '#fd0' });
+        } else {
+            let existingIdx = player.inv.findIndex(p => getStackKey(p) === getStackKey(loot) && (!p.magicOptions || p.magicOptions.length === 0));
+            if (existingIdx > -1 && ['potion', 'scroll', 'book', 'etc'].includes(loot.type)) {
+                player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + (loot.count || 1);
+            } else { player.inv.push(JSON.parse(JSON.stringify(loot))); }
+            if (typeof addMessage === 'function') addMessage(`[루팅] ${loot.name} 획득!`, '#af5');
+            if (typeof playSound === 'function') playSound('click');
+        }
+        if (typeof updateUI === 'function') updateUI();
+    });
 
     window.socket.on('chat_broadcast', (data) => {
         let msgType = data.chatType || 'normal';
         
-        // 💡 나에게 귓말이 왔다면 즉시 귓속말 답장 대상(/r) 갱신
         if (data.isWhisper && data.targetName === player.name) {
             window.lastWhisperTarget = data.name; 
         }
 
-        // 💡 귓말, 파티, 전체 채팅을 구분해서 화면에 출력
         let prefix = msgType === 'whisper' ? '귓말' : (msgType === 'party' ? '파티' : '전체');
         let color = msgType === 'whisper' ? '#e879f9' : (msgType === 'party' ? '#5cf' : '#ffffff');
         
@@ -4575,7 +4489,6 @@ window.socket.on('monster_hit', (data) => {
             addMessage(`[${prefix}] ${data.name}: ${data.message}`, color, msgType);
         }
 
-        // 💡 캐릭터 머리 위 말풍선 띄우기 처리
         let targetEnt = null;
         if (data.senderId === currentUser?.id) { 
             targetEnt = player; 
@@ -4589,205 +4502,36 @@ window.socket.on('monster_hit', (data) => {
         }
     });
 
-
-   window.socket.on('party_invite_received', (data) => {
-    let btns = [
-        {
-            text: "✅ 수락",
-            color: "#166534",
-            callback: () => { window.socket.emit('party_accept', { inviterSocketId: data.inviterSocketId }); }
-        },
-        {
-            text: "❌ 거절 (나중에 할게요)",
-            color: "#444",
-            callback: () => { 
-                window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'soft' }); 
-                if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 거절했습니다.`, '#aaa');
+    window.socket.on('party_invite_received', (data) => {
+        let btns = [
+            {
+                text: "✅ 수락",
+                color: "#166534",
+                callback: () => { window.socket.emit('party_accept', { inviterSocketId: data.inviterSocketId }); }
+            },
+            {
+                text: "❌ 거절 (나중에 할게요)",
+                color: "#444",
+                callback: () => { 
+                    window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'soft' }); 
+                    if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 거절했습니다.`, '#aaa');
+                }
+            },
+            {
+                text: "🚫 차단 (다시는 초대하지 마세요)",
+                color: "#7f1d1d",
+                callback: () => { 
+                    showConfirm(`정말 [${data.inviterName}]님의 파티 초대를 차단하시겠습니까?\n차단 시 이번 접속 중에는 다시 초대받지 않습니다.`, () => {
+                        window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'hard' }); 
+                        if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 영구 차단했습니다.`, '#f55');
+                    });
+                }
             }
-        },
-        {
-            text: "🚫 차단 (다시는 초대하지 마세요)",
-            color: "#7f1d1d",
-            callback: () => { 
-                // 💡 [수정] 차단 버튼 클릭 시 한 번 더 물어보는 로직 추가
-                showConfirm(`정말 [${data.inviterName}]님의 파티 초대를 차단하시겠습니까?\n차단 시 이번 접속 중에는 다시 초대받지 않습니다.`, () => {
-                    // 확인을 눌렀을 때만 하드(영구) 거절 전송
-                    window.socket.emit('party_reject', { inviterSocketId: data.inviterSocketId, rejectorName: player.name, type: 'hard' }); 
-                    if (typeof addMessage === 'function') addMessage(`[파티] ${data.inviterName}님의 초대를 영구 차단했습니다.`, '#f55');
-                });
-            }
-        }
-    ];
-    showCustomPrompt(`[파티 초대]\n\n${data.inviterName}님께서 파티 초대를 보냈습니다.\n어떻게 하시겠습니까?`, btns);
-});
-
-   
-// 💡 [클릭과 드래그 구분용 전역 변수]
-    window.currentPartyData = null;
-
-    window.renderPartyHUD = function() {
-    // 💡 [핵심 패치] 드래그 중일 때는 HTML 덮어쓰기를 일시 정지하여 드래그 끊김 방지
-    if (window._isPartyHudDragging) return;
-
-    let data = window.currentPartyData;
-    let hudList = document.getElementById('party-hud-list');
-    if (!hudList || !data || !data.party) {
-        if (hudList) hudList.innerHTML = '';
-        return;
-    }
-
-    // 파티원들의 현재 HP를 entities 및 player 객체와 실시간 일치화
-    data.party.members.forEach(m => {
-        if (m.socketId === window.socket?.id) {
-            m.hp = player.hp;
-            m.maxHp = currentMaxHp;
-        } else {
-            let ent = entities.find(e => e.isPlayer && (e.id === m.socketId || e.socketId === m.socketId));
-            if (ent) {
-                m.hp = ent.hp;
-                m.maxHp = ent.maxHp || m.maxHp;
-            }
-        }
+        ];
+        showCustomPrompt(`[파티 초대]\n\n${data.inviterName}님께서 파티 초대를 보냈습니다.\n어떻게 하시겠습니까?`, btns);
     });
 
-    hudList.style.position = 'fixed';
-    hudList.style.top = hudList.style.top || '70px';
-    hudList.style.left = hudList.style.left || '10px';
-    hudList.style.zIndex = '99999';
-    hudList.style.cursor = 'move';
-    hudList.style.pointerEvents = 'auto';
-
-    if (!hudList.dataset.dragInitialized) {
-        hudList.dataset.dragInitialized = 'true';
-        let startX, startY, initialLeft, initialTop, moved = false;
-
-        const onDown = (e) => {
-            window._isPartyHudDragging = true; // 💡 드래그 시작 플래그 켜기
-            moved = false;
-            startX = e.clientX || (e.touches && e.touches[0].clientX);
-            startY = e.clientY || (e.touches && e.touches[0].clientY);
-            initialLeft = hudList.offsetLeft;
-            initialTop = hudList.offsetTop;
-        };
-
-        const onMove = (e) => {
-            if (!window._isPartyHudDragging) return;
-            let clientX = e.clientX || (e.touches && e.touches[0].clientX);
-            let clientY = e.clientY || (e.touches && e.touches[0].clientY);
-            let dx = clientX - startX;
-            let dy = clientY - startY;
-
-            if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
-
-            hudList.style.left = (initialLeft + dx) + 'px';
-            hudList.style.top = (initialTop + dy) + 'px';
-        };
-
-        const onUp = () => {
-            if (window._isPartyHudDragging && moved) {
-                window._blockClickDueToDrag = true;
-                setTimeout(() => { window._blockClickDueToDrag = false; }, 100);
-            }
-            window._isPartyHudDragging = false; // 💡 드래그 종료 플래그 끄기
-        };
-
-        hudList.addEventListener('mousedown', onDown);
-        window.addEventListener('mousemove', onMove);
-        window.addEventListener('mouseup', onUp);
-        hudList.addEventListener('touchstart', onDown, {passive: true});
-        window.addEventListener('touchmove', onMove, {passive: true});
-        window.addEventListener('touchend', onUp);
-    }
-
-    let isMobile = window.innerWidth <= 768;
-    let html = '';
-
-    if (isMobile) {
-        html += '<div style="background:rgba(15, 15, 22, 0.9); border:1px solid #445; border-radius:4px; padding:3px; display:flex; flex-direction:column; gap:3px; width:95px; box-shadow:0 2px 5px rgba(0,0,0,0.5);">';
-        html += '<div style="font-size:6.5px; color:#aaa; text-align:center; border-bottom:1px solid #333; padding-bottom:1px; margin-bottom:1px; user-select:none;">👑 파티 (우클릭 메뉴)</div>';
-        html += '<div style="display:flex; flex-direction:column; gap:2px;">';
-
-        data.party.members.forEach(member => {
-            let hpPct = Math.max(0, Math.min(100, (member.hp / member.maxHp) * 100));
-            let isLeader = data.party.leader === member.socketId;
-            let icon = member.charClass === 'elf' ? '🏹' : (member.charClass === 'wizard' ? '🔮' : '🛡️');
-            
-            html += `<div onclick="window.selectEntityFromHUD('${member.socketId}')" oncontextmenu="event.preventDefault(); if(!window._isPartyMoved) window.handlePartyHudClick('${member.socketId}', '${member.name}'); return false;" style="cursor:pointer; background:rgba(20, 20, 30, 0.85); border:1px solid ${isLeader ? '#fd0' : '#334155'}; border-radius:2px; padding:2px 4px; width:100%; box-sizing:border-box;">`;
-            html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:7.5px; font-weight:bold; color:${isLeader ? '#fd0' : '#5cf'}; line-height:1.1; margin-bottom:1px;">`;
-            html += `<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:62px;">${isLeader ? '👑' : icon} ${member.name}</span>`;
-            html += `<span style="font-size:6px; color:#aaa;">${Math.floor(hpPct)}%</span>`;
-            html += `</div>`;
-            html += `<div style="width:100%; height:3px; background:#111; border-radius:1px; overflow:hidden; border:0.5px solid #222;">`;
-            html += `<div style="width: ${hpPct}%; height: 100%; background: #ef4444;"></div>`;
-            html += `</div></div>`;
-        });
-        html += `</div></div>`;
-    } else {
-        let isFocus = data.party.mode === 'focus';
-        let modeBadgeText = isFocus ? '🎯점사' : '⚔️자유';
-        let modeBadgeBg = isFocus ? '#991b1b' : '#1e3a8a';
-        let modeBadgeBorder = isFocus ? '#dc2626' : '#2563eb';
-
-        html += '<div style="background:rgba(15, 15, 22, 0.9); border:1px solid #556; border-radius:6px; padding:6px; display:flex; flex-direction:column; gap:4px; width:140px; box-shadow:0 4px 10px rgba(0,0,0,0.6);">';
-        html += '<div style="font-size:10px; color:#fd0; text-align:center; border-bottom:1px solid #444; padding-bottom:3px; margin-bottom:2px; user-select:none; font-weight:bold;">👑 파티원 (우클릭 메뉴)</div>';
-        html += '<div style="display:flex; flex-direction:column; gap:4px;">';
-
-        data.party.members.forEach(member => {
-            let hpPct = Math.max(0, Math.min(100, (member.hp / member.maxHp) * 100));
-            let isLeader = data.party.leader === member.socketId;
-            let icon = member.charClass === 'elf' ? '🏹' : (member.charClass === 'wizard' ? '🔮' : '🛡️');
-            
-            html += `<div onclick="window.selectEntityFromHUD('${member.socketId}')" oncontextmenu="event.preventDefault(); if(!window._isPartyMoved) window.handlePartyHudClick('${member.socketId}', '${member.name}'); return false;" style="cursor:pointer; background:rgba(20, 20, 32, 0.9); border:1px solid ${isLeader ? '#fd0' : '#475569'}; border-radius:4px; padding:4px 6px; width:100%; box-sizing:border-box;">`;
-            html += `<div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; font-weight:bold; color:${isLeader ? '#fd0' : '#5cf'}; line-height:1.2; margin-bottom:2px;">`;
-            html += `<span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:85px;">${isLeader ? '👑' : icon} ${member.name}</span>`;
-            html += `<span style="font-size:8.5px; color:#fff; background:${modeBadgeBg}; border:1px solid ${modeBadgeBorder}; padding:0 3px; border-radius:2px;">${modeBadgeText}</span>`;
-            html += `</div>`;
-            html += `<div style="width:100%; height:5px; background:#111; border-radius:2px; overflow:hidden; border:0.5px solid #333;">`;
-            html += `<div style="width: ${hpPct}%; height: 100%; background: #ef4444;"></div>`;
-            html += `</div></div>`;
-        });
-        html += `</div></div>`;
-    }
-    
-    hudList.innerHTML = html;
-};
-
-    // 소켓 수신 시 렌더링
-    if (window.socket) {
-        window.socket.off('party_update');
-        window.socket.on('party_update', (data) => {
-            window.currentPartyData = data;
-            window.renderPartyHUD();
-        });
-    }
-
-// 💡 [화면 사이즈 자동 보정]: 브라우저 창 크기가 바뀌거나 모바일 회전 시 파티 HUD가 화면 밖으로 숨는 현상 방지
-        if (!window._partyResizeListenerAdded) {
-            window._partyResizeListenerAdded = true;
-            window.addEventListener('resize', () => {
-                let el = document.getElementById('party-hud-list');
-                if (!el || !el.innerHTML.trim()) return;
-                
-                let rect = el.getBoundingClientRect();
-                let maxW = window.innerWidth - rect.width - 10;
-                let maxH = window.innerHeight - rect.height - 10;
-                
-                let currentLeft = parseInt(el.style.left) || 10;
-                let currentTop = parseInt(el.style.top) || 70;
-                
-                // 화면 밖으로 벗어났다면 안쪽으로 강제로 끌어오기
-                if (currentLeft > maxW || currentLeft < 5) {
-                    el.style.left = Math.max(5, Math.min(maxW, currentLeft)) + 'px';
-                }
-                if (currentTop > maxH || currentTop < 5) {
-                    el.style.top = Math.max(5, Math.min(maxH, currentTop)) + 'px';
-                }
-            });
-        }
-
-
     window.socket.on('party_target_shared', (data) => {
-        // 💡 파티장이 타겟을 해제한 경우(null)
         if (!data || !data.targetId) {
             if (player.target) {
                 player.target = null;
@@ -4796,7 +4540,6 @@ window.socket.on('monster_hit', (data) => {
             return;
         }
 
-        // 💡 파티장이 새로운 몬스터를 타겟한 경우
         let targetMob = entities.find(e => e && e.id === data.targetId && e.hp > 0 && !e.isDead && e.map === currentMap);
         if (targetMob) {
             if (!player.target || player.target.id !== targetMob.id) {
@@ -4808,18 +4551,13 @@ window.socket.on('monster_hit', (data) => {
             }
         }
     });
- }
+}
 
 window.addEventListener('contextmenu', function (e) {
     e.preventDefault();
     return false;
 }, { passive: false });
 
-
-
-
-
-// 1. 기사 용병 전용 돌진 패시브 함수
 function tryMercenaryRush(entity, target, now) {
     let eClass = entity.charClass || entity.mercType;
     if (eClass !== 'knight' || !target) return false;
@@ -4845,8 +4583,6 @@ function tryMercenaryRush(entity, target, now) {
     }
     return false;
 }
-
-
 
 window.updateMercenaryAI = function() {
     if (!gameStarted || !player) return;
@@ -4911,7 +4647,6 @@ window.updateMercenaryAI = function() {
             if (e.mp < e.maxMp) e.mp = Math.min(e.maxMp, e.mp + mpRegenAmt);
         }
 
-        // 💡 [맑은 물약 자동 복용 시스템]
         e.inv = e.inv || [];
         if (now - (e.lastPotionTime || 0) > 800) {
             let hasDebuff = e.buffs && (e.buffs['poison'] || e.buffs['curse']);
@@ -5047,7 +4782,6 @@ window.updateMercenaryAI = function() {
                 }
             }
         } else {
-            // 💡 [대기열 겹침 및 진동 방지 데드존 로직]
             if (pDist > 90) {
                 let angle = Math.atan2(player.y - e.y, player.x - e.x);
                 e.x += Math.cos(angle) * followSpeed + pushX;
@@ -5072,12 +4806,6 @@ window.updateMercenaryAI = function() {
     });
 };
 
-
-
-
-// ==========================================
-// 🧠 [스마트 마법 선택 엔진] (단일/광역, 보스 집중)
-// ==========================================
 window.selectOptimalSpell = function(unit, nearbyEnemiesCount, target) {
     if (!unit.skills || unit.skills.length === 0) return null;
 
@@ -5128,10 +4856,7 @@ window.selectOptimalSpell = function(unit, nearbyEnemiesCount, target) {
     return lowestMpSpells[0] ? lowestMpSpells[0].name : null;
 };
 
-
-
 window.handlePartyHudClick = function(socketId, name) {
-    // 💡 [안전 장치 강화]: 화면에 엔티티가 없어도 소켓 ID와 이름으로 즉시 모달 객체 구성
     let target = entities.find(e => e.isPlayer && (e.id === socketId || e.socketId === socketId));
     
     if (!target) {
@@ -5141,18 +4866,16 @@ window.handlePartyHudClick = function(socketId, name) {
             socketId: socketId,
             name: name,
             partyId: window.myParty?.id,
-            charClass: 'knight' // 기본값 설정
+            charClass: 'knight' 
         };
     }
     
-    // 다른 플레이어 정보 및 파티 관리 메뉴 모달 호출
     if (typeof showPartyMenu === 'function') {
         showPartyMenu(target);
     } else {
         addMessage(`${name} 선택됨`, "#aaa");
     }
 };
-
 
 function clearPlayerAggro() {
     if (!entities) return;
@@ -5166,18 +4889,12 @@ function clearPlayerAggro() {
     player.isMoving = false;
 }
 
-
-
-
-// 💡 [HUD 좌클릭 타겟팅 및 힐/버프 즉시 시전 엔진]
-// 💡 [HUD 좌클릭 타겟팅 및 힐/버프 즉시 시전 엔진]
 window.selectEntityFromHUD = function(targetId) {
     if (window._blockClickDueToDrag) return;
 
     let targetEnt = entities.find(e => e.id === targetId || e.socketId === targetId || e.id === 'merc_' + targetId);
     if (!targetEnt) return;
 
-    // 1. 수동 마법 시전 모드
     if (player.selectedManualSpell) {
         let sData = typeof magicDb !== 'undefined' ? magicDb[player.selectedManualSpell] : null;
         if (sData && (sData.type === 'buff' || sData.heal || player.selectedManualSpell.includes('힐'))) {
@@ -5190,12 +4907,10 @@ window.selectEntityFromHUD = function(targetId) {
         return;
     }
 
-    // 2. 💡 [모바일 대응] 이미 선택된 아군을 다시 터치하면 해제(Toggle)
     if (player.friendlyTarget && player.friendlyTarget.id === targetEnt.id) {
         player.friendlyTarget = null;
         if (typeof addMessage === 'function') addMessage(`[아군 선택 해제]`, '#aaa');
     } else {
-        // 새로운 아군 선택
         player.friendlyTarget = targetEnt;
         if (typeof addMessage === 'function') addMessage(`[아군 선택] ${targetEnt.name} (힐/버프 대기)`, '#5cf');
     }
@@ -5203,31 +4918,19 @@ window.selectEntityFromHUD = function(targetId) {
     if (typeof playSound === 'function') playSound('click');
 };
 
-
-
-
-
-
-
-// ==========================================
-// 💡 [주문서/강화 모드 취소 (ESC 키 및 우클릭 지원)]
-// ==========================================
 window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-        // 1. 주문서 강화 모드 취소
         if (window.activeEnchantScrollKey) {
             window.activeEnchantScrollKey = null;
             document.body.style.cursor = 'default';
             if (typeof addMessage === 'function') addMessage("주문서 사용이 취소되었습니다.", '#aaa');
         }
         
-        // 2. 수동 마법 선택 취소
         if (typeof player !== 'undefined' && player.selectedManualSpell) {
             player.selectedManualSpell = null;
             if (typeof addMessage === 'function') addMessage("수동 마법 선택이 취소되었습니다.", '#aaa');
         }
 
-        // 3. 타겟팅 몬스터 해제 및 다음 몬스터 탐색 활성화
         if (typeof player !== 'undefined' && player.target) {
             let prevId = player.target.id;
             player.target = null;
@@ -5252,9 +4955,6 @@ canvas.addEventListener('contextmenu', (e) => {
     }
 });
 
-// ==========================================
-// 💡 [스마트 자동전투 마법 선택 함수 선언]
-// ==========================================
 window.getSmartAutoCombatSpell = function(target) {
     if (!player || !target) return null;
     if (!player.activeSpellSlots || player.activeSpellSlots.length === 0) return null;
@@ -5262,7 +4962,6 @@ window.getSmartAutoCombatSpell = function(target) {
     let now = performance.now();
     player.spellCooldowns = player.spellCooldowns || {};
 
-    // 💡 퀵슬롯에 등록된 공격 마법 중 "MP가 충분하고 쿨타임이 완전히 끝난" 마법만 필터링! (캐릭터 굳음 방지)
     let availableSpells = player.activeSpellSlots
         .map(idx => hotkeys[idx])
         .filter(hk => hk && hk.type === 'magic' && magicDb[hk.id])
@@ -5278,13 +4977,11 @@ window.getSmartAutoCombatSpell = function(target) {
 
     if (availableSpells.length === 0) return null;
 
-    // 1. 보스 상대: 가장 강력한 대미지 마법
     if (target.isBoss) {
         availableSpells.sort((a, b) => (b.dmg || 0) - (a.dmg || 0));
         return availableSpells[0].id;
     }
 
-    // 2. 광역/단일 판단
     let nearbyEnemies = entities.filter(e => 
         e && e.map === currentMap && !e.isSummon && !e.isPlayer && 
         e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 180
@@ -5308,15 +5005,11 @@ window.getSmartAutoCombatSpell = function(target) {
     return availableSpells[0].id;
 };
 
-
-
-
 window.castBuff = function(magicName, targetEntity = null) {
     let dbRef = typeof magicDb !== 'undefined' ? magicDb : (window.magicDb || {});
     let mData = dbRef[magicName];
     if (!mData) return;
 
-    // 💡 1순위: 매개변수 지정 대상, 2순위: HUD로 선택된 아군(friendlyTarget), 3순위: 본인
     let target = targetEntity || player.friendlyTarget;
     if (!target && window.selectedAllyId) {
         target = entities.find(e => e.id === window.selectedAllyId || e.socketId === window.selectedAllyId);
@@ -5326,7 +5019,6 @@ window.castBuff = function(magicName, targetEntity = null) {
     }
 
     let targetMaxHp = target.maxHp || (target === player ? (window.currentMaxHp || player.maxHp) : 100);
-    let targetMaxMp = target.maxMp || (target === player ? (window.currentMaxMp || player.maxMp) : 50);
 
     let isDefaultClassSpell = (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드', '가속', '그레이트 힐', '어드밴스 스피릿', '이뮨 투 함', '앱솔루트 배리어', '마제스티', '홀리 워크'].some(n => magicName.includes(n))) ||
                               (player.charClass === 'knight' && ['쇼크 스턴', '리덕션 아머', '카운터 바리어', '바운스 어택', '솔리드 캐리지', '블로우 어택'].some(n => magicName.includes(n))) ||
@@ -5383,12 +5075,10 @@ window.castBuff = function(magicName, targetEntity = null) {
     if (typeof updateUI === 'function') updateUI();
 };
 
-// JS: 전체화면 토글 함수
 window.toggleFullScreenMode = function() {
     if (typeof playSound === 'function') playSound('click');
     const btn = document.getElementById('btn-fullscreen-toggle');
     
-    // 💡 전체화면 버튼 클릭 시 옵션 창을 즉시 닫음
     let optionWin = document.getElementById('win-option');
     if (optionWin) optionWin.style.display = 'none';
     if (typeof hideTooltip === 'function') hideTooltip();
@@ -5427,8 +5117,6 @@ document.addEventListener('fullscreenchange', () => {
     if (typeof resize === 'function') resize();
 });
 
-
-
 window.processAutoConsumablesAndBuffs = function() {
     if (!gameStarted || !player || player.hp <= 0 || player.isDead) return;
     let now = Date.now();
@@ -5437,11 +5125,7 @@ window.processAutoConsumablesAndBuffs = function() {
 
     let hkList = window.hotkeys || [];
 
-    // ----------------------------------------------------
-    // 1. [물약 ON] 자동 물약 복용 (순삭 방지 쿨타임 적용)
-    // ----------------------------------------------------
     if (player.autoPotion) {
-        // [A] 체력 70% 미만 시 HP 물약 (쿨타임 500ms)
         if (player.hp < pMaxHp * 0.70 && (now - (player.lastAutoHpPotTime || 0) > 500)) {
             for (let hk of hkList) {
                 if (!hk) continue;
@@ -5457,7 +5141,6 @@ window.processAutoConsumablesAndBuffs = function() {
             }
         }
 
-        // [B] 마나 20% 미만 시 MP 물약 (쿨타임 800ms)
         if (player.mp < pMaxMp * 0.20 && (now - (player.lastAutoMpPotTime || 0) > 800)) {
             for (let hk of hkList) {
                 if (!hk) continue;
@@ -5473,7 +5156,6 @@ window.processAutoConsumablesAndBuffs = function() {
             }
         }
 
-        // [C] 버프 물약 (초록, 용기, 와퍼)
         if (player.autoHunt) {
             const autoDrinkBuff = (keyword, targetBuffKey) => {
                 let slot = hkList.find(hk => hk && (typeof hk === 'string' ? hk : (hk.id || hk.name || '')).includes(keyword));
@@ -5493,9 +5175,6 @@ window.processAutoConsumablesAndBuffs = function() {
         }
     }
 
-    // ----------------------------------------------------
-    // 2. [자동사냥 ON] 버프 마법 자동 시전
-    // ----------------------------------------------------
     if (!player.autoHunt) return;
     let activeSlots = player.activeSpellSlots || [];
     if (activeSlots.length === 0) return;
@@ -5539,15 +5218,11 @@ window.processAutoConsumablesAndBuffs = function() {
     }
 };
 
-// ==========================================
-// 🔥 [보스 레이드: 15초 대기실, 단계별 스폰 및 자동 귀환]
-// ==========================================
 window.enterBossRaid = function() {
     if (!gameStarted || !player) return;
     
     window.closeAllWindows(); 
 
-  
     player.isMoving = false;
     player.target = null;
     player.moveX = undefined;
@@ -5557,11 +5232,7 @@ window.enterBossRaid = function() {
 
     let wpEnchant = (player.equip && player.equip.weapon && player.equip.weapon.enchantValue) ? player.equip.weapon.enchantValue : 0;
     let amEnchant = (player.equip && player.equip.armor && player.equip.armor.enchantValue) ? player.equip.armor.enchantValue : 0;
-    
-    let mainStat = 0;
-    let classPowerBonus = 0;
 
-// 1. 동행 중인 용병들의 화력 가중치 산출
     let mercsCombatPower = 0;
     let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.hp > 0);
     
@@ -5573,12 +5244,10 @@ window.enterBossRaid = function() {
         }
     });
 
-    // 2. 클래스별 실질 초당 화력(DPS 배율) 정밀 반영
     let realDpsPower = 0;
     if (player.charClass === 'wizard') {
         let intVal = player.int || 18;
         let spVal = (player.sp || 0) + Math.floor((intVal - 10) / 2);
-        // 실제 마법 대미지 증폭 공식 반영 (INT 128 / SP 24 스펙 완벽 인식)
         let magicScale = 1 + (spVal * 0.15) + Math.max(0, (intVal - 12) * 0.05);
         realDpsPower = Math.floor(250 * magicScale * 15); 
     } else if (player.charClass === 'elf') {
@@ -5589,7 +5258,6 @@ window.enterBossRaid = function() {
         realDpsPower = Math.floor((player.atk || 20) * 25 + strVal * 100);
     }
 
-    // 3. 최종 통합 전투력 (레벨 + 장비 + 실질 화력 + 용병)
     let combatPower = (player.level * 400) + (wpEnchant * 300) + (amEnchant * 150) + realDpsPower + mercsCombatPower;
 
     if (window.socket && currentUser) {
@@ -5616,23 +5284,22 @@ window.enterBossRaid = function() {
 
     window.socket.off('raid_battle_start');
     window.socket.on('raid_battle_start', (data) => {
-    let bgTypes = ['lava', 'dungeon', 'tower', 'stone'];
-    let timeSeed = Math.floor(Date.now() / 600000);
-    let randomBg = bgTypes[timeSeed % bgTypes.length];
-    
-    if (maps['boss_raid']) maps['boss_raid'].bg = randomBg;
-    if (generatedMaps['boss_raid']) delete generatedMaps['boss_raid'];
-    
-    changeMap('boss_raid', 2000, 3600);
-    window.spawnRaidBoss(data.tierIndex, 1);
-    
-    if (typeof playSound === 'function') playSound('boss_roar'); // 💡 보스 포효
+        let bgTypes = ['lava', 'dungeon', 'tower', 'stone'];
+        let timeSeed = Math.floor(Date.now() / 600000);
+        let randomBg = bgTypes[timeSeed % bgTypes.length];
+        
+        if (maps['boss_raid']) maps['boss_raid'].bg = randomBg;
+        if (generatedMaps['boss_raid']) delete generatedMaps['boss_raid'];
+        
+        changeMap('boss_raid', 2000, 3600);
+        window.spawnRaidBoss(data.tierIndex, 1);
+        
+        if (typeof playSound === 'function') playSound('boss_roar');
 
-    raidOverlay.style.opacity = '0';
-    setTimeout(() => raidOverlay.remove(), 400);
-});
+        raidOverlay.style.opacity = '0';
+        setTimeout(() => raidOverlay.remove(), 400);
+    });
 
-   // 💡 레이드 2차 종료 시 자동사냥 강제 해제 수신 (정상 정돈)
     window.socket.off('raid_clear_return_town');
     window.socket.off('raid_clear_disable_autohunt');
     window.socket.on('raid_clear_disable_autohunt', () => {
@@ -5670,22 +5337,23 @@ window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
     let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
     let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
     
-    // 💡 1차 웨이브 기본 스펙
     let pAtk = (player.atk || 20) + ((player.equip && player.equip.weapon && player.equip.weapon.atk) || 10);
+    
     let calculatedHp = Math.max(150000, pAtk * 40 * (1 + waveNum * 0.2));
+    let adjustedDef = Math.max(20, (50 + (waveNum * 10)) - 15);
 
     let raidBoss = {
         id: 'raid_boss_w' + waveNum + '_' + Date.now(),
         name: `${tierTitles[tierIndex || 0]} ${selectedBoss} (${waveNum}/2)`,
         isBoss: true,
         x: 2000, 
-        y: 800, // 맵 안쪽 스폰
+        y: 800, 
         map: 'boss_raid',
         size: 30 + ((tierIndex || 0) * 3),
         hp: calculatedHp,
         maxHp: calculatedHp,
-        atk: 80 + (waveNum * 15),
-        def: 50 + (waveNum * 10),
+        atk: 90 + (waveNum * 15), 
+        def: adjustedDef,         
         exp: 30000 * waveNum,
         color: '#ff3333',
         angle: 0,
@@ -5702,3 +5370,16 @@ window.spawnRaidBoss = function(tierIndex, waveNum = 1) {
         addMessage(`차원의 틈새 최심부에 [${waveNum}차 웨이브] ${raidBoss.name}이(가) 나타났습니다!`, '#f55');
     }
 };
+
+
+
+function getMercColorByOwner(ownerKey) {
+    if (!ownerKey) return '#34d399';
+    let hash = 0;
+    for (let i = 0; i < String(ownerKey).length; i++) {
+        hash = String(ownerKey).charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const colors = ['#38bdf8', '#f472b6', '#fbbf24', '#34d399', '#a78bfa', '#f87171', '#60a5fa', '#facc15', '#a3e635'];
+    return colors[Math.abs(hash) % colors.length];
+}
+
