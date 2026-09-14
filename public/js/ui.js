@@ -4591,10 +4591,11 @@ function renderChatMessages() {
         </div>`;
     }
 
-    let msgHTML = '';
+   let msgHTML = '';
     filtered.forEach(c => {
-        // 💡 [수정] 메시지 안의 줄바꿈(\n)을 HTML 태그(<br>)로 변환하여 세로로 깔끔하게 정렬
-        let formattedMsg = c.msg.replace(/\n/g, '<br>');
+        // 💡 [채팅 멈춤 방어] 문자열이 아닌 오류 데이터가 들어와도 채팅창이 고장나지 않도록 안전 변환
+        let safeMsg = typeof c.msg === 'string' ? c.msg : String(c.msg || '');
+        let formattedMsg = safeMsg.replace(/\n/g, '<br>');
         msgHTML += `<div style="color:${c.color}; margin-bottom:4px; line-height: 1.4;">${formattedMsg}</div>`;
     });
 
@@ -5241,43 +5242,40 @@ window.selectAlly = function(id, name) {
     if (typeof renderPartyHUD === 'function') renderPartyHUD();
 };
 
-window.renderMercenaryHUD = function() {
-    const listEl = document.getElementById('mercenary-hud-list');
-    if (!listEl) return;
+window.renderPartyHUD = function() {
+        const partyListEl = document.getElementById('party-hud-list');
+        if (!partyListEl) return;
+        
+        if (!window.currentPartyData || !window.currentPartyData.party || !window.currentPartyData.party.members || window.currentPartyData.party.members.length === 0) {
+            partyListEl.innerHTML = '';
+            return;
+        }
 
-    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
-    if (activeMercs.length === 0) {
-        listEl.innerHTML = '';
-        return;
-    }
+        let html = '';
+        let isMobile = window.innerWidth <= 768;
+        
+        window.currentPartyData.party.members.forEach(m => {
+            let hpPct = Math.max(0, Math.min(100, (m.hp / (m.maxHp || 100)) * 100));
+            let isLeader = window.currentPartyData.party.leader === m.socketId;
+            let leaderIcon = isLeader ? '👑' : '';
+            let displayName = isMobile ? `${leaderIcon}${m.name}` : `${leaderIcon} ${m.name} (Lv.${m.level || 1})`;
 
-    let isMobile = window.innerWidth <= 768;
-    let html = '';
-    
-    activeMercs.forEach((merc) => {
-        let hpPct = Math.max(0, Math.min(100, (merc.hp / merc.maxHp) * 100));
-        let mpPct = Math.max(0, Math.min(100, ((merc.mp || 0) / (merc.maxMp || 50)) * 100));
-        let displayName = isMobile ? (merc.name.match(/\d+호/)?.[0] || merc.name) : `${merc.name} (Lv.${merc.level || 1})`;
+            let isSelected = (window.selectedAllyId === m.socketId);
+            let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
 
-        let isSelected = (window.selectedAllyId === merc.id);
-        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
+            html += `
+            <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.2s; ${borderStyle}"
+                 onclick="window.selectAlly('${m.socketId}', '${m.name}')"
+                 oncontextmenu="event.preventDefault(); window.handlePartyHudClick('${m.socketId}', '${m.name}'); return false;">
+                <div class="merc-name-row" style="color: ${isLeader ? '#facc15' : '#fff'};">${displayName}</div>
+                <div class="merc-bar-wrap">
+                    <div class="merc-bar-fill hp" style="width: ${hpPct}%; background: #38bdf8;"></div>
+                </div>
+            </div>`;
+        });
 
-        html += `
-        <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.2s; ${borderStyle}"
-             onclick="window.selectAlly('${merc.id}', '${merc.name}')"
-             oncontextmenu="event.preventDefault(); window.openPetUI(entities.find(e=>e.id==='${merc.id}')); return false;">
-            <div class="merc-name-row">${displayName}</div>
-            <div class="merc-bar-wrap">
-                <div class="merc-bar-fill hp" style="width: ${hpPct}%;"></div>
-            </div>
-            <div class="merc-bar-wrap">
-                <div class="merc-bar-fill mp" style="width: ${mpPct}%;"></div>
-            </div>
-        </div>`;
-    });
-
-    listEl.innerHTML = html;
-};
+        partyListEl.innerHTML = html;
+    };
 
 window.selectMercenary = function(mercId) {
     let target = entities.find(e => e.id === mercId);

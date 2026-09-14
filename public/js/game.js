@@ -4531,6 +4531,19 @@ if (window.socket) {
         showCustomPrompt(`[파티 초대]\n\n${data.inviterName}님께서 파티 초대를 보냈습니다.\n어떻게 하시겠습니까?`, btns);
     });
 
+
+window.socket.on('party_update', (data) => {
+        window.currentPartyData = data;
+        if (typeof window.renderPartyHUD === 'function') {
+            window.renderPartyHUD();
+        }
+        if (!data || !data.party) {
+            if (player.target) player.target = null;
+            player.isMoving = false;
+        }
+    });
+
+
     window.socket.on('party_target_shared', (data) => {
         if (!data || !data.targetId) {
             if (player.target) {
