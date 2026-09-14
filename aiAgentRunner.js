@@ -51,7 +51,7 @@ async function initGroqModel() {
 }
 
 let activeAgents = []; 
-const MAX_CONCURRENT = 50; // 💡 상시 접속 에이전트 50명 유지로 정밀 세팅
+const MAX_CONCURRENT = 50; // 💡 상시 접속 에이전트 50명 유지[cite: 8]
 
 class AIAgentClient {
     constructor(dbRow) {
@@ -95,7 +95,6 @@ class AIAgentClient {
         this.isShopping = false; 
         this.sessionStart = Date.now();
         
-        // 💡 1시간 ~ 3시간 사이의 개별 랜덤 수명 부여 (밀리초 단위)
         let randomMinutes = Math.floor(Math.random() * 121) + 60; // 60분 ~ 180분
         this.sessionDuration = randomMinutes * 60 * 1000; 
          
@@ -104,7 +103,6 @@ class AIAgentClient {
         this.nextMercCheckTime = Date.now() + (Math.random() * 10000);
         this.lastRegenTime = Date.now();
         
-        // 💡 [초대 관리 메모리] 자율 파티 초대 관련
         this.lastPartyInviteTime = 0;
         this.lastProactiveInviteCheck = Date.now();
         this.rejectedTargets = new Set();
@@ -122,6 +120,7 @@ class AIAgentClient {
         this.lastInviterName = null;
         this.followTarget = null;
         this.followDist = 60;
+        this.warpAllowed = false; // 💡 파티장 맵 이동 허가 플래그[cite: 8]
 
         this.lastTalkedUser = null;
         this.lastTalkTime = 0;
@@ -135,13 +134,12 @@ class AIAgentClient {
             "승부욕이 강하고 사냥 방해에 민감한 호전적인 게이머"
         ];
         
-        // 💡 성향에 따른 먼저 파티 초대 보낼 확률(가중치) 설정
         const inviteWeightMap = [0.05, 0.70, 0.20, 0.60, 0.80, 0.00];
         
         let hash = 0;
         for (let i = 0; i < this.charData.name.length; i++) hash += this.charData.name.charCodeAt(i);
         this.personality = personalities[hash % personalities.length];
-        this.autoInviteChance = inviteWeightMap[hash % inviteWeightMap.length]; // 확률 매핑
+        this.autoInviteChance = inviteWeightMap[hash % inviteWeightMap.length];
 
         this.learnMagicForLevel(); 
         this.connect();
@@ -159,10 +157,16 @@ class AIAgentClient {
             this.charData.y = 2000 + (Math.random() * 500 - 250);
 
             this.socket.emit('player_join', {
-                id: this.dbRow.id, name: this.charData.name, charClass: this.charData.charClass,
-                x: this.charData.x, y: this.charData.y, map: startMap, level: this.charData.level || 1,
+                id: this.dbRow.id, 
+                name: this.charData.name, 
+                charClass: this.charData.charClass,
+                x: this.charData.x, 
+                y: this.charData.y, 
+                map: startMap, 
+                level: this.charData.level || 1,
                 totalMr: this.charData.totalMr || 50,
-                totalDmgReduction: this.charData.totalDmgReduction || 0
+                totalDmgReduction: this.charData.totalDmgReduction || 0,
+                isAI: true // 💡 서버 측 AI 소켓 식별 플래그 전송[cite: 8]
             });
             this.setupListeners();
             this.startLoop();
@@ -170,7 +174,7 @@ class AIAgentClient {
     }
 
     setupListeners() {
-       this.socket.on('server_shutdown_notice', async () => {
+        this.socket.on('server_shutdown_notice', async () => {
             console.log(`[🤖 AI 종료] ${this.charData.name} 데이터 백업 중...`);
             try {
                 await supabase.from('characters').update({ data: { player: this.charData }, last_sync_time: 0 }).eq('id', this.dbRow.id);
@@ -229,13 +233,43 @@ class AIAgentClient {
         });
 
         this.socket.on('party_invite_received', (packet) => {
+            const inviterSocketId = packet.inviterSocketId;
+            const inviterName = packet.inviterName;
+
             let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
             if (currentMembersCount >= 5) {
-                this.socket.emit('chat_message', { message: "죄송해요, 파티 정원(5명)이 꽉 찼습니다!", chatType: 'normal' });
+                this.socket.emit('party_reject', { inviterSocketId, rejectorName: this.charData.name, type: 'soft' });
+                this.socket.emit('chat_message', { message: `${inviterName}님 죄송해요, 파티 인원이 꽉 찼습니다!`, chatType: 'normal' });
                 return;
             }
-            this.lastInviterSocketId = packet.inviterSocketId;
-            this.lastInviterName = packet.inviterName;
+
+            if (this.rejectedTargets.has(inviterName)) {
+                this.socket.emit('party_reject', { inviterSocketId, rejectorName: this.charData.name, type: 'hard' });
+                return;
+            }
+
+            let refuseRoll = Math.random();
+            if (this.autoInviteChance === 0 && refuseRoll < 0.6) {
+                const refuseReplies = [
+                    "죄송한데 오늘은 솔플 중이라 다음에 같이해요!",
+                    "지금 곧 접어야 해서 파티는 힘들 것 같아요 ㅈㅅ",
+                    "혼자 사냥하는 게 편해서요! 득템하세요~"
+                ];
+                let reply = refuseReplies[Math.floor(Math.random() * refuseReplies.length)];
+                
+                this.socket.emit('party_reject', { inviterSocketId, rejectorName: this.charData.name, type: 'soft' });
+                this.socket.emit('chat_message', { message: reply, chatType: 'normal' });
+                return;
+            }
+
+            this.socket.emit('party_accept', { inviterSocketId });
+            
+            const acceptReplies = ["네 파티 사냥 같이해요!", "수락했습니다! 어디로 갈까요?", "ㄱㄱ 열렙합시다!"];
+            let acceptMsg = acceptReplies[Math.floor(Math.random() * acceptReplies.length)];
+            
+            setTimeout(() => {
+                this.socket.emit('chat_message', { message: acceptMsg, chatType: 'party' });
+            }, 300);
         });
 
         this.socket.on('party_reject', (packet) => {
@@ -257,6 +291,7 @@ class AIAgentClient {
             if (prevParty && !packet.party) {
                 this.followTarget = null;
                 this.charData.target = null;
+                this.warpAllowed = false;
                 this.socket.emit('chat_message', { 
                     message: "파티 사냥 수고하셨습니다! 득템하세요~", 
                     chatType: 'normal' 
@@ -282,6 +317,14 @@ class AIAgentClient {
                 if (sharedMob.isBoss || (sharedMob.name && (sharedMob.name.includes('바포매트') || sharedMob.name.includes('발라카스') || sharedMob.name.includes('안타라스')))) {
                     this.socket.emit('boss_spotted', { bossId: sharedMob.id, bossName: sharedMob.name });
                 }
+            }
+        });
+
+        // 💡 파티장 맵 이동 패킷 수신 처리[cite: 8]
+        this.socket.on('party_leader_map_move', (data) => {
+            if (this.warpAllowed || data.map === 'boss_raid') {
+                this.warpAllowed = false;
+                this.teleport(data.map, data.x || 2000, data.y || 2000);
             }
         });
     }
@@ -356,13 +399,13 @@ class AIAgentClient {
             if (this.rejectedTargets.has(p.name)) return false; 
 
             let lastInvited = this.invitedHistory.get(p.name) || 0;
-            if (now - lastInvited < 300000) return false; // 5분 쿨
+            if (now - lastInvited < 300000) return false;
 
             let lvDiff = Math.abs((p.level || 1) - (this.charData.level || 1));
-            if (lvDiff > 5) return false; // 5레벨 이하 차이만 초대
+            if (lvDiff > 5) return false;
 
             let dist = Math.hypot(p.x - this.charData.x, p.y - this.charData.y);
-            return dist <= 500; // 화면 내 거리
+            return dist <= 500;
         });
 
         if (candidates.length === 0) return;
@@ -397,7 +440,6 @@ class AIAgentClient {
             }
 
             this.processAutoBuffs(); 
-
             this.checkProactivePartyInvite();
             this.checkSmartMapNavigation();
 
@@ -407,12 +449,11 @@ class AIAgentClient {
 
             this.executeSharedAILoop();
             this.tryRush(this.charData, this.charData.target, now);
-            this.updateMovement(100); 
+            this.updateMovement(200); 
              
             this.checkMercenaryHire(); 
-            this.manageMercenaries(100); 
+            this.manageMercenaries(200); 
 
-            // 💡 서버 동기화 패킷 규격 완벽 일치화
             this.socket.emit('player_update', {
                 userId: this.dbRow.id,
                 name: this.charData.name, 
@@ -439,7 +480,7 @@ class AIAgentClient {
             if (this.charData.targetId) {
                 this.socket.emit('player_target', { targetId: this.charData.targetId });
             }
-        }, 100); 
+        }, 200); 
     }
 
     executeFollowMovement() {
@@ -702,16 +743,8 @@ class AIAgentClient {
     }
 
     checkSmartMapNavigation() {
+        // 💡 파티 중일 때는 파티장의 맵 이동 패킷이나 대화 명령어로만 제어
         if (this.partyData) {
-            let leaderInfo = this.partyData.members.find(m => m.socketId === this.partyData.leader);
-            if (leaderInfo && leaderInfo.socketId !== this.socket.id) {
-                if (leaderInfo.map && leaderInfo.map !== this.charData.map) {
-                    if (!this.charData.target || this.charData.target.hp <= 0) {
-                        this.teleport(leaderInfo.map, leaderInfo.x || 2000, leaderInfo.y || 2000);
-                        return;
-                    }
-                }
-            }
             return; 
         }
 
@@ -1006,6 +1039,21 @@ class AIAgentClient {
         const availableSpells = (this.charData.magic || []).join(', ');
         const isParty = Boolean(this.partyData);
         const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
+
+        // 💡 파티 대화 중 파티장이 "맵이동", "따라와", "이동" 등을 외쳤을 때 즉시 워프[cite: 8]
+        if (isParty && senderName === leaderName) {
+            const isMoveCommand = ['맵이동', '이동', '와라', '따라와', '모여'].some(k => userMessage.includes(k));
+            if (isMoveCommand) {
+                this.warpAllowed = true;
+                let leaderInfo = this.partyData.members.find(m => m.socketId === this.partyData.leader);
+                if (leaderInfo && leaderInfo.map && leaderInfo.map !== this.charData.map) {
+                    this.teleport(leaderInfo.map, leaderInfo.x || 2000, leaderInfo.y || 2000);
+                    this.socket.emit('chat_message', { message: "넵, 바로 이동했습니다!", chatType: 'party' });
+                    return; 
+                }
+            }
+        }
+
         const contextType = isWhisper ? `[${senderName}]님이 귓속말을 보냈습니다.` : (isParty ? `[파티 대화]` : `[일반 대화]`);
 
         const situationContext = `
@@ -1151,6 +1199,7 @@ ${situationContext}
                     this.socket.emit('party_leave');
                     this.partyData = null;
                     this.followTarget = null;
+                    this.warpAllowed = false;
                 }
                 break;
             case 'FOLLOW':
@@ -1234,7 +1283,11 @@ async function manageAgentRotation() {
         if (activeAgents.length < MAX_CONCURRENT) {
             let needed = MAX_CONCURRENT - activeAgents.length;
             
-            const { data: aiChars } = await supabase.from('characters').select('*').gte('slot_index', 100);
+            const { data: aiChars } = await supabase
+                .from('characters')
+                .select('*')
+                .gte('slot_index', 100)
+                .limit(400); // 💡 300명 이상 데이터 한 번에 읽기[cite: 8]
             if (!aiChars || aiChars.length === 0) return;
 
             let offlineList = aiChars.filter(dbChar => !activeAgents.some(a => a.dbRow.id === dbChar.id));
@@ -1255,7 +1308,7 @@ async function startRunner() {
     await initGroqModel();
     setInterval(manageAgentRotation, 10000);
     manageAgentRotation();
-    console.log('🚀 [외부 AI Agent Runner 가동 완료 - 상시 15명 독립 로테이션 시스템]');
+    console.log('🚀 [외부 AI Agent Runner 가동 완료 - 상시 50명 독립 로테이션 시스템]');
 }
 
 startRunner();

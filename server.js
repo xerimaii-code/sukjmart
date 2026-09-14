@@ -1,4 +1,4 @@
-// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원, 원거리 몬스터(활/마법) 사거리 및 투사체 연동 통합본)
+// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원, 원거리 몬스터(활/마법) 사거리 및 투사체 연동, 파티 맵 이동 AI/플레이어 분기 처리 통합본)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -10,7 +10,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
-const data = require('./public/js/data.js');
+const data = require('./public/js/data.js');[cite: 5]
 
 const app = express();
 const server = http.createServer(app);
@@ -25,19 +25,19 @@ const parties = {};
 const mapsState = {};   
 const raidRooms = {}; 
 
-// 1. 맵 상태 및 보스 초기화
-for (let mapId in data.maps) {
+// 1. 맵 상태 및 보스 초기화[cite: 5]
+for (let mapId in data.maps) {[cite: 5]
     mapsState[mapId] = { monsters: [], items: [], deadBosses: [] };
-    let mData = data.maps[mapId];
-    if (mData.b) {
+    let mData = data.maps[mapId];[cite: 5]
+    if (mData.b) {[cite: 5]
         mData.b.forEach(b => {
-            let bt = data.templates.bosses[b.id];
+            let bt = data.templates.bosses[b.id];[cite: 5]
             if (bt) {
                 mapsState[mapId].monsters.push({
                     ...bt, 
                     id: 'boss_' + b.id + '_' + Date.now(),
                     baseBossId: b.id, spawnX: b.x, spawnY: b.y, 
-                    maxHp: bt.hp, hp: bt.hp, x: b.x, y: b.y, map: mapId,
+                    maxHp: bt.hp, hp: bt.hp, x: b.x, y: b.y, map: mapId,[cite: 5]
                     isBoss: true, targetId: null, lastAttackTime: 0
                 });
             }
@@ -46,30 +46,30 @@ for (let mapId in data.maps) {
 }
 
 // ==========================================
-// [보스 전용 구간 판정 및 동적 승급 드롭 시스템]
+// [보스 전용 구간 판정 및 동적 승급 드롭 시스템][cite: 5]
 // ==========================================
-function rollBossItemGrade(monster) {
+function rollBossItemGrade(monster) {[cite: 5]
     let targetHp = monster.maxHp || 1000;
     
-    if (monster.map === 'boss_raid' && data.templates && data.templates.bosses) {
-        let bossList = Object.values(data.templates.bosses);
+    if (monster.map === 'boss_raid' && data.templates && data.templates.bosses) {[cite: 5]
+        let bossList = Object.values(data.templates.bosses);[cite: 5]
         if (bossList.length > 0) {
             let closestBoss = bossList.reduce((prev, curr) => {
                 return Math.abs(curr.hp - targetHp) < Math.abs(prev.hp - targetHp) ? curr : prev;
             });
-            targetHp = closestBoss.hp;
+            targetHp = closestBoss.hp;[cite: 5]
         }
     }
 
     let rates = { transcend: 0.5, legend1: 1.5, legend: 2.5 }; 
 
-    if (monster.level >= 100 || targetHp >= 3400000 || (monster.map && ['fire_dragon_nest', 'lastebad', 'tower_of_dominance'].includes(monster.map))) {
+    if (monster.level >= 100 || targetHp >= 3400000 || (monster.map && ['fire_dragon_nest', 'lastebad', 'tower_of_dominance'].includes(monster.map))) {[cite: 5]
         rates = { transcend: 10.0, legend1: 10.0, legend: 1.0 }; 
     } 
-    else if (targetHp >= 1500000 || (monster.map && monster.map.includes('tower_of_insolence'))) {
+    else if (targetHp >= 1500000 || (monster.map && monster.map.includes('tower_of_insolence'))) {[cite: 5]
         rates = { transcend: 2.5, legend1: 5.0, legend: 10.0 };  
     } 
-    else if (targetHp >= 680000 || (monster.map && monster.map.includes('dragon_valley'))) {
+    else if (targetHp >= 680000 || (monster.map && monster.map.includes('dragon_valley'))) {[cite: 5]
         rates = { transcend: 1.5, legend1: 2.5, legend: 10.0 };  
     } 
     else if (targetHp >= 200000) {
@@ -79,14 +79,14 @@ function rollBossItemGrade(monster) {
     let roll = Math.random() * 100;
 
     if (roll < rates.transcend) return { grade: 6, gradeName: '초월' };
-    if (roll < rates.transcend + rates.legend1) return { grade: 5, gradeName: '전설 I' };
-    if (roll < rates.transcend + rates.legend1 + rates.legend) return { grade: 4, gradeName: '전설' };
+    if (roll < rates.transcend + rates.legend1) return { grade: 5, gradeName: '전설 I' };[cite: 5]
+    if (roll < rates.transcend + rates.legend1 + rates.legend) return { grade: 4, gradeName: '전설' };[cite: 5]
 
     let subRoll = Math.random() * 100;
-    if (subRoll < 15) return { grade: 3, gradeName: '영웅' };
-    if (subRoll < 45) return { grade: 2, gradeName: '희귀' };
-    if (subRoll < 75) return { grade: 1, gradeName: '고급' };
-    return { grade: 0, gradeName: '일반' };
+    if (subRoll < 15) return { grade: 3, gradeName: '영웅' };[cite: 5]
+    if (subRoll < 45) return { grade: 2, gradeName: '희귀' };[cite: 5]
+    if (subRoll < 75) return { grade: 1, gradeName: '고급' };[cite: 5]
+    return { grade: 0, gradeName: '일반' };[cite: 5]
 }
 
 function applyTranscendOptions(item) {
@@ -95,14 +95,14 @@ function applyTranscendOptions(item) {
     let n = item.name || '';
 
     if (t === 'weapon') {
-        if (item.isBow || n.includes('활') || n.includes('크로스보우')) {
-            item.magicOptions.push('[초월] 원거리 대미지 +35', '[초월] DEX +12', '공격 시 10% 트리플 애로우');
-        } else if (n.includes('지팡이')) {
-            item.magicOptions.push('[초월] SP (마법공격력) +20', '[초월] INT +12', '공격 시 8% 디스인티그레이트');
-        } else if (n.includes('단검')) {
+        if (item.isBow || n.includes('활') || n.includes('크로스보우')) {[cite: 5]
+            item.magicOptions.push('[초월] 원거리 대미지 +35', '[초월] DEX +12', '공격 시 10% 트리플 애로우');[cite: 5]
+        } else if (n.includes('지팡이')) {[cite: 5]
+            item.magicOptions.push('[초월] SP (마법공격력) +20', '[초월] INT +12', '공격 시 8% 디스인티그레이트');[cite: 5]
+        } else if (n.includes('단검')) {[cite: 5]
             item.magicOptions.push('[초월] 치명타 대미지 +50%', '[초월] STR +10', '타격 시 HP/MP 동시 흡수');
         } else {
-            item.magicOptions.push('[초월] 근거리 대미지 +40', '[초월] STR +12', '공격 시 10% 쇼크 스턴');
+            item.magicOptions.push('[초월] 근거리 대미지 +40', '[초월] STR +12', '공격 시 10% 쇼크 스턴');[cite: 5]
         }
     } else if (['armor', 'helmet', 'cloak', 'shield', 'gloves', 'boots', 'tshirt'].includes(t)) {
         item.magicOptions.push('[초월] 대미지 감소 +20', '[초월] 추가 방어력 +25', '[초월] 최대 HP +500');
@@ -173,6 +173,41 @@ function generateServerDropItem(baseItem) {
 }
 
 // ==========================================
+// 🚀 [파티장 맵 이동 시 AI/플레이어 분기 처리 함수]
+// ==========================================
+function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, targetY) {
+    const party = parties[partyId];
+    if (!party || party.leader !== leaderSocketId) return;
+
+    party.members.forEach(member => {
+        if (member.socketId === leaderSocketId) return;
+
+        const memberSocket = io.sockets.sockets.get(member.socketId);
+        if (!memberSocket) return;
+
+        // 💡 AI 에이전트 소켓 식별: "맵이동" 호출 또는 자동 워프 패킷 전송
+        if (memberSocket.isAI) {
+            memberSocket.emit('party_leader_map_move', {
+                map: targetMap,
+                x: targetX,
+                y: targetY,
+                autoWarp: true
+            });
+        } 
+        // 💡 실제 유저(브라우저): 선택 팝업 요청 전송
+        else {
+            memberSocket.emit('party_warp_request', {
+                leaderName: party.leaderName || (players[leaderSocketId] ? players[leaderSocketId].name : '파티장'),
+                map: targetMap,
+                mapName: data.maps[targetMap]?.name || targetMap,[cite: 5]
+                x: targetX,
+                y: targetY
+            });
+        }
+    });
+}
+
+// ==========================================
 // 2. 소켓 통신 처리
 // ==========================================
 io.on('connection', (socket) => {
@@ -194,10 +229,16 @@ io.on('connection', (socket) => {
 
     socket.on('player_join', (payload = {}) => {
         const { id, name, charClass, x, y, map } = payload;
+        
+        // 💡 AI 봇 여부 확인 및 소켓 플래그 자동 세팅
+        if (payload.isAI || (id && String(id).startsWith('ai_')) || (name && name.startsWith('AI_'))) {
+            socket.isAI = true;
+        }
+
         if (players[socket.id] && players[socket.id].map) { 
             socket.leave(players[socket.id].map); 
         }
-        let currentMap = map || 'talking_island';
+        let currentMap = map || 'talking_island';[cite: 5]
 
         if (!mapsState[currentMap]) {
             mapsState[currentMap] = { monsters: [], items: [], deadBosses: [] };
@@ -207,14 +248,14 @@ io.on('connection', (socket) => {
             socketId: socket.id, 
             userId: id || 'guest_' + socket.id, 
             name: name || '모험가', 
-            charClass: charClass || 'knight', 
+            charClass: charClass || 'knight',[cite: 5]
             x: x || 2000, 
             y: y || 2000, 
             map: currentMap, 
-            hp: 150, 
-            maxHp: 150, 
-            mp: 30, 
-            maxMp: 30, 
+            hp: 150,[cite: 5]
+            maxHp: 150,[cite: 5]
+            mp: 30,[cite: 5]
+            maxMp: 30,[cite: 5]
             targetId: null, 
             partyId: null, 
             equip: {},
@@ -238,7 +279,7 @@ io.on('connection', (socket) => {
         let targetRoomId = null;
         for (let rId in raidRooms) {
             let room = raidRooms[rId];
-            if (room.status === 'WAITING' && room.map === 'boss_raid') {
+            if (room.status === 'WAITING' && room.map === 'boss_raid') {[cite: 5]
                 targetRoomId = rId;
                 break;
             }
@@ -250,7 +291,7 @@ io.on('connection', (socket) => {
             targetRoomId = 'raid_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
             raidRooms[targetRoomId] = {
                 roomId: targetRoomId,
-                map: 'boss_raid',
+                map: 'boss_raid',[cite: 5]
                 status: 'WAITING', 
                 members: [],
                 totalCombatPower: 0,
@@ -281,7 +322,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('spawn_raid_boss', (payload = {}) => {
-        let mapId = payload.map || 'boss_raid';
+        let mapId = payload.map || 'boss_raid';[cite: 5]
         if (!mapsState[mapId]) {
             mapsState[mapId] = { monsters: [], items: [], deadBosses: [] };
         }
@@ -297,7 +338,7 @@ io.on('connection', (socket) => {
         let baseBossDef = Math.floor(30 + (partyCombatPower / 300));
         let baseBossAtk = Math.floor(50 + (partyCombatPower / 200));
 
-        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
+        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);[cite: 5]
         let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
         let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
 
@@ -326,7 +367,7 @@ io.on('connection', (socket) => {
 
     socket.on('player_drop_item', (droppedItemData = {}) => {
         let p = players[socket.id];
-        let mapId = (p && p.map) ? p.map : (droppedItemData.map || 'talking_island');
+        let mapId = (p && p.map) ? p.map : (droppedItemData.map || 'talking_island');[cite: 5]
         
         if (!mapsState[mapId]) {
             mapsState[mapId] = { monsters: [], items: [], deadBosses: [] };
@@ -346,7 +387,7 @@ io.on('connection', (socket) => {
 
     socket.on('player_update', (payload = {}) => {
         let p = players[socket.id];
-        let currentMap = payload.map || 'talking_island';
+        let currentMap = payload.map || 'talking_island';[cite: 5]
         
         if (!p) {
             if (!mapsState[currentMap]) mapsState[currentMap] = { monsters: [], items: [], deadBosses: [] };
@@ -354,17 +395,17 @@ io.on('connection', (socket) => {
                 socketId: socket.id, 
                 userId: payload.userId || 'guest_' + socket.id, 
                 name: payload.name || '모험가', 
-                charClass: payload.charClass || 'knight', 
+                charClass: payload.charClass || 'knight',[cite: 5]
                 x: payload.x || 2000, 
                 y: payload.y || 2000, 
                 map: currentMap, 
-                hp: payload.hp || 150, 
-                maxHp: payload.maxHp || 150, 
+                hp: payload.hp || 150,[cite: 5]
+                maxHp: payload.maxHp || 150,[cite: 5]
                 atk: payload.atk || 20,
                 def: payload.def || 0,
-                str: payload.str || 18,
-                dex: payload.dex || 14,
-                int: payload.int || 8,
+                str: payload.str || 18,[cite: 5]
+                dex: payload.dex || 14,[cite: 5]
+                int: payload.int || 8,[cite: 5]
                 level: payload.level || 1,
                 targetId: null, 
                 partyId: null, 
@@ -380,22 +421,34 @@ io.on('connection', (socket) => {
             return;
         }
 
+        // 💡 맵 이동 감지 시 파티원 워프 / 선택 분기 처리 실행
         if (p.map !== payload.map && payload.map) {
             let prevMap = p.map;
+            let targetMap = payload.map;
+            let targetX = payload.x || 2000;
+            let targetY = payload.y || 2000;
+
+            if (p.partyId && parties[p.partyId]) {
+                let party = parties[p.partyId];
+                if (party.leader === socket.id) {
+                    handlePartyMapTransition(p.partyId, socket.id, targetMap, targetX, targetY);
+                }
+            }
+
             socket.leave(prevMap); 
-            socket.join(payload.map); 
-            p.map = payload.map;
+            socket.join(targetMap); 
+            p.map = targetMap;
             p.targetId = null;
             
             if (!mapsState[p.map]) {
                 mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
             }
-            if (prevMap === 'boss_raid') {
-                let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid' && pl.socketId !== socket.id);
+            if (prevMap === 'boss_raid') {[cite: 5]
+                let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid' && pl.socketId !== socket.id);[cite: 5]
                 if (remainingPlayers.length === 0) {
-                    mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };
+                    mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };[cite: 5]
                     for (let rId in raidRooms) {
-                        if (raidRooms[rId].map === 'boss_raid') {
+                        if (raidRooms[rId].map === 'boss_raid') {[cite: 5]
                             delete raidRooms[rId];
                         }
                     }
@@ -419,9 +472,9 @@ io.on('connection', (socket) => {
         p.maxHp = payload.maxHp !== undefined ? payload.maxHp : p.maxHp;
         p.atk = payload.atk || p.atk || 20;
         p.def = payload.def || p.def || 0;
-        p.str = payload.str || p.str || 18;
-        p.dex = payload.dex || p.dex || 14;
-        p.int = payload.int || p.int || 8;
+        p.str = payload.str || p.str || 18;[cite: 5]
+        p.dex = payload.dex || p.dex || 14;[cite: 5]
+        p.int = payload.int || p.int || 8;[cite: 5]
         p.level = payload.level || p.level || 1;
         p.angle = payload.angle !== undefined ? payload.angle : (p.angle || 0);
         p.isMoving = payload.isMoving !== undefined ? payload.isMoving : (p.isMoving || false);
@@ -451,7 +504,7 @@ io.on('connection', (socket) => {
             return;
         }
 
-        let chosenType = payload.mercType || (p.charClass === 'wizard' ? 'wizard' : (p.charClass === 'elf' ? 'elf' : 'knight'));
+        let chosenType = payload.mercType || (p.charClass === 'wizard' ? 'wizard' : (p.charClass === 'elf' ? 'elf' : 'knight'));[cite: 5]
 
         let newSummon = {
             id: 'summon_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
@@ -488,7 +541,7 @@ io.on('connection', (socket) => {
 
     socket.on('player_magic_action', (payload = {}) => {
         let p = players[socket.id];
-        let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
+        let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');[cite: 5]
         
         let playersInMap = Object.values(players).filter(pl => pl.map === mapId);
         playersInMap.forEach(targetPl => {
@@ -514,7 +567,7 @@ io.on('connection', (socket) => {
 
     socket.on('player_attack_action', (payload = {}) => {
         let p = players[socket.id];
-        let mapId = (p && p.map) ? p.map : 'talking_island';
+        let mapId = (p && p.map) ? p.map : 'talking_island';[cite: 5]
         
         let playersInMap = Object.values(players).filter(pl => pl.map === mapId);
         playersInMap.forEach(targetPl => {
@@ -597,10 +650,10 @@ io.on('connection', (socket) => {
         let listText = "==== [현재 월드 접속자] ====\n";
         for (let sid in players) {
             let pl = players[sid];
-            let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
-            let mData = data.maps[pl.map];
-            let mapName = mData ? mData.name : pl.map;
-            let isAi = pl.name.startsWith('모험가') ? '🤖' : '👤';
+            let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');[cite: 5]
+            let mData = data.maps[pl.map];[cite: 5]
+            let mapName = mData ? mData.name : pl.map;[cite: 5]
+            let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
 
             listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}] - ${mapName}\n`;
             count++;
@@ -642,14 +695,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin_spawn_mob', (payload = {}) => {
-        let mapId = payload.map || 'talking_island';
+        let mapId = payload.map || 'talking_island';[cite: 5]
         if (!mapsState[mapId]) return;
 
         let mobName = payload.mobName;
         let count = Math.min(20, Math.max(1, payload.count || 1));
 
-        let template = Object.values(data.templates.bosses).find(b => b.name.includes(mobName)) ||
-                       Object.values(data.templates.mobs).find(m => m.name.includes(mobName));
+        let template = Object.values(data.templates.bosses).find(b => b.name.includes(mobName)) ||[cite: 5]
+                       Object.values(data.templates.mobs).find(m => m.name.includes(mobName));[cite: 5]
 
         if (!template) {
             socket.emit('system_message', { message: `[소환 실패] '${mobName}' 이름의 몬스터 템플릿이 없습니다.`, color: '#f55' });
@@ -662,8 +715,8 @@ io.on('connection', (socket) => {
                 id: 'admin_mob_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                 x: payload.x + (Math.random() * 80 - 40),
                 y: payload.y + (Math.random() * 80 - 40),
-                maxHp: template.hp,
-                hp: template.hp,
+                maxHp: template.hp,[cite: 5]
+                hp: template.hp,[cite: 5]
                 map: mapId,
                 targetId: null,
                 lastAttackTime: 0,
@@ -673,7 +726,7 @@ io.on('connection', (socket) => {
         }
 
         io.to(mapId).emit('system_message', {
-            message: `⚠️ [운영자 소환] ${template.name} ${count}마리가 소환되었습니다!`,
+            message: `⚠️ [운영자 소환] ${template.name} ${count}마리가 소환되었습니다!`,[cite: 5]
             color: '#facc15'
         });
     });
@@ -775,9 +828,9 @@ io.on('connection', (socket) => {
         monster.hp -= finalDamage;
         
         // 💡 스턴 및 어스 바인드 상태 이상 적용
-        if (spellName === '쇼크 스턴') {
+        if (spellName === '쇼크 스턴') {[cite: 5]
             monster.stunnedUntil = Date.now() + 3000;
-        } else if (spellName === '어스 바인드') {
+        } else if (spellName === '어스 바인드') {[cite: 5]
             monster.stunnedUntil = Date.now() + 5000;
             monster.invincibleUntil = Date.now() + 5000;
         }
@@ -806,7 +859,7 @@ io.on('connection', (socket) => {
             monster.hp = 0;
             io.to(p.map).emit('monster_dead', { monsterId: monster.id });
             
-            let baseRewardExp = monster.isBoss ? (monster.exp || 50000) : (monster.exp || 100);
+            let baseRewardExp = monster.isBoss ? (monster.exp || 50000) : (monster.exp || 100);[cite: 5]
             let baseAdenaCount = monster.isBoss 
                 ? Math.floor(Math.random() * 150000 + 50000)
                 : Math.floor(Math.random() * 200 + 50);
@@ -850,12 +903,12 @@ io.on('connection', (socket) => {
 
                     if (isSignature) {
                         let pick = monster.drops[Math.floor(Math.random() * monster.drops.length)];
-                        baseChosen = data.itemDb.find(it => it.name === pick.name);
+                        baseChosen = data.itemDb.find(it => it.name === pick.name);[cite: 5]
                     }
 
                     if (!baseChosen) {
                         let equipPool = data.itemDb.filter(it => 
-                            ['weapon', 'armor', 'helmet', 'cloak', 'gloves', 'boots', 'shield', 'belt', 'ring', 'earring', 'tshirt'].includes(it.type)
+                            ['weapon', 'armor', 'helmet', 'cloak', 'gloves', 'boots', 'shield', 'belt', 'ring', 'earring', 'tshirt'].includes(it.type)[cite: 5]
                         );
                         baseChosen = equipPool[Math.floor(Math.random() * equipPool.length)];
                     }
@@ -877,7 +930,7 @@ io.on('connection', (socket) => {
                 } else {
                     let rand = Math.random() * 100;
                     let targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() * 0.5 ? 1 : 0)));
-                    let gradePool = data.itemDb.filter(it => (it.grade || 0) <= targetGrade);
+                    let gradePool = data.itemDb.filter(it => (it.grade || 0) <= targetGrade);[cite: 5]
                     if (gradePool.length > 0) {
                         let baseChosen = gradePool[Math.floor(Math.random() * gradePool.length)];
                         finalDropItem = generateServerDropItem(baseChosen);
@@ -911,7 +964,7 @@ io.on('connection', (socket) => {
                 });
             }
 
-            if (monster.isBoss && p.map === 'boss_raid') {
+            if (monster.isBoss && p.map === 'boss_raid') {[cite: 5]
                 let userRaidRoom = Object.values(raidRooms).find(room => room.members.includes(socket.id));
                 
                 if (userRaidRoom && userRaidRoom.currentWave < userRaidRoom.maxWave) {
@@ -923,7 +976,7 @@ io.on('connection', (socket) => {
                     });
 
                     setTimeout(() => {
-                        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
+                        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);[cite: 5]
                         let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
                         let fullBossHp = monster.maxHp; 
 
@@ -939,7 +992,7 @@ io.on('connection', (socket) => {
                             maxHp: fullBossHp,
                             atk: monster.atk + 20,
                             def: monster.def + 10,
-                            exp: monster.exp,
+                            exp: monster.exp,[cite: 5]
                             color: '#ff3333',
                             targetId: null,
                             angle: 0,
@@ -1014,6 +1067,7 @@ io.on('connection', (socket) => {
             parties[partyId] = {
                 id: partyId,
                 leader: inviter.socketId,
+                leaderName: inviter.name,
                 mode: 'normal',
                 members: [inviter, accepter]
             };
@@ -1080,6 +1134,7 @@ io.on('connection', (socket) => {
         } else {
             if (party.leader === socket.id) {
                 party.leader = party.members[0].socketId;
+                party.leaderName = party.members[0].name;
             }
             party.members.forEach(m => {
                 io.to(m.socketId).emit('party_update', { party });
@@ -1102,7 +1157,10 @@ io.on('connection', (socket) => {
                 });
                 delete parties[p.partyId];
             } else {
-                if (party.leader === socket.id) party.leader = party.members[0].socketId;
+                if (party.leader === socket.id) {
+                    party.leader = party.members[0].socketId;
+                    party.leaderName = party.members[0].name;
+                }
                 party.members.forEach(m => {
                     io.to(m.socketId).emit('party_update', { party });
                 });
@@ -1111,13 +1169,13 @@ io.on('connection', (socket) => {
 
         delete players[socket.id];
 
-        if (userMap === 'boss_raid') {
-            let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid');
+        if (userMap === 'boss_raid') {[cite: 5]
+            let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid');[cite: 5]
             if (remainingPlayers.length === 0) {
-                mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };
+                mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };[cite: 5]
 
                 for (let rId in raidRooms) {
-                    if (raidRooms[rId].map === 'boss_raid') {
+                    if (raidRooms[rId].map === 'boss_raid') {[cite: 5]
                         delete raidRooms[rId];
                     }
                 }
@@ -1180,7 +1238,7 @@ function processMonsterAI() {
             if (mob.damageMap) {
                 for (let entId in mob.damageMap) {
                     if (mob.damageMap[entId] > highestDmg) {
-                        let entExists = allEntitiesInMap.find(e => (e.socketId === entId || e.id === entId) && e.hp > 0 && !data.isInSafeZone(mapId, e.x, e.y));
+                        let entExists = allEntitiesInMap.find(e => (e.socketId === entId || e.id === entId) && e.hp > 0 && !data.isInSafeZone(mapId, e.x, e.y));[cite: 5]
                         if (entExists) {
                             highestDmg = mob.damageMap[entId];
                             aggroTargetId = entId;
@@ -1196,13 +1254,13 @@ function processMonsterAI() {
             let target = allEntitiesInMap.find(e => (e.socketId || e.id) === mob.targetId);
             let isTooFar = target ? Math.hypot(target.x - mob.x, target.y - mob.y) > (mob.isBoss ? 900 : 700) : false;
 
-            if (!target || target.hp <= 0 || data.isInSafeZone(mapId, target.x, target.y) || isTooFar) {
+            if (!target || target.hp <= 0 || data.isInSafeZone(mapId, target.x, target.y) || isTooFar) {[cite: 5]
                 mob.targetId = null;
                 mob.damageMap = {};
                 
                 let minDist = mob.isBoss ? 650 : 400;
                 allEntitiesInMap.forEach(e => {
-                    if (e.hp > 0 && !data.isInSafeZone(mapId, e.x, e.y)) {
+                    if (e.hp > 0 && !data.isInSafeZone(mapId, e.x, e.y)) {[cite: 5]
                         let d = Math.hypot(e.x - mob.x, e.y - mob.y);
                         if (d < minDist) {
                             minDist = d;
@@ -1219,12 +1277,12 @@ function processMonsterAI() {
 
                 let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
 
-                // 💡 1. 몬스터 타입별 원거리/마법 여부 및 공격 사거리 판정
+                // 💡 1. 몬스터 타입별 원거리/마법 여부 및 공격 사거리 판정[cite: 5]
                 let mName = mob.name || '';
-                let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;
-                let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || 
-                                 mName.includes('발터') || mName.includes('메르키오르') || mName.includes('네크로맨서') || 
-                                 mName.includes('마법사') || mob.isMagicMob;
+                let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;[cite: 5]
+                let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || [cite: 5]
+                                 mName.includes('발터') || mName.includes('메르키오르') || mName.includes('네크로맨서') || [cite: 5]
+                                 mName.includes('마법사') || mob.isMagicMob;[cite: 5]
 
                 let stopDist = (mob.size || 20) + 40;
                 if (isBowMob) stopDist = 320;        // 활 몬스터 사거리
@@ -1232,7 +1290,7 @@ function processMonsterAI() {
 
                 if (dist > stopDist) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
-                    let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
+                    let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);[cite: 5]
                     let mSpeed = baseMobSpeed * (80 / 1000); 
                     
                     mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
@@ -1245,14 +1303,14 @@ function processMonsterAI() {
                         mob.angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                         let ownerSocketId = target.socketId || target.ownerSocketId;
 
-                        // [A] 보스 전용 장판 마법 연산 유지
+                        // [A] 보스 전용 장판 마법 연산 유지[cite: 5]
                         let isBossMagic = mob.isBoss && (mob.isMagicBoss || Math.random() < 0.65);
                         if (isBossMagic) {
                             let hpPercent = mob.hp / mob.maxHp;
-                            let magicPool = ['파이어볼', '콜 라이트닝', '이럽션'];
-                            if (hpPercent <= 0.70) magicPool.push('라이트닝 스톰', '토네이도');
-                            if (hpPercent <= 0.40) magicPool.push('블리자드', '저지먼트');
-                            if (hpPercent <= 0.20) magicPool.push('미티어 스트라이크', '디스인티그레이트');
+                            let magicPool = ['파이어볼', '콜 라이트닝', '이럽션'];[cite: 5]
+                            if (hpPercent <= 0.70) magicPool.push('라이트닝 스톰', '토네이도');[cite: 5]
+                            if (hpPercent <= 0.40) magicPool.push('블리자드', '저지먼트');[cite: 5]
+                            if (hpPercent <= 0.20) magicPool.push('미티어 스트라이크', '디스인티그레이트');[cite: 5]
 
                             let magicName = magicPool[Math.floor(Math.random() * magicPool.length)];
                             
@@ -1317,14 +1375,14 @@ function processMonsterAI() {
                         // [B] 💡 일반 원거리 활 / 마법 투사체 발사 연산
                         } else if (isBowMob || isSpellMob) {
                             let isMagic = isSpellMob;
-                            let spellName = isMagic ? (mName.includes('카스파') || mName.includes('발터') ? '파이어볼' : '에너지 볼트') : null;
+                            let spellName = isMagic ? (mName.includes('카스파') || mName.includes('발터') ? '파이어볼' : '에너지 볼트') : null;[cite: 5]
                             
                             let targetDef = target.def || 0;
                             let targetMr = target.totalMr || (target.int ? target.int * 2 : 50);
                             let targetReduc = target.totalDmgReduction || 0;
                             
                             let ratio = isMagic ? (100 / (100 + targetMr)) : (100 / (100 + Math.max(0, targetDef)));
-                            let basePower = (mob.atk || 20);
+                            let basePower = (mob.atk || 20);[cite: 5]
                             let calculatedDmg = Math.max(1, Math.floor(basePower * ratio) - targetReduc);
 
                             // 화면에 화살/마법탄 날아가는 그래픽 브로드캐스트
@@ -1360,7 +1418,7 @@ function processMonsterAI() {
                             let targetReduc = target.totalDmgReduction || 0;
                             let defRatio = 100 / (100 + Math.max(0, targetDef));
                             
-                            let rawDmg = Math.floor((mob.atk || 15) * defRatio);
+                            let rawDmg = Math.floor((mob.atk || 15) * defRatio);[cite: 5]
                             let dmg = Math.max(1, rawDmg - targetReduc);
 
                             target.hp = Math.max(0, target.hp - dmg);
@@ -1390,7 +1448,7 @@ function processMonsterAI() {
             players: playersInMap.map(p => ({ 
                 socketId: p.socketId, 
                 name: p.name, 
-                charClass: p.charClass || 'knight',
+                charClass: p.charClass || 'knight',[cite: 5]
                 x: Math.round(p.x), 
                 y: Math.round(p.y), 
                 hp: Math.round(p.hp), 
@@ -1425,7 +1483,7 @@ function processMonsterAI() {
                 maxHp: m.maxHp, 
                 isBoss: m.isBoss, 
                 angle: Number((m.angle || 0).toFixed(2)), 
-                color: m.color, 
+                color: m.color,[cite: 5]
                 targetId: m.targetId 
             }))
         });
@@ -1436,26 +1494,26 @@ function processMonsterAI() {
 // 4. 몬스터 스폰 및 타이머 
 // ==========================================
 function processMonsterSpawning() {
-    for (let mapId in data.maps) {
-        let mData = data.maps[mapId];
+    for (let mapId in data.maps) {[cite: 5]
+        let mData = data.maps[mapId];[cite: 5]
         let state = mapsState[mapId];
         let normalMobs = state.monsters.filter(m => !m.isBoss).length;
-        let targetMax = mData.maxMobs || 40;
+        let targetMax = mData.maxMobs || 40;[cite: 5]
 
         let deficit = targetMax - normalMobs;
         let spawnBatch = Math.min(deficit, 4);
 
-        if (spawnBatch > 0 && mData.m?.length > 0) {
+        if (spawnBatch > 0 && mData.m?.length > 0) {[cite: 5]
             for (let i = 0; i < spawnBatch; i++) {
-                let mobId = mData.m[Math.floor(Math.random() * mData.m.length)];
-                let t = data.templates.mobs[mobId];
+                let mobId = mData.m[Math.floor(Math.random() * mData.m.length)];[cite: 5]
+                let t = data.templates.mobs[mobId];[cite: 5]
                 if (t) {
                     let rx = Math.random() * 3600 + 200, ry = Math.random() * 3600 + 200;
-                    if (!data.isInSafeZone(mapId, rx, ry)) {
+                    if (!data.isInSafeZone(mapId, rx, ry)) {[cite: 5]
                         state.monsters.push({
                             ...t, 
                             id: 'mob_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                            x: rx, y: ry, maxHp: t.hp, hp: t.hp, map: mapId,
+                            x: rx, y: ry, maxHp: t.hp, hp: t.hp, map: mapId,[cite: 5]
                             isBoss: false, targetId: null, lastAttackTime: 0
                         });
                     }
@@ -1486,13 +1544,13 @@ setInterval(() => {
         if (state.deadBosses) {
             state.deadBosses = state.deadBosses.filter(db => {
                 if (now - db.deadTime > 300000) { 
-                    let bt = data.templates.bosses[db.baseBossId];
+                    let bt = data.templates.bosses[db.baseBossId];[cite: 5]
                     if (bt) {
                         state.monsters.push({
                             ...bt, 
                             id: 'boss_' + db.baseBossId + '_' + Date.now(),
                             baseBossId: db.baseBossId, spawnX: db.spawnX, spawnY: db.spawnY, 
-                            maxHp: bt.hp, hp: bt.hp, x: db.spawnX, y: db.spawnY, map: mapId,
+                            maxHp: bt.hp, hp: bt.hp, x: db.spawnX, y: db.spawnY, map: mapId,[cite: 5]
                             isBoss: true, targetId: null, lastAttackTime: 0
                         });
                     }
