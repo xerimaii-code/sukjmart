@@ -5242,40 +5242,311 @@ window.selectAlly = function(id, name) {
     if (typeof renderPartyHUD === 'function') renderPartyHUD();
 };
 
-window.renderPartyHUD = function() {
-        const partyListEl = document.getElementById('party-hud-list');
-        if (!partyListEl) return;
-        
-        if (!window.currentPartyData || !window.currentPartyData.party || !window.currentPartyData.party.members || window.currentPartyData.party.members.length === 0) {
-            partyListEl.innerHTML = '';
-            return;
-        }
+// ==========================================
+// 💡 공통 HUD 드래그 무빙 로직 (파티 HUD 전용)
+// ==========================================
+window.makeHudDraggable = function(el, defaultLeft, defaultTop) {
+    el.style.position = 'fixed';
+    if (!el.style.top && !el.style.bottom) el.style.top = defaultTop + 'px';
+    if (!el.style.left && !el.style.right) el.style.left = defaultLeft + 'px';
+    el.style.zIndex = '99998';
+    el.style.cursor = 'move';
+    el.style.pointerEvents = 'auto';
 
-        let html = '';
-        let isMobile = window.innerWidth <= 768;
-        
-        window.currentPartyData.party.members.forEach(m => {
-            let hpPct = Math.max(0, Math.min(100, (m.hp / (m.maxHp || 100)) * 100));
-            let isLeader = window.currentPartyData.party.leader === m.socketId;
-            let leaderIcon = isLeader ? '👑' : '';
-            let displayName = isMobile ? `${leaderIcon}${m.name}` : `${leaderIcon} ${m.name} (Lv.${m.level || 1})`;
+    if (el.dataset.dragInit) return;
+    el.dataset.dragInit = 'true';
 
-            let isSelected = (window.selectedAllyId === m.socketId);
-            let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
+    let isDragging = false, startX, startY, initialLeft, initialTop, moved = false;
 
-            html += `
-            <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.2s; ${borderStyle}"
-                 onclick="window.selectAlly('${m.socketId}', '${m.name}')"
-                 oncontextmenu="event.preventDefault(); window.handlePartyHudClick('${m.socketId}', '${m.name}'); return false;">
-                <div class="merc-name-row" style="color: ${isLeader ? '#facc15' : '#fff'};">${displayName}</div>
-                <div class="merc-bar-wrap">
-                    <div class="merc-bar-fill hp" style="width: ${hpPct}%; background: #38bdf8;"></div>
-                </div>
-            </div>`;
-        });
-
-        partyListEl.innerHTML = html;
+    const onDown = (e) => {
+        isDragging = true; moved = false;
+        startX = e.clientX || (e.touches && e.touches[0].clientX);
+        startY = e.clientY || (e.touches && e.touches[0].clientY);
+        initialLeft = el.offsetLeft;
+        initialTop = el.offsetTop;
     };
+
+    const onMove = (e) => {
+        if (!isDragging) return;
+        let clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        let dx = clientX - startX;
+        let dy = clientY - startY;
+
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
+
+        el.style.left = (initialLeft + dx) + 'px';
+        el.style.top = (initialTop + dy) + 'px';
+        el.style.right = 'auto'; 
+    };
+
+    const onUp = () => {
+        if (isDragging && moved) {
+            window._blockClickDueToDrag = true;
+            setTimeout(() => { window._blockClickDueToDrag = false; }, 100);
+        }
+        isDragging = false;
+    };
+
+    el.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    el.addEventListener('touchstart', onDown, {passive: true});
+    window.addEventListener('touchmove', onMove, {passive: true});
+    window.addEventListener('touchend', onUp);
+};
+
+// ==========================================
+// 👑 [파티 HUD] 드래그 지원 & 파티장 왕관(👑) 표기
+// ==========================================
+window.renderPartyHUD = function() {
+    let data = window.currentPartyData;
+    let hudList = document.getElementById('party-hud-list');
+    
+    // 요소가 없으면 단독 HUD 컨테이너로 생성
+    if (!hudList) {
+        hudList = document.createElement('div');
+        hudList.id = 'party-hud-list';
+        document.body.appendChild(hudList);
+    }
+
+    if (!data || !data.party || !data.party.members || data.party.members.length === 0) {
+        hudList.style.display = 'none';
+        hudList.innerHTML = '';
+        return;
+    }
+
+    hudList.style.display = 'flex';
+    hudList.style.flexDirection = 'column';
+    hudList.style.gap = '3px';
+
+    // 💡 [핵심] 컨테이너 자체를 마우스/터치로 어디서든 자유롭게 드래그 이동 가능하도록 설정
+    if (typeof window.makeHudDraggable === 'function') {
+        window.makeHudDraggable(hudList, 10, 70);
+    } else {
+        hudList.style.position = 'fixed';
+        if (!hudList.style.top) hudList.style.top = '70px';
+        if (!hudList.style.left) hudList.style.left = '10px';
+        hudList.style.zIndex = '99998';
+        hudList.style.cursor = 'move';
+        hudList.style.pointerEvents = 'auto';
+    }
+
+    // 실시간 HP 동기화
+    data.party.members.forEach(m => {
+        if (m.socketId === window.socket?.id) {
+            m.hp = player.hp;
+            m.maxHp = window.currentMaxHp || player.maxHp;
+        } else {
+            let ent = entities.find(e => e.isPlayer && (e.id === m.socketId || e.socketId === m.socketId));
+            if (ent) {
+                m.hp = ent.hp;
+                m.maxHp = ent.maxHp || m.maxHp;
+            }
+        }
+    });
+
+    let html = '';
+    data.party.members.forEach(member => {
+        let hpPct = Math.max(0, Math.min(100, (member.hp / (member.maxHp || 100)) * 100));
+        let isLeader = data.party.leader === member.socketId;
+        let leaderIcon = isLeader ? '👑 ' : '';
+        let displayName = `${leaderIcon}${member.name}`;
+
+        let isSelected = (window.selectedAllyId === member.socketId);
+        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.6);' : (isLeader ? 'border: 1px solid #facc15;' : 'border: 1px solid #444455;');
+        let nameColor = isLeader ? '#facc15' : '#ffffff';
+
+        // 💡 기존보다 가로 크기를 약 10% 줄인 width: 126px 적용 및 아군 선택(selectAlly) 로직 연동
+        html += `
+        <div style="cursor: pointer; position: relative; background: rgba(20,20,30,0.95); padding: 4px 6px; border-radius: 3px; width: 126px; box-sizing: border-box; ${borderStyle} transition: 0.15s;"
+             onclick="if(!window._blockClickDueToDrag) window.selectAlly('${member.socketId}', '${member.name}')"
+             oncontextmenu="event.preventDefault(); if(!window._blockClickDueToDrag) window.handlePartyHudClick('${member.socketId}', '${member.name}'); return false;">
+            <div style="color: ${nameColor}; font-size: 10px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
+            <div style="width: 100%; height: 4px; background: #111; border-radius: 2px; overflow: hidden; border: 0.5px solid #222;">
+                <div style="width: ${hpPct}%; height: 100%; background: #38bdf8; transition: width 0.2s;"></div>
+            </div>
+        </div>`;
+    });
+
+    hudList.innerHTML = html;
+};
+// ==========================================
+// 🛡️ [용병 HUD] 미니맵 바로 아래 우측 고정 및 자동 배율 연동
+// ==========================================
+window.renderMercenaryHUD = function() {
+    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
+    let listEl = document.getElementById('mercenary-hud-list');
+    
+    if (!listEl) {
+        listEl = document.createElement('div');
+        listEl.id = 'mercenary-hud-list';
+        document.body.appendChild(listEl);
+    }
+
+    if (activeMercs.length === 0) {
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+
+    // 미니맵 기준 위치 및 크기 비율 실시간 계산
+    let minimapEl = document.getElementById('minimap');
+    let mRect = minimapEl ? minimapEl.getBoundingClientRect() : null;
+    
+    let baseMinimapWidth = 150;
+    let currentMinimapWidth = mRect ? mRect.width : (window.innerWidth < 768 ? 90 : 150);
+    let scale = Math.max(0.65, Math.min(1.4, currentMinimapWidth / baseMinimapWidth));
+
+    let targetWidth = currentMinimapWidth;
+    let rightOffset = mRect ? (window.innerWidth - mRect.right) : 10;
+    let topOffset = mRect ? (mRect.bottom + (6 * scale)) : 170;
+
+    listEl.style.position = 'fixed';
+    listEl.style.top = `${topOffset}px`;
+    listEl.style.right = `${rightOffset}px`;
+    listEl.style.left = 'auto';
+    listEl.style.width = `${targetWidth}px`;
+    listEl.style.zIndex = '99998';
+    listEl.style.display = 'flex';
+    listEl.style.flexDirection = 'column';
+    listEl.style.gap = `${4 * scale}px`;
+    listEl.style.pointerEvents = 'auto';
+    listEl.style.cursor = 'default';
+
+    let fontSize = Math.max(8.5, Math.round(11 * scale));
+    let hpBarH = Math.max(3, Math.round(5 * scale));
+    let mpBarH = Math.max(2, Math.round(3 * scale));
+    let cardPadding = `${Math.round(3 * scale)}px ${Math.round(5 * scale)}px`;
+
+    let html = '';
+    activeMercs.forEach((merc) => {
+        let hpPct = Math.max(0, Math.min(100, (merc.hp / merc.maxHp) * 100));
+        let mpPct = Math.max(0, Math.min(100, ((merc.mp || 0) / (merc.maxMp || 50)) * 100));
+        let displayName = (window.innerWidth < 768) ? (merc.name.match(/\d+호/)?.[0] || merc.name) : `${merc.name} (Lv.${merc.level || 1})`;
+
+        let isSelected = (window.selectedAllyId === merc.id);
+        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
+
+        html += `
+        <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.15s; width:100%; box-sizing:border-box; padding: ${cardPadding}; ${borderStyle}"
+             onclick="window.selectAlly('${merc.id}', '${merc.name}')"
+             oncontextmenu="event.preventDefault(); window.openPetUI(entities.find(e=>e.id==='${merc.id}')); return false;">
+            <div class="merc-name-row" style="font-size:${fontSize}px; margin-bottom:${2 * scale}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</div>
+            <div class="merc-bar-wrap" style="height:${hpBarH}px; margin-bottom:${1.5 * scale}px;">
+                <div class="merc-bar-fill hp" style="width: ${hpPct}%;"></div>
+            </div>
+            <div class="merc-bar-wrap" style="height:${mpBarH}px;">
+                <div class="merc-bar-fill mp" style="width: ${mpPct}%;"></div>
+            </div>
+        </div>`;
+    });
+
+    listEl.innerHTML = html;
+};
+
+// 리사이즈 시 용병 위치 자동 갱신
+window.addEventListener('resize', () => {
+    if (typeof window.renderMercenaryHUD === 'function') window.renderMercenaryHUD();
+});
+
+// ========================================================
+// 💡 [원본 디자인 100% 적용] 용병 HUD 렌더링
+// ========================================================
+window.renderMercenaryHUD = function() {
+    let activeMercs = entities.filter(ent => ent && ent.isSummon && ent.owner === player && ent.isMercenary && ent.hp > 0);
+    let listEl = document.getElementById('mercenary-hud-list');
+    
+    if (!listEl) {
+        listEl = document.createElement('div');
+        listEl.id = 'mercenary-hud-list';
+        document.body.appendChild(listEl);
+    }
+
+    if (activeMercs.length === 0) {
+        listEl.style.display = 'none';
+        listEl.innerHTML = '';
+        return;
+    }
+
+    // 💡 [미니맵 기준 배율 및 위치 실시간 동적 계산]
+    let minimapEl = document.getElementById('minimap');
+    let mRect = minimapEl ? minimapEl.getBoundingClientRect() : null;
+    
+    // 미니맵 기본 크기(150px) 대비 현재 렌더링된 배율(scale) 계산
+    let baseMinimapWidth = 150;
+    let currentMinimapWidth = mRect ? mRect.width : (window.innerWidth < 768 ? 90 : 150);
+    let scale = Math.max(0.65, Math.min(1.4, currentMinimapWidth / baseMinimapWidth));
+
+    // 미니맵 너비와 완벽히 일치하도록 HUD 박스 너비 및 우측/상단 좌표 설정
+    let targetWidth = currentMinimapWidth;
+    let rightOffset = mRect ? (window.innerWidth - mRect.right) : 10;
+    let topOffset = mRect ? (mRect.bottom + (6 * scale)) : 170;
+
+    listEl.style.position = 'fixed';
+    listEl.style.top = `${topOffset}px`;
+    listEl.style.right = `${rightOffset}px`;
+    listEl.style.left = 'auto';
+    listEl.style.width = `${targetWidth}px`;
+    listEl.style.zIndex = '99998';
+    listEl.style.display = 'flex';
+    listEl.style.flexDirection = 'column';
+    listEl.style.gap = `${4 * scale}px`;
+    listEl.style.pointerEvents = 'auto';
+    listEl.style.cursor = 'default';
+
+    // 💡 배율에 맞춘 폰트, 바 두께, 패딩 계산
+    let fontSize = Math.max(8.5, Math.round(11 * scale));
+    let hpBarH = Math.max(3, Math.round(5 * scale));
+    let mpBarH = Math.max(2, Math.round(3 * scale));
+    let cardPadding = `${Math.round(3 * scale)}px ${Math.round(5 * scale)}px`;
+
+    let html = '';
+    activeMercs.forEach((merc) => {
+        let hpPct = Math.max(0, Math.min(100, (merc.hp / merc.maxHp) * 100));
+        let mpPct = Math.max(0, Math.min(100, ((merc.mp || 0) / (merc.maxMp || 50)) * 100));
+        let displayName = (window.innerWidth < 768) ? (merc.name.match(/\d+호/)?.[0] || merc.name) : `${merc.name} (Lv.${merc.level || 1})`;
+
+        let isSelected = (window.selectedAllyId === merc.id);
+        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 8px rgba(74,222,128,0.6);' : 'border: 1px solid #444455;';
+
+        html += `
+        <div class="merc-hud-card" style="pointer-events: auto !important; cursor: pointer; position: relative; z-index: 99999; transition: 0.15s; width:100%; box-sizing:border-box; padding: ${cardPadding}; ${borderStyle}"
+             onclick="window.selectAlly('${merc.id}', '${merc.name}')"
+             oncontextmenu="event.preventDefault(); window.openPetUI(entities.find(e=>e.id==='${merc.id}')); return false;">
+            <div class="merc-name-row" style="font-size:${fontSize}px; margin-bottom:${2 * scale}px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${displayName}</div>
+            <div class="merc-bar-wrap" style="height:${hpBarH}px; margin-bottom:${1.5 * scale}px;">
+                <div class="merc-bar-fill hp" style="width: ${hpPct}%;"></div>
+            </div>
+            <div class="merc-bar-wrap" style="height:${mpBarH}px;">
+                <div class="merc-bar-fill mp" style="width: ${mpPct}%;"></div>
+            </div>
+        </div>`;
+    });
+
+    listEl.innerHTML = html;
+};
+
+// 화면 밖으로 밀려나는 것을 방지하는 리사이즈 보정
+if (!window._hudResizeListenerAdded) {
+    window._hudResizeListenerAdded = true;
+    window.addEventListener('resize', () => {
+        ['party-hud-list', 'mercenary-hud-list'].forEach(id => {
+            let el = document.getElementById(id);
+            if (!el || el.style.display === 'none') return;
+            
+            let rect = el.getBoundingClientRect();
+            let maxW = window.innerWidth - rect.width - 10;
+            let maxH = window.innerHeight - rect.height - 10;
+            
+            let currentLeft = parseInt(el.style.left) || 10;
+            let currentTop = parseInt(el.style.top) || 70;
+            
+            if (currentLeft > maxW || currentLeft < 5) el.style.left = Math.max(5, Math.min(maxW, currentLeft)) + 'px';
+            if (currentTop > maxH || currentTop < 5) el.style.top = Math.max(5, Math.min(maxH, currentTop)) + 'px';
+        });
+    });
+}
 
 window.selectMercenary = function(mercId) {
     let target = entities.find(e => e.id === mercId);
