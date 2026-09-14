@@ -51,7 +51,7 @@ async function initGroqModel() {
 }
 
 let activeAgents = []; 
-const MAX_CONCURRENT = 25; // 💡 상시 접속 에이전트 15명 유지로 정밀 세팅
+const MAX_CONCURRENT = 50; // 💡 상시 접속 에이전트 15명 유지로 정밀 세팅
 
 class AIAgentClient {
     constructor(dbRow) {
