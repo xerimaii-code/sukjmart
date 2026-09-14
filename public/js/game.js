@@ -4343,17 +4343,55 @@ window.socket.on('monster_hit', (data) => {
         if (typeof updateUI === 'function') updateUI();
     });
 
-  window.socket.on('monster_attack_action', (data) => {
-        // 💡 [추가] 로그아웃 상태면 몬스터 공격 사운드 및 이펙트 처리 차단
+
+
+        window.socket.on('monster_attack_action', (data) => {
         if (!gameStarted) return;
 
         let mob = entities.find(e => e.id === data.monsterId);
         if (!mob) return;
 
-        mob.lastAttack = performance.now(); 
+        mob.lastAttack = performance.now();
         let targetX = (typeof data.targetX === 'number') ? data.targetX : mob.x;
         let targetY = (typeof data.targetY === 'number') ? data.targetY : mob.y;
-        mob.angle = Math.atan2(targetY - mob.y, targetX - mob.x); 
+        mob.angle = Math.atan2(targetY - mob.y, targetX - mob.x);
+
+        // 💡 [추가] 1. 원거리 활 몬스터가 쏘는 붉은빛 화살 투사체 생성
+        if (data.hitType === 'bow') {
+            if (typeof particles !== 'undefined') {
+                particles.push({
+                    x: mob.x, y: mob.y,
+                    speed: 22,
+                    life: 1.2, maxLife: 1.2,
+                    color: '#f87171', // 몬스터 화살은 붉은빛
+                    isProj: true, isArrow: true, homing: true,
+                    type: 'arrow',
+                    angle: mob.angle,
+                    target: { x: targetX, y: targetY }
+                });
+            }
+            if (typeof playSound === 'function') playSound('bow');
+            return;
+        }
+
+        // 💡 [추가] 2. 원거리 마법 몬스터(장로, 카스파)가 쏘는 마법 구체 투사체 생성
+        if (data.hitType === 'magic_proj') {
+            if (typeof particles !== 'undefined') {
+                let isFire = data.magicName === '파이어볼';
+                particles.push({
+                    x: mob.x, y: mob.y - 10,
+                    speed: 16,
+                    life: 1.2, maxLife: 1.2,
+                    color: isFire ? '#ff4400' : '#8855ff',
+                    isProj: true, homing: true,
+                    type: isFire ? 'fireball_proj' : 'energy_bolt',
+                    angle: mob.angle,
+                    target: { x: targetX, y: targetY }
+                });
+            }
+            if (typeof playSound === 'function') playSound(data.magicName === '파이어볼' ? 'fireball' : 'energy_bolt');
+            return;
+        }  
 
         if (data.hitType === 'magic' && data.magicName) {
             let mName = data.magicName;

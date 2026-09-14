@@ -395,7 +395,7 @@
 
                                 if (allyCount > 0) {
                                     let allyCenterX = allySumX / allyCount;
-                                    let allyCenterY = allyCenterY = allySumY / allyCount;
+                                    let allyCenterY = allySumY / allyCount;
                                     
                                     let angleFromAlly = Math.atan2(entity.y - allyCenterY, entity.x - allyCenterX);
                                     let tangentAngle = angleFromAlly + 1.25; 

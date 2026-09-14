@@ -24,7 +24,7 @@ const maps = {
  
 
     'talking_island': {
-        ..._map('말하는 섬', 'Lv.1~15', 'grass', ['goblin', 'orc', 'werewolf', 'shelob', 'doberman', 'slime'], [{id:'giant_ungoliant', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
+        ..._map('말하는 섬', 'Lv.1~15', 'grass', ['goblin', 'orc', 'orc_archer','werewolf', 'shelob', 'doberman', 'slime'], [{id:'giant_ungoliant', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
         maxMobs: 65,
         zoneSpawns: [
             { id: 'elder_field', mobs: ['elder'], x: 2000, y: 500, r: 200, max: 2, cooldown: 300000, nextSpawn: 0 }, 
@@ -32,7 +32,7 @@ const maps = {
         ]
     },
     'silver_knight_town': {
-        ..._map('은기사 마을', '마을(안전)', 'grass', ['goblin', 'orc', 'werewolf', 'doberman', 'slime'], [{id:'black_knight_chief', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
+        ..._map('은기사 마을', '마을(안전)', 'grass', ['goblin', 'orc','orc_archer', 'werewolf', 'doberman', 'slime'], [{id:'black_knight_chief', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
         maxMobs: 50,
         zoneSpawns: [
             { id: 'black_knight_field', mobs: ['elite_black_knight', 'black_knight', 'black_knight', 'black_knight'], x: 1000, y: 1000, r: 300, max: 8, cooldown: 300000, nextSpawn: 0 },
@@ -40,7 +40,7 @@ const maps = {
         ]
     },
     'elven_forest': {
-        ..._map('요정의 숲', 'Lv.1~20', 'grass', ['goblin', 'orc', 'werewolf', 'ent'], [{id:'corrupted_ent', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
+        ..._map('요정의 숲', 'Lv.1~20', 'grass', ['goblin', 'orc','orc_archer', 'werewolf', 'ent'], [{id:'corrupted_ent', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
         maxMobs: 55
     },
     'ti_dungeon': { ..._map('말섬 던전 1층', 'Lv.10~25', 'dungeon', ['skeleton', 'ghoul', 'slime'], [], [], []), maxMobs: 75 },
@@ -86,6 +86,7 @@ const templates = {
     mobs: {
         'goblin': _mob('고블린', 120, 10, 80, 20, [15, 45], 15, '#4a2'),
         'orc': _mob('오크', 400, 20, 70, 100, [30, 90], 20, '#16a34a'),
+        'orc_archer': _mob('오크 궁수', 350, 18, 70, 85, [25, 70], 20, '#16a34a', {isBow: true}), 
         'skeleton': _mob('해골', 1200, 45, 90, 500, [100, 250], 20, '#ddd', {isUndead: true}),
         'ghoul': _mob('구울', 1600, 55, 70, 700, [150, 350], 22, '#84cc16', {isUndead: true}),
         'werewolf': _mob('늑대인간', 600, 30, 85, 150, [50, 120], 18, '#78350f'),

@@ -3778,17 +3778,28 @@ function openItemWithdrawConfirm(it) {
 }
 
 window.openWithdrawItemUI = function() {
-    if(!sharedWarehouse.items || sharedWarehouse.items.length === 0) return showAlert("창고에 보관된 아이템이 없습니다.", openWarehouseUI);
-    if(player.inv.length >= 100) return showAlert("가방이 가득 찼습니다.");
-    
-    let btns = sharedWarehouse.items.map((it) => {
-        let dStr = encodeURIComponent(JSON.stringify(it)).replace(/'/g, "%27");
-        let nameStr = `${it.enchantValue?'+'+it.enchantValue+' ':''}${it.name} (${it.count||1}개)`;
-        return { text: `${nameStr} <span style="font-size:11px; color:#5cf; font-weight:bold;">[정보]</span>`, dataStr: dStr, callback: () => openItemWithdrawConfirm(it) };
-    });
-    btns.push({ text: '뒤로가기', color: '#555', callback: openWarehouseUI });
-    
-    showCustomPrompt(`<div style="flex-shrink:0; font-size:12px; color:#aaa; margin-bottom:4px;">[창고에서 찾을 아이템 선택]</div><div style="flex-shrink:0; font-size:11px; color:#888;">아이템을 누르면 상세 능력치를 확인하고 찾을 수 있습니다.</div>`, btns);
+    if(!sharedWarehouse.items || sharedWarehouse.items.length === 0) return showAlert("창고에 보관된 아이템이 없습니다.", openWarehouseUI);
+    if(player.inv.length >= 100) return showAlert("가방이 가득 찼습니다.");
+    
+    let btns = sharedWarehouse.items.map((it) => {
+        let dStr = encodeURIComponent(JSON.stringify(it)).replace(/'/g, "%27");
+        let encText = (it.enchantValue ? ('+' + it.enchantValue + ' ') : '');
+        let countText = (it.count || 1) + '개';
+        let nameStr = encText + it.name + ' (' + countText + ')';
+        
+        return { 
+            text: nameStr + ' <span style="font-size:11px; color:#5cf; font-weight:bold;">[정보]</span>', 
+            dataStr: dStr, 
+            callback: () => openItemWithdrawConfirm(it) 
+        };
+    });
+    
+    btns.push({ text: '뒤로가기', color: '#555', callback: openWarehouseUI });
+    
+    let promptHtml = '<div style="flex-shrink:0; font-size:12px; color:#aaa; margin-bottom:4px;">[창고에서 찾을 아이템 선택]</div>' +
+                     '<div style="flex-shrink:0; font-size:11px; color:#888;">아이템을 누르면 상세 능력치를 확인하고 찾을 수 있습니다.</div>';
+    
+    showCustomPrompt(promptHtml, btns);
 };
 
 window.depositAdena = function() {
@@ -5803,7 +5814,7 @@ window.showClassPassiveInfo = function() {
             3. 화면 인터페이스(UI) 구조 및 조작법
         </div>
         <div style="background:rgba(255,255,255,0.03); padding:8px; border-radius:4px; margin-bottom:8px;">
-            • <b>상단 바:</b> HP(체력)/MP(마나)/EXP(경험치)를 표시. 사망 시 3초 후 마을에서 부활합니다.<br>
+            • <b>상단 바:</b> HP(체력)/MP(마력)/EXP(경험치)를 표시. 사망 시 3초 후 마을에서 부활합니다.<br>
             • <b>이동/전투:</b> 마우스나 터치로 빈 땅을 누르면 이동, 몬스터를 누르면 공격합니다.<br>
             • <b>하단 버튼:</b> 물약 자동 복용(HP 70%, MP 20% 미만)과 주변 몬스터 자동 사냥 기능을 켜고 끕니다.<br>
             • <b>퀵슬롯:</b> 인벤토리에서 마법이나 물약을 지정. 마법 더블클릭 시 자동사냥용, 단일클릭 시 수동 공격 상태가 됩니다.
