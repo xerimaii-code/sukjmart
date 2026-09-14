@@ -1900,36 +1900,35 @@ entities.forEach(e => {
 
                 // 💡 타 파티 소속 유저 머리 위 파티 뱃지 (괄호 짝 완벽 정돈)
                 if (e.partyId) {
-                    ctx.save();
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.font = `bold ${isMobile ? 11 : 13}px "Malgun Gothic", sans-serif`;
-                    ctx.lineWidth = 3;
-                    ctx.strokeStyle = '#000000';
-                    
-                    let partyBadgeY = Math.round(e.y - sz - (isMobile ? 48 : 46));
-                    ctx.strokeText('👥[파티]', rx, partyBadgeY);
-                    ctx.fillStyle = '#a78bfa';
-                    ctx.fillText('👥[파티]', rx, partyBadgeY);
-                    ctx.restore();
-                }
-            } else if (e.isBoss) {
-                otherFontSize = isMobile ? 17 : 20;
-            } else {
-                otherFontSize = isMobile ? 15 : 18;
-            }
-            
-            ctx.save();
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.font = `bold ${otherFontSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
-            ctx.lineWidth = 4; 
-            ctx.strokeStyle = '#000000';
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    let isMobile = window.innerWidth < 768;
+    let badgeText = '👑 PARTY';
+    let badgeWidth = isMobile ? 54 : 64;
+    let badgeHeight = isMobile ? 14 : 16;
+    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 54));
 
-            ctx.strokeText(displayName, rx, ry);
-            ctx.fillStyle = tagColor; 
-            ctx.fillText(displayName, rx, ry);
-            ctx.restore();
+    // 1. 선명한 네온 외곽 발광 및 둥근 배경 박스
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#a855f7';
+    ctx.fillStyle = 'rgba(24, 10, 40, 0.9)';
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 1.5;
+
+    ctx.beginPath();
+    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
+    ctx.fill();
+    ctx.stroke();
+
+    // 2. 또렷한 텍스트
+    ctx.shadowBlur = 0;
+    ctx.font = `bold ${isMobile ? 9.5 : 11}px "Malgun Gothic", sans-serif`;
+    ctx.fillStyle = '#f5d0fe';
+    ctx.fillText(badgeText, rx, badgeY + 1);
+    ctx.restore();
+}
 
             // 💡 [수정] 용병 및 소환수는 전용 HUD가 있으므로 머리 위 HP 바 제외 (몬스터, 보스, 타 플레이어만 표시)
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;

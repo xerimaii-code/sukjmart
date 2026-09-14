@@ -4893,47 +4893,47 @@ async function generateAIAgents() {
     const sb = typeof getSupabaseClient === 'function' ? getSupabaseClient() : null;
     if (!sb || !currentUser) return addMessage("로그인 정보 또는 DB 연결이 유효하지 않습니다.", '#f55', 'system');
     
-    addMessage("🔄 [1/2] 기존 AI 모험가 데이터를 Supabase에서 삭제 중입니다...", '#fd0', 'system');
+    addMessage("🔄 [1/2] 기존 AI 모험가 데이터를 삭제 중입니다...", '#fd0', 'system');
     
-    // 1. 기존 AI 에이전트(slot_index >= 100) 전체 삭제
     const { error: delError } = await sb.from('characters').delete().gte('slot_index', 100);
     if (delError) {
         return addMessage(`기존 AI 데이터 삭제 실패: ${delError.message}`, '#f55', 'system');
     }
 
-    addMessage("✨ [2/2] 고유 닉네임 100명 완벽 생성을 시작합니다...", '#5cf', 'system');
+    addMessage("✨ [2/2] 숫자 없는 순수 한글 고유 닉네임 300명 생성 시작...", '#5cf', 'system');
 
-    // 2. 넉넉한 120개 순수 한글 고유 닉네임 풀 (숫자 없음)
-    const pureNamePool = [
-        '바다', '하늘', '구름', '별빛', '달빛', '바람', '노을', '파도', '햇살', '이슬',
-        '안개', '번개', '태양', '은하', '서리', '새벽', '황혼', '설원', '단풍', '초원',
-        '산울림', '물안개', '달그림자', '미르', '가람', '나래', '라온', '마루', '아라', '다솜',
-        '늘봄', '온새미로', '하랑', '한결', '보람', '찬란', '아련', '적막', '여명', '월광',
-        '칠흑', '심연', '침묵', '고독', '비상', '선율', '잔향', '질풍', '무법자', '사신',
-        '암살자', '백작', '영웅', '전설', '타이탄', '바이퍼', '카이로', '흑기사', '성기사', '용기사',
-        '그림자', '발키리', '버서커', '슬레이어', '소드마스터', '마도사', '정령왕', '궁수', '스나이퍼', '팬텀',
-        '불패', '패왕', '제왕', '절대자', '천존', '군림', '혈왕', '광풍', '폭풍', '천둥',
-        '염화', '빙결', '뇌제', '패도', '혈풍', '일격', '극의', '무신', '투신', '검선',
-        '패황', '구문룡', '포세이돈', '집행자', '붉은사자', '하얀늑대', '사이하', '그랑카인', '아인하사드', '단테스',
-        '커츠', '바포메트', '데스나이트', '오만', '화룡', '수룡', '풍룡', '지룡', '혜성', '은하수',
-        '푸른달', '붉은달', '칼날', '방패', '수호자', '추적자', '심판관', '방랑자', '선봉장', '결사대'
+    // 1. 숫자 없이 100% 고유한 이름을 만들기 위한 20x20 조합 풀 (총 400개 생성 가능)
+    const prefixes = [
+        '푸른', '붉은', '검은', '하얀', '어둠', '달빛', '별빛', '새벽', '황혼', '바람',
+        '구름', '태양', '심연', '침묵', '고독', '찬란', '아련', '은빛', '금빛', '칠흑'
     ];
 
-    // 무작위 셔플
-    let candidateNames = pureNamePool.sort(() => 0.5 - Math.random());
+    const suffixes = [
+        '기사', '사신', '검선', '투신', '마도사', '궁수', '패왕', '영웅', '전설', '수호자',
+        '추적자', '심판관', '방랑자', '파도', '노을', '햇살', '이슬', '안개', '번개', '눈꽃'
+    ];
+
+    // 2. 400개의 2~4글자 고유 한글 이름 생성 후 무작위 셔플
+    let uniqueNames = [];
+    for (let p of prefixes) {
+        for (let s of suffixes) {
+            uniqueNames.push(p + s);
+        }
+    }
+    uniqueNames.sort(() => 0.5 - Math.random());
 
     const classes = ['knight', 'wizard', 'elf'];
     const alignments = [30000, 0, -30000];
-    let successCount = 0;
-    let slotOffset = 1;
 
-    // 💡 100명이 완전히 채워질 때까지 풀에서 꺼내어 생성 (중복 시 다음 닉네임 자동 사용)
-    while (successCount < 100 && candidateNames.length > 0) {
-        let uniqueName = candidateNames.pop();
+    // 3. Supabase 과부하 방지를 위해 50명씩 분할(Batch) 삽입
+    let batch = [];
+    let totalCreated = 0;
+
+    for (let i = 0; i < 300; i++) {
+        let uniqueName = uniqueNames[i];
         let cClass = classes[Math.floor(Math.random() * classes.length)];
         let align = alignments[Math.floor(Math.random() * alignments.length)];
-        
-        let lv = Math.floor(Math.random() * 46) + 15; // Lv.15 ~ 60
+        let lv = Math.floor(Math.random() * 55) + 15; // Lv.15 ~ 70
         let startAdena = 500000 + (lv * 40000);
 
         let pData = typeof getInitialPlayer === 'function' ? getInitialPlayer() : { hp: 150, maxHp: 150, mp: 30, maxMp: 30, inv: [] };
@@ -4942,7 +4942,10 @@ async function generateAIAgents() {
         pData.alignment = align;
         pData.level = lv;
         pData.adena = startAdena;
-        pData.inv = [];
+        pData.inv = [
+            { name: '주홍 물약', count: 500, type: 'potion', heal: 60 },
+            { name: '귀환 주문서', count: 50, type: 'scroll' }
+        ];
         pData.equip = {};
 
         let enchantWp = lv >= 50 ? 8 : (lv >= 40 ? 7 : 6);
@@ -4952,49 +4955,37 @@ async function generateAIAgents() {
             pData.equip.weapon = { name: `+${enchantWp} 싸울아비 장검`, type: 'weapon', atk: 16, enchantValue: enchantWp };
             pData.equip.armor = { name: `+${enchantAm} 강철 판금 갑옷`, type: 'armor', def: 8, enchantValue: enchantAm };
             pData.equip.helmet = { name: `+${enchantAm} 기사의 면갑`, type: 'helmet', def: 3, enchantValue: enchantAm };
-            pData.equip.shield = { name: `+${enchantAm} 붉은 기사의 방패`, type: 'shield', def: 2, enchantValue: enchantAm };
-            pData.equip.cloak = { name: `+${enchantAm} 보호 망토`, type: 'cloak', def: 1, enchantValue: enchantAm };
-            pData.equip.belt = { name: '오우거의 벨트', type: 'belt', hpBonus: 30 };
-            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
-            pData.inv.push({ name: '용기의 물약', count: 200, type: 'potion' });
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' }, { name: '용기의 물약', count: 200, type: 'potion' });
         } else if (cClass === 'elf') {
             pData.equip.weapon = { name: `+${enchantWp} 화염의 활`, type: 'weapon', atk: 14, isBow: true, enchantValue: enchantWp };
             pData.equip.armor = { name: `+${enchantAm} 요정족 판금 갑옷`, type: 'armor', def: 6, enchantValue: enchantAm };
             pData.equip.helmet = { name: `+${enchantAm} 엘름의 축복`, type: 'helmet', def: 3, dex: 1, enchantValue: enchantAm };
-            pData.equip.cloak = { name: `+${enchantAm} 보호 망토`, type: 'cloak', def: 1, enchantValue: enchantAm };
-            pData.equip.belt = { name: '신체의 벨트', type: 'belt', hpBonus: 50 };
-            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
-            pData.inv.push({ name: '엘븐 와퍼', count: 200, type: 'potion' });
-        } else if (cClass === 'wizard') {
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' }, { name: '엘븐 와퍼', count: 200, type: 'potion' });
+        } else {
             pData.equip.weapon = { name: `+${enchantWp} 마나의 지팡이`, type: 'weapon', atk: 8, mpDrain: 2, enchantValue: enchantWp };
             pData.equip.armor = { name: `+${enchantAm} 신관의 로브`, type: 'armor', def: 6, mpRegen: 5, enchantValue: enchantAm };
-            pData.equip.helmet = { name: `+${enchantAm} 신관의 투구`, type: 'helmet', def: 2, mpRegen: 1, enchantValue: enchantAm };
-            pData.equip.cloak = { name: `+${enchantAm} 마법 망토`, type: 'cloak', def: 2, enchantValue: enchantAm };
-            pData.equip.belt = { name: '빛나는 정신의 벨트', type: 'belt', mpBonus: 50, mpRegen: 2 };
-            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' });
-            pData.inv.push({ name: '파란 물약', count: 200, type: 'potion' });
+            pData.inv.push({ name: '초록 물약', count: 300, type: 'potion' }, { name: '파란 물약', count: 200, type: 'potion' });
             pData.magic = ['에너지 볼트', '힐', '실드', '파이어볼', '콜 라이트닝'];
         }
 
-        pData.inv.push({ name: '주홍 물약', count: 500, type: 'potion', heal: 60 });
-        pData.inv.push({ name: '귀환 주문서', count: 50, type: 'scroll' });
-
-        const { error } = await sb.from('characters').insert([{
+        batch.push({
             user_id: currentUser.id,
-            slot_index: 100 + slotOffset,
+            slot_index: 100 + i,
             name: pData.name,
             class_name: cClass,
             data: { player: pData, last_sync_time: 0 }
-        }]);
+        });
 
-        if (!error) {
-            successCount++;
-            slotOffset++;
+        if (batch.length >= 50 || i === 299) {
+            const { error } = await sb.from('characters').insert(batch);
+            if (!error) totalCreated += batch.length;
+            batch = [];
         }
     }
 
-    addMessage(`🎉 고유 닉네임 가상 모험가 ${successCount}명 생성 완료!`, '#5f5', 'system');
+    addMessage(`🎉 숫자 없는 순수 한글 고유 모험가 ${totalCreated}명 생성 완료!`, '#5f5', 'system');
 }
+
 
 
 // ==========================================
@@ -5664,6 +5655,33 @@ window.showPartyMenu = function(targetPlayer) {
     if (amIInParty && isTargetInMyParty) {
         let currentMode = partyData.mode || 'free';
         let isFocus = currentMode === 'focus';
+        
+      if (window.socket) {
+    window.socket.on('party_warp_request', (data) => {
+        let btns = [
+            {
+                text: "🚀 따라가기",
+                color: "#166534",
+                callback: () => {
+                    changeMap(data.map, data.x, data.y);
+                    if (typeof addMessage === 'function') {
+                        addMessage(`[파티] 파티장을 따라 [${data.mapName}]으로 이동했습니다.`, '#5cf');
+                    }
+                }
+            },
+            {
+                text: "❌ 남기",
+                color: "#444",
+                callback: () => {
+                    if (typeof addMessage === 'function') {
+                        addMessage(`[파티] 현재 맵에 잔류합니다.`, '#aaa');
+                    }
+                }
+            }
+        ];
+        showCustomPrompt(`[파티장 맵 이동]\n\n파티장 [${data.leaderName}]님이 [${data.mapName}]으로 이동했습니다.\n따라 이동하시겠습니까?`, btns);
+    });
+}
 
         btns.push({
             text: isFocus ? '⚔️ [자유 사냥 모드]로 전환' : '🎯 [파티 점사 모드]로 전환',
