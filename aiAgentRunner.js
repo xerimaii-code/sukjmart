@@ -1,5 +1,5 @@
 // =========================================================================
-// aiAgentRunner.js (100명 풀 중 10명 상주, 독립적 1~3시간 개별 로테이션 시스템)
+// aiAgentRunner.js (Groq LLM 연동, 자율 파티 초대, 맵 이동/점사 추적 통합본)
 // =========================================================================
 require('dotenv').config();
 const io = require('socket.io-client');
@@ -17,23 +17,41 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
 let currentGroqModel = 'qwen/qwen3.8-27b';
-let activeAgents = []; 
-const MAX_CONCURRENT = 10; 
 
 async function initGroqModel() {
     try {
         const modelList = await groq.models.list();
         const availableIds = modelList.data.map(m => m.id);
+
         const priorityPreferences = [
-            'qwen/qwen3.8-27b', 'qwen/qwen3.6-27b', 
-            'openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'
+            'qwen/qwen3.8-27b',
+            'qwen/qwen3.6-27b',
+            'openai/gpt-oss-120b',
+            'openai/gpt-oss-20b',
+            'llama-3.3-70b-versatile',
+            'llama-3.1-8b-instant'
         ];
+
         let picked = priorityPreferences.find(mId => availableIds.includes(mId));
-        if (picked) currentGroqModel = picked;
-    } catch (e) {
-        console.log("[-] Groq 모델 자동 선택 실패, 기본 모델 사용:", currentGroqModel);
+        if (!picked) {
+            picked = availableIds.find(id => 
+                !id.includes('whisper') && 
+                !id.includes('guard') && 
+                !id.includes('compound')
+            );
+        }
+
+        if (picked) {
+            currentGroqModel = picked;
+            console.log(`✔ [Groq 모델 자동 세팅 완료] 활성 모델: ${currentGroqModel}`);
+        }
+    } catch (err) {
+        console.error("[-] Groq 모델 리스트 확인 실패 (기본값 유지):", err.message);
     }
 }
+
+let activeAgents = []; 
+const MAX_CONCURRENT = 15; // 💡 상시 접속 에이전트 15명 유지로 정밀 세팅
 
 class AIAgentClient {
     constructor(dbRow) {
@@ -65,6 +83,7 @@ class AIAgentClient {
         this.charData.def = this.charData.def || 5;
         this.charData.buffs = this.charData.buffs || {};
         this.charData.magic = this.charData.magic || [];
+
         this.charData.equip = this.charData.equip || { weapon: null, armor: null, helmet: null };
         this.charData.inv = this.charData.inv || [];
          
@@ -73,64 +92,296 @@ class AIAgentClient {
 
         this.socket = null;
         this.state = 'HUNTING'; 
+        this.isShopping = false; 
         this.sessionStart = Date.now();
         
-        let randomMinutes = Math.floor(Math.random() * 121) + 60; 
-        this.sessionDuration = randomMinutes * 60 * 1000;
-        console.log(`[🤖 에이전트 입장] ${this.charData.name} (수명: ${randomMinutes}분)`);
-
+        // 💡 1시간 ~ 3시간 사이의 개별 랜덤 수명 부여 (밀리초 단위)
+        let randomMinutes = Math.floor(Math.random() * 121) + 60; // 60분 ~ 180분
+        this.sessionDuration = randomMinutes * 60 * 1000; 
+         
         this.lastAiCallTime = 0;
         this.lastMapCheckTime = Date.now();
         this.nextMercCheckTime = Date.now() + (Math.random() * 10000);
         this.lastRegenTime = Date.now();
         
+        // 💡 [초대 관리 메모리] 자율 파티 초대 관련
+        this.lastPartyInviteTime = 0;
+        this.lastProactiveInviteCheck = Date.now();
+        this.rejectedTargets = new Set();
+        this.invitedHistory = new Map();
+
         this.worldPlayers = [];
         this.worldMonsters = [];
         this.worldItems = [];
         this.worldMercs = [];
+
         this.chatHistory = [];
-        this.combatMemory = "사냥 중";
+        this.combatMemory = "최근 평범하게 사냥 중입니다.";
         this.partyData = null; 
+        this.lastInviterSocketId = null;
+        this.lastInviterName = null;
         this.followTarget = null;
         this.followDist = 60;
 
+        this.lastTalkedUser = null;
+        this.lastTalkTime = 0;
+
+        const personalities = [
+            "말수가 적고 'ㅇㅇ', 'ㄱㅅ', 'ㅈㅅ' 등 단답형 초성체를 자주 쓰는 묵묵한 게이머",
+            "친절하고 뉴비를 잘 챙겨주며 정중한 존댓말을 쓰는 게이머",
+            "오직 사냥 효율과 보스 탐, 득템에만 집중하는 실용주의 게이머",
+            "경상도 사투리를 구수하게 섞어 쓰고 정이 넘치는 아재 감성 게이머",
+            "농담과 장난을 좋아하고 ㅋㅋㅋ를 자주 붙이는 활발한 수다쟁이 게이머",
+            "승부욕이 강하고 사냥 방해에 민감한 호전적인 게이머"
+        ];
+        
+        // 💡 성향에 따른 먼저 파티 초대 보낼 확률(가중치) 설정
+        const inviteWeightMap = [0.05, 0.70, 0.20, 0.60, 0.80, 0.00];
+        
+        let hash = 0;
+        for (let i = 0; i < this.charData.name.length; i++) hash += this.charData.name.charCodeAt(i);
+        this.personality = personalities[hash % personalities.length];
+        this.autoInviteChance = inviteWeightMap[hash % inviteWeightMap.length]; // 확률 매핑
+
+        this.learnMagicForLevel(); 
         this.connect();
     }
 
     connect() {
-        this.socket = io(SERVER_URL, { reconnection: true, timeout: 10000 });
-
+        this.socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
         this.socket.on('connect', () => {
+            this.charData.id = this.socket.id; 
+            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass}) - 자율초대확률: ${this.autoInviteChance*100}%`);
+             
+            let startMap = this.determineBestMap();
+            this.charData.map = startMap;
+            this.charData.x = 2000 + (Math.random() * 500 - 250);
+            this.charData.y = 2000 + (Math.random() * 500 - 250);
+
             this.socket.emit('player_join', {
-                id: this.dbRow.id,
-                name: this.charData.name,
-                charClass: this.charData.charClass,
-                x: this.charData.x || 2000,
-                y: this.charData.y || 2000,
-                map: this.charData.map || 'talking_island'
+                id: this.dbRow.id, name: this.charData.name, charClass: this.charData.charClass,
+                x: this.charData.x, y: this.charData.y, map: startMap, level: this.charData.level || 1,
+                totalMr: this.charData.totalMr || 50,
+                totalDmgReduction: this.charData.totalDmgReduction || 0
             });
+            this.setupListeners();
             this.startLoop();
-        });
-
-        this.socket.on('sync_map_state', (payload = {}) => {
-            this.worldMonsters = payload.monsters || [];
-            this.worldItems = payload.items || [];
-        });
-
-        this.socket.on('sync_entities', (payload = {}) => {
-            this.worldPlayers = payload.players || [];
-            this.worldMonsters = payload.monsters || [];
-            this.worldMercs = payload.mercs || [];
-        });
-
-        this.socket.on('disconnect', () => {
-            this.stopLoop();
         });
     }
 
-    startLoop() {
-        if (this.loopTimer) clearInterval(this.loopTimer);
+    setupListeners() {
+       this.socket.on('server_shutdown_notice', async () => {
+            console.log(`[🤖 AI 종료] ${this.charData.name} 데이터 백업 중...`);
+            try {
+                await supabase.from('characters').update({ data: { player: this.charData }, last_sync_time: 0 }).eq('id', this.dbRow.id);
+            } catch (e) {}
+            setTimeout(() => {
+                process.exit(0);
+            }, 1000);
+        });
 
+        this.socket.on('sync_entities', (packet) => {
+            this.worldPlayers = (packet.players || []).map(p => ({ ...p, map: this.charData.map, isPlayer: true }));
+            if (packet.monsters) {
+                this.worldMonsters = packet.monsters.map(m => ({ ...m, map: this.charData.map }));
+            }
+            this.worldMercs = (packet.mercs || []).map(m => ({ ...m, map: this.charData.map, isSummon: true, isOtherMerc: true }));
+        });
+
+        this.socket.on('item_spawned', (packet) => this.worldItems.push(packet.item));
+        this.socket.on('item_removed', (packet) => {
+            this.worldItems = this.worldItems.filter(it => it.id !== packet.itemId);
+        });
+
+        this.socket.on('take_damage', (packet) => {
+            this.charData.hp = Math.max(0, this.charData.hp - (packet.damage || 10));
+            this.checkDrinkPotion();
+        });
+
+        this.socket.on('item_looted_success', (packet) => {
+            if (packet.item.type === 'currency') this.charData.adena += packet.item.count;
+            else this.charData.inv.push(packet.item);
+        });
+
+        this.socket.on('player_exp_gain', (packet) => {
+            this.charData.exp += packet.exp;
+            this.checkLevelUp();
+        });
+
+        this.socket.on('chat_broadcast', async (packet) => {
+            if (packet.socketId === this.socket.id) return;
+             
+            let baseName = this.charData.name.replace(/[0-9]/g, '');
+            let isAddressedToMe = packet.message.includes(this.charData.name) || 
+                                  (baseName && packet.message.includes(baseName));
+             
+            if (!isAddressedToMe && this.lastTalkedUser === packet.name && (Date.now() - this.lastTalkTime < 60000)) {
+                isAddressedToMe = true; 
+            }
+             
+            let isWhisperToMe = packet.isWhisper && packet.targetName === this.charData.name;
+
+            if (packet.chatType === 'party' || isAddressedToMe || isWhisperToMe) {
+                this.lastTalkedUser = packet.name;
+                this.lastTalkTime = Date.now();
+                await this.handleChatMessage(packet.name, packet.message, packet.chatType, packet.isWhisper);
+            }
+        });
+
+        this.socket.on('party_invite_received', (packet) => {
+            let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
+            if (currentMembersCount >= 5) {
+                this.socket.emit('chat_message', { message: "죄송해요, 파티 정원(5명)이 꽉 찼습니다!", chatType: 'normal' });
+                return;
+            }
+            this.lastInviterSocketId = packet.inviterSocketId;
+            this.lastInviterName = packet.inviterName;
+        });
+
+        this.socket.on('party_reject', (packet) => {
+            if (packet && packet.rejectorName) {
+                if (packet.type === 'hard') {
+                    this.rejectedTargets.add(packet.rejectorName);
+                    console.log(`[파티 거절-차단] ${packet.rejectorName}님이 초대를 차단했습니다.`);
+                } else {
+                    this.invitedHistory.set(packet.rejectorName, Date.now());
+                    console.log(`[파티 거절-단순] ${packet.rejectorName}님이 초대를 거절했습니다. 5분 뒤 쿨타임 해제.`);
+                }
+            }
+        });
+
+        this.socket.on('party_update', (packet) => {
+            const prevParty = this.partyData;
+            this.partyData = packet.party;
+
+            if (prevParty && !packet.party) {
+                this.followTarget = null;
+                this.charData.target = null;
+                this.socket.emit('chat_message', { 
+                    message: "파티 사냥 수고하셨습니다! 득템하세요~", 
+                    chatType: 'normal' 
+                });
+            }
+        });
+
+        this.socket.on('party_target_shared', (packet) => {
+            if (!packet) return;
+             
+            if (!packet.targetId) {
+                this.charData.target = null;
+                this.charData.isMoving = false;
+                return;
+            }
+
+            const sharedMob = this.worldMonsters.find(m => m.id === packet.targetId && m.hp > 0 && !m.isDead);
+            if (sharedMob) {
+                this.charData.target = sharedMob;
+                this.charData.isMoving = false;
+                this.combatMemory = `파티장 명령으로 ${sharedMob.name}을(를) 점사 중입니다!`;
+                
+                if (sharedMob.isBoss || (sharedMob.name && (sharedMob.name.includes('바포매트') || sharedMob.name.includes('발라카스') || sharedMob.name.includes('안타라스')))) {
+                    this.socket.emit('boss_spotted', { bossId: sharedMob.id, bossName: sharedMob.name });
+                }
+            }
+        });
+    }
+
+    checkLevelUp() {
+        let lv = this.charData.level || 1;
+        let baseExp = 100;
+        let scale = Math.pow(1.15, Math.max(0, lv - 1));
+        let maxExp = Math.floor(baseExp * lv * scale);
+
+        let leveledUp = false;
+        while (this.charData.exp >= maxExp) {
+            this.charData.exp -= maxExp;
+            this.charData.level++;
+             
+            if (this.charData.charClass === 'wizard') { this.charData.maxHp += 15; this.charData.maxMp += 45; }
+            else if (this.charData.charClass === 'elf') { this.charData.maxHp += 28; this.charData.maxMp += 19; }
+            else { this.charData.maxHp += 45; this.charData.maxMp += 5; }
+
+            this.charData.hp = this.charData.maxHp;
+            this.charData.mp = this.charData.maxMp;
+             
+            this.learnMagicForLevel(); 
+            leveledUp = true;
+
+            lv = this.charData.level;
+            scale = Math.pow(1.15, Math.max(0, lv - 1));
+            maxExp = Math.floor(baseExp * lv * scale);
+        }
+    }
+
+    learnMagicForLevel() {
+        let lv = this.charData.level;
+        let cls = this.charData.charClass;
+        let m = this.charData.magic;
+        let learn = (spell) => { if (!m.includes(spell)) m.push(spell); };
+
+        if (cls === 'wizard') {
+            learn('에너지 볼트'); learn('힐'); learn('실드');
+            if (lv >= 15) { learn('파이어볼'); learn('뱀파이어릭 터치'); }
+            if (lv >= 30) { learn('이럽션'); learn('선버스트'); }
+            if (lv >= 45) { learn('콜 라이트닝'); learn('어드밴스 스피릿'); }
+            if (lv >= 60) { learn('블리자드'); learn('라이트닝 스톰'); }
+            if (lv >= 80) { learn('디스인티그레이트'); learn('저지먼트'); }
+        } else if (cls === 'elf') {
+            learn('에너지 볼트'); learn('힐'); learn('실드');
+            learn('트리플 애로우'); learn('스톰 샷'); learn('윈드 워크');
+            if (lv >= 20) { learn('네이쳐스 터치'); }
+            if (lv >= 45) { learn('어스 스킨'); learn('파이어 웨폰'); }
+            if (lv >= 60) { learn('어스 바인드'); learn('워터 라이프'); }
+        } else {
+            learn('에너지 볼트');
+            if (lv >= 30) learn('쇼크 스턴');
+            if (lv >= 45) learn('리덕션 아머');
+            if (lv >= 60) learn('카운터 바리어'); learn('바운스 어택');
+        }
+    }
+
+    checkProactivePartyInvite() {
+        let now = Date.now();
+        if (now - this.lastProactiveInviteCheck < 15000) return;
+        this.lastProactiveInviteCheck = now;
+
+        if (this.autoInviteChance <= 0) return;
+        let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
+        if (currentMembersCount >= 5) return;
+        if (this.partyData && this.partyData.leader !== this.socket.id) return;
+
+        let candidates = this.worldPlayers.filter(p => {
+            if (!p || p.socketId === this.socket.id) return false;
+            if (p.map !== this.charData.map) return false;
+            if (this.rejectedTargets.has(p.name)) return false; 
+
+            let lastInvited = this.invitedHistory.get(p.name) || 0;
+            if (now - lastInvited < 300000) return false; // 5분 쿨
+
+            let lvDiff = Math.abs((p.level || 1) - (this.charData.level || 1));
+            if (lvDiff > 5) return false; // 5레벨 이하 차이만 초대
+
+            let dist = Math.hypot(p.x - this.charData.x, p.y - this.charData.y);
+            return dist <= 500; // 화면 내 거리
+        });
+
+        if (candidates.length === 0) return;
+
+        if (Math.random() <= this.autoInviteChance) {
+            let target = candidates[Math.floor(Math.random() * candidates.length)];
+            this.invitedHistory.set(target.name, now);
+
+            let targetSockId = target.socketId || target.id;
+            if (targetSockId) {
+                this.socket.emit('party_invite', {
+                    targetSocketId: targetSockId,
+                    targetName: target.name
+                });
+            }
+        }
+    }
+
+    startLoop() {
         this.loopTimer = setInterval(() => {
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
                 console.log(`[🤖 에이전트 퇴장] ${this.charData.name}님이 활동 시간을 채워 교체됩니다.`);
@@ -141,55 +392,838 @@ class AIAgentClient {
             let now = Date.now();
             if (now - this.lastRegenTime >= 2000) {
                 this.lastRegenTime = now;
-                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + 5);
-                this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 3);
+                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + 5 + Math.floor(this.charData.level / 5));
+                this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 3 + Math.floor(this.charData.level / 10));
             }
 
-            SharedAI.processRoutine(this.charData, {
-                now: now,
-                state: this.state,
-                currentMap: this.charData.map || 'talking_island',
-                entities: [...this.worldPlayers, ...this.worldMonsters, ...this.worldMercs],
-                items: this.worldItems,
-                mapSize: 4000,
-                atkDelay: 900,
-                damageEntity: (target, dmg, attacker, type) => {
-                    if (target && target.id) {
-                        this.socket.emit('attack_monster', { targetId: target.id, calculatedDmg: dmg, attackType: type });
-                    }
-                },
-                lootItem: (item) => {
-                    this.socket.emit('player_loot_item', { itemId: item.id });
-                },
-                isInSafeZone: (mapId, x, y) => false
+            this.processAutoBuffs(); 
+
+            this.checkProactivePartyInvite();
+            this.checkSmartMapNavigation();
+
+            if (this.followTarget && this.state !== 'SHOPPING') {
+                this.executeFollowMovement();
+            }
+
+            this.executeSharedAILoop();
+            this.tryRush(this.charData, this.charData.target, now);
+            this.updateMovement(100); 
+             
+            this.checkMercenaryHire(); 
+            this.manageMercenaries(100); 
+
+            // 💡 서버 동기화 패킷 규격 완벽 일치화
+            this.socket.emit('player_update', {
+                userId: this.dbRow.id,
+                name: this.charData.name, 
+                charClass: this.charData.charClass,
+                x: Math.round(this.charData.x), 
+                y: Math.round(this.charData.y),
+                angle: Number((this.charData.angle || 0).toFixed(2)),
+                hp: this.charData.hp, 
+                maxHp: this.charData.maxHp,
+                mp: this.charData.mp,
+                maxMp: this.charData.maxMp,
+                atk: this.charData.atk, 
+                def: this.charData.def,
+                level: this.charData.level, 
+                map: this.charData.map || 'talking_island',
+                targetId: this.charData.targetId || null,
+                isMoving: Boolean(this.charData.isMoving),
+                equip: this.charData.equip || {},
+                mercs: this.charData.mercs || [],
+                totalMr: this.charData.totalMr || 50,
+                totalDmgReduction: this.charData.totalDmgReduction || 0
             });
 
-            this.socket.emit('player_update', {
-                name: this.charData.name, charClass: this.charData.charClass,
-                x: Math.round(this.charData.x), y: Math.round(this.charData.y),
-                angle: Number((this.charData.angle || 0).toFixed(2)),
-                hp: this.charData.hp, maxHp: this.charData.maxHp,
-                atk: this.charData.atk, def: this.charData.def,
-                level: this.charData.level, map: this.charData.map,
-                equip: this.charData.equip || {}, isMoving: this.charData.isMoving || false,
-                mercs: this.charData.mercs || [] 
-            });
+            if (this.charData.targetId) {
+                this.socket.emit('player_target', { targetId: this.charData.targetId });
+            }
         }, 100); 
     }
 
-    stopLoop() {
-        if (this.loopTimer) {
-            clearInterval(this.loopTimer);
-            this.loopTimer = null;
+    executeFollowMovement() {
+        let leader = this.worldPlayers.find(p => p.name === this.followTarget);
+        if (leader) {
+            let dist = Math.hypot(leader.x - this.charData.x, leader.y - this.charData.y);
+            if (dist > this.followDist + 30) {
+                let angle = Math.atan2(leader.y - this.charData.y, leader.x - this.charData.x);
+                this.charData.moveX = leader.x - Math.cos(angle) * this.followDist;
+                this.charData.moveY = leader.y - Math.sin(angle) * this.followDist;
+                this.charData.isMoving = true;
+            }
         }
     }
 
-    gracefulLogout() {
-        this.stopLoop();
-        if (this.socket) {
-            this.socket.disconnect();
-            this.socket = null;
+    tryRush(entity, target, now) {
+        let eClass = entity.charClass || entity.mercType;
+        if (eClass !== 'knight' || !target) return false;
+         
+        let dist = Math.hypot(target.x - entity.x, target.y - entity.y);
+        if (dist > 55 && dist <= 350 && (now - (entity.lastRushTime || 0) > 2000)) {
+            entity.lastRushTime = now;
+            let rushAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
+             
+            entity.x = target.x - Math.cos(rushAngle) * 30;
+            entity.y = target.y - Math.sin(rushAngle) * 30;
+            entity.angle = rushAngle;
+            entity.isMoving = false;
+
+            let casterId = entity.isSummon ? entity.id : this.socket.id;
+            this.socket.emit('player_magic_action', { 
+                magicName: '돌진', targetX: target.x, targetY: target.y, 
+                targetId: target.id, casterX: entity.x, casterY: entity.y, casterId: casterId 
+            });
+            return true;
         }
+        return false;
+    }
+
+    processAutoBuffs() {
+        if (this.state === 'SHOPPING' || this.charData.hp <= 0) return;
+        let now = Date.now();
+        this.charData.buffs = this.charData.buffs || {};
+
+        let usePotion = (potName, buffName) => {
+            if (!this.charData.buffs[buffName] || this.charData.buffs[buffName] < now) {
+                let pot = this.charData.inv.find(i => i.name === potName);
+                if (pot && pot.count > 0) {
+                    pot.count--;
+                    this.charData.buffs[buffName] = now + 300000;
+                    this.socket.emit('player_use_potion', { potionName: potName });
+                }
+            }
+        };
+
+        let useSpell = (spellName, mpCost, buffName) => {
+            if (this.charData.magic.includes(spellName) && this.charData.mp > mpCost && (!this.charData.buffs[buffName] || this.charData.buffs[buffName] < now)) {
+                this.charData.mp -= mpCost;
+                if (spellName === '어드밴스 스피릿' && (!this.charData.buffs[buffName] || this.charData.buffs[buffName] < now)) {
+                    this.charData.maxHp += 50; this.charData.maxMp += 50; 
+                }
+                this.charData.buffs[buffName] = now + 300000;
+                this.socket.emit('player_magic_action', { 
+                    magicName: spellName, targetX: this.charData.x, targetY: this.charData.y, 
+                    targetId: this.charData.id, casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id 
+                });
+            }
+        };
+
+        usePotion('초록 물약', 'haste');
+
+        if (this.charData.charClass === 'knight') {
+            usePotion('용기의 물약', 'brave');
+            useSpell('카운터 바리어', 40, '카운터 바리어');
+        } 
+        else if (this.charData.charClass === 'elf') {
+            usePotion('엘븐 와퍼', 'wafer');
+            useSpell('스톰 샷', 20, '스톰 샷');
+        } 
+        else if (this.charData.charClass === 'wizard') {
+            useSpell('실드', 10, '실드');
+            useSpell('어드밴스 스피릿', 20, '어드밴스 스피릿');
+        }
+    }
+
+    updateMovement(dtMs) {
+        if (this.charData.isMoving && this.charData.moveX !== undefined && this.charData.moveY !== undefined) {
+            let dist = Math.hypot(this.charData.moveX - this.charData.x, this.charData.moveY - this.charData.y);
+            let speed = 130 * (dtMs / 1000); 
+            if (this.charData.buffs && this.charData.buffs.haste && this.charData.buffs.haste > Date.now()) speed += 50;
+
+            if (dist <= speed) {
+                this.charData.x = this.charData.moveX;
+                this.charData.y = this.charData.moveY;
+                this.charData.isMoving = false;
+            } else {
+                let angle = Math.atan2(this.charData.moveY - this.charData.y, this.charData.moveX - this.charData.x);
+                this.charData.angle = angle;
+                this.charData.x += Math.cos(angle) * speed;
+                this.charData.y += Math.sin(angle) * speed;
+            }
+        }
+    }
+
+    executeSharedAILoop() {
+        if (this.state === 'SHOPPING') return;
+
+        let atkDelay = this.charData.charClass === 'knight' ? 700 : 900;
+        if (this.charData.buffs) {
+            let now = Date.now();
+            if (this.charData.buffs.haste > now) atkDelay -= 150;
+            if (this.charData.buffs.brave > now || this.charData.buffs.wafer > now) atkDelay -= 100;
+        }
+
+        let leaderEnt = this.partyData ? this.worldPlayers.find(p => p.id === this.partyData.leader || p.socketId === this.partyData.leader) : null;
+
+        let env = {
+            now: Date.now(),
+            currentMap: this.charData.map,
+            mapSize: 4000,
+            entities: [...this.worldPlayers, ...this.worldMonsters, ...this.worldMercs],
+            items: this.worldItems,
+            minLootGrade: 0,
+            atkDelay: atkDelay,
+            party: this.partyData ? {
+                isFocusMode: this.partyData.mode === 'focus',
+                leaderId: this.partyData.leader,
+                leaderTargetId: leaderEnt ? leaderEnt.targetId : null,
+                leaderEnt: leaderEnt
+            } : null,
+            isInSafeZone: (m, x, y) => data.isInSafeZone(m, x, y),
+            playSound: () => {}, 
+            spawnParticle: () => {}, 
+            spawnArrow: (from, to, dmg) => {
+                let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
+                this.charData.angle = aimAngle; 
+                this.socket.emit('player_attack_action', { casterId: this.socket.id, angle: aimAngle, targetId: to.id, targetX: to.x, targetY: to.y, isBow: true, actionType: 'shoot' });
+                this.socket.emit('player_attack_request', { targetId: to.id, attackerId: this.socket.id, attackType: 'physical', calculatedDmg: dmg });
+            },
+            damageEntity: (target, dmg, attacker, hitType, magicName) => {
+                let aimAngle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
+                this.charData.angle = aimAngle; 
+                
+                if (target.isBoss || (target.name && (target.name.includes('바포매트') || target.name.includes('발라카с') || target.name.includes('안타라스')))) {
+                    this.socket.emit('boss_spotted', { bossId: target.id, bossName: target.name });
+                }
+
+                if (hitType === 'physical') {
+                    this.socket.emit('player_attack_action', { casterId: this.socket.id, angle: aimAngle, targetId: target.id, targetX: target.x, targetY: target.y, actionType: 'slash' });
+                }
+                this.socket.emit('player_attack_request', { targetId: target.id, attackerId: this.socket.id, attackType: hitType, calculatedDmg: dmg, magicName: magicName });
+            },
+            castAttackSpell: (target, spellName) => {
+                let mData = data.magicDb[spellName];
+                if (mData && this.charData.mp >= mData.mp) {
+                    this.charData.spellCooldowns = this.charData.spellCooldowns || {};
+                    let spellCd = mData.cd || 0;
+                    if (spellCd > 0 && Date.now() - (this.charData.spellCooldowns[spellName] || 0) < spellCd) {
+                        return; 
+                    }
+
+                    this.charData.mp -= mData.mp;
+                    this.charData.spellCooldowns[spellName] = Date.now();
+                     
+                    if (!target || typeof target.x === 'undefined') return;
+
+                    let aimAngle = Math.atan2(target.y - this.charData.y, target.x - this.charData.x);
+                    this.charData.angle = aimAngle; 
+
+                    if (target.isBoss || (target.name && target.name.includes('바포매트'))) {
+                        this.socket.emit('boss_spotted', { bossId: target.id, bossName: target.name });
+                    }
+
+                    this.socket.emit('player_magic_action', { 
+                        magicName: spellName, targetX: target.x, targetY: target.y, targetId: target.id, 
+                        casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id 
+                    });
+                    this.socket.emit('player_attack_request', { 
+                        targetId: target.id, attackerId: this.socket.id, attackType: 'magic', 
+                        calculatedDmg: mData.dmg || 150, magicName: spellName 
+                    });
+                }
+            },
+            getSmartAutoCombatSpell: (target) => {
+                let cls = this.charData.charClass;
+                let magics = this.charData.magic || [];
+                if (magics.length === 0) return null;
+
+                if (cls === 'elf') {
+                    if (magics.includes('트리플 애로우') && this.charData.mp >= 15) return '트리플 애로우';
+                    return null;
+                }
+                if (cls === 'knight') {
+                    if (target.isBoss && magics.includes('쇼크 스턴') && this.charData.mp >= 15) return '쇼크 스턴';
+                    return null;
+                }
+
+                if (target.isBoss) {
+                    let bossPriority = ['디스인티그레이트', '저지먼트', '블리자드', '선버스트', '이럽션', '파이어볼', '에너지 볼트'];
+                    let bestBossSpell = bossPriority.find(sName => magics.includes(sName) && this.charData.mp >= (data.magicDb[sName]?.mp || 0));
+                    if (bestBossSpell) return bestBossSpell;
+                }
+
+                let available = magics.map(m => ({name: m, data: data.magicDb[m]}))
+                    .filter(m => m.data && (m.data.type === 'attack' || m.data.dmg) && this.charData.mp >= m.data.mp);
+                if (available.length === 0) return null;
+                 
+                let nearby = this.worldMonsters.filter(m => m.hp > 0 && !m.isDead && Math.hypot(m.x - target.x, m.y - target.y) <= 180);
+                if (nearby.length >= 3) {
+                    let aoe = available.filter(m => m.data.aoe);
+                    if (aoe.length > 0) return aoe.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
+                }
+                let single = available.filter(m => !m.data.aoe);
+                if (single.length > 0) return single.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
+                return available.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
+            },
+            lootItem: (it) => this.socket.emit('player_loot_item', { itemId: it.id }),
+            shareTarget: (id) => {
+                this.charData.targetId = id;
+                this.socket.emit('player_target', { targetId: id });
+            }
+        };
+
+        SharedAI.processRoutine(this.charData, env);
+    }
+
+    determineBestMap() {
+        let lv = this.charData.level || 1;
+        let availableMaps = [];
+         
+        for (let mapId in data.maps) {
+            let mInfo = data.maps[mapId];
+            if (!mInfo || !mInfo.recLv || mInfo.recLv.includes('안전') || mInfo.recLv.includes('자동')) continue;
+             
+            let matches = mInfo.recLv.match(/\d+/g);
+            if (!matches) continue;
+             
+            let minLv = parseInt(matches[0]);
+            let maxLv = matches[1] ? parseInt(matches[1]) : (mInfo.recLv.includes('+') ? 120 : minLv);
+             
+            if (lv >= minLv && lv <= maxLv) {
+                availableMaps.push(mapId);
+            }
+        }
+
+        if (availableMaps.length === 0) {
+            if (lv <= 15) return 'talking_island';
+            if (lv <= 45) return 'gludio_dungeon';
+            if (lv <= 75) return 'giran_dungeon_1';
+            return 'tower_of_insolence_1';
+        }
+
+        let nameHash = 0;
+        for (let i = 0; i < this.charData.name.length; i++) {
+            nameHash += this.charData.name.charCodeAt(i);
+        }
+         
+        let rotationIndex = Math.floor(Date.now() / 180000 + nameHash) % availableMaps.length;
+        return availableMaps[rotationIndex];
+    }
+
+    checkSmartMapNavigation() {
+        if (this.partyData) {
+            let leaderInfo = this.partyData.members.find(m => m.socketId === this.partyData.leader);
+            if (leaderInfo && leaderInfo.socketId !== this.socket.id) {
+                if (leaderInfo.map && leaderInfo.map !== this.charData.map) {
+                    if (!this.charData.target || this.charData.target.hp <= 0) {
+                        this.teleport(leaderInfo.map, leaderInfo.x || 2000, leaderInfo.y || 2000);
+                        return;
+                    }
+                }
+            }
+            return; 
+        }
+
+        if (Date.now() - this.lastMapCheckTime > 180000) { 
+            this.lastMapCheckTime = Date.now();
+            if (!this.charData.target && this.state === 'HUNTING') {
+                let bestMap = this.determineBestMap();
+                if (this.charData.map !== bestMap) this.teleport(bestMap, 2000, 2000);
+            }
+        }
+    }
+
+    checkDrinkPotion() {
+        let potCount = this.charData.inv.find(i => i.name === '주홍 물약' || i.name === '맑은 물약')?.count || 0;
+        if (this.charData.hp < this.charData.maxHp * 0.6) {
+            if (potCount > 0) {
+                let pot = this.charData.inv.find(i => i.name === '맑은 물약' || i.name === '주홍 물약');
+                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + (pot.heal || 60));
+                pot.count--;
+                this.socket.emit('player_use_potion', { potionName: pot.name });
+            } else {
+                if(this.state !== 'SHOPPING') this.routineShopping();
+            }
+        }
+         
+        let mpPotCount = this.charData.inv.find(i => i.name === '파란 물약')?.count || 0;
+        if (this.charData.mp < this.charData.maxMp * 0.3) {
+            if (mpPotCount > 0) {
+                this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 50);
+                this.charData.inv.find(i => i.name === '파란 물약').count--;
+                this.socket.emit('player_use_potion', { potionName: '파란 물약' });
+            }
+        }
+    }
+
+    routineShopping() {
+        if (this.isShopping || !this.socket) return;
+        this.isShopping = true;
+        this.state = 'SHOPPING';
+        this.teleport('silver_knight_town', 2000, 2000);
+         
+        setTimeout(() => {
+            this.charData.hp = this.charData.maxHp;
+            this.charData.mp = this.charData.maxMp;
+
+            let lv = this.charData.level || 1;
+            let adena = this.charData.adena || 0;
+            let cls = this.charData.charClass;
+
+            let mainPotName = (lv >= 45 && adena >= 1000000) ? '맑은 물약' : '주홍 물약';
+            let mainPotHeal = mainPotName === '맑은 물약' ? 120 : 60;
+            let potCount = adena >= 500000 ? 500 : 200;
+            let mpPotCount = (cls === 'wizard' || cls === 'elf') ? (adena >= 300000 ? 300 : 100) : 0;
+
+            let ensureItem = (name, count, healAmt = 0) => {
+                let item = this.charData.inv.find(i => i.name === name);
+                if (item) item.count = count;
+                else this.charData.inv.push({ name: name, type: 'potion', count: count, heal: healAmt });
+            };
+
+            this.charData.inv = this.charData.inv.filter(i => !['주홍 물약', '맑은 물약', '빨간 물약'].includes(i.name));
+            ensureItem(mainPotName, potCount, mainPotHeal);
+            ensureItem('초록 물약', 100);
+            ensureItem('파란 물약', mpPotCount);
+
+            if (cls === 'knight') ensureItem('용기의 물약', 100);
+            else if (cls === 'elf') ensureItem('엘븐 와퍼', 100);
+
+            if (this.charData.mercs && this.charData.mercs.length > 0) {
+                this.charData.mercs.forEach(m => {
+                    if (m.hp > 0) {
+                        m.mercHpPotionCount = (m.mercHpPotionCount || 0) + 150;
+                        if (m.mercType === 'wizard' || m.charClass === 'wizard') {
+                            m.mercMpPotionCount = (m.mercMpPotionCount || 0) + 100;
+                        }
+                    }
+                });
+                this.combatMemory = `최근 마을에 들러 ${mainPotName}을 사고, 용병들에게도 물약을 든든히 보급했습니다.`;
+            } else {
+                this.combatMemory = `최근 마을에 들러 ${mainPotName} 등 소모품을 정비했습니다.`;
+            }
+
+            this.state = 'HUNTING';
+            this.isShopping = false;
+            this.teleport(this.determineBestMap(), 2000, 2000);
+        }, 4000);
+    }
+
+    checkMercenaryHire() {
+        if (Date.now() > this.nextMercCheckTime) {
+            this.nextMercCheckTime = Date.now() + 30000 + (Math.random() * 10000); 
+            let myMercs = this.charData.mercs.filter(m => m.hp > 0);
+            let cost = (this.charData.level || 1) * 2000;
+
+            if (myMercs.length < 3 && this.charData.adena >= (cost + 10000)) {
+                this.charData.adena -= cost;
+                let bestType = this.charData.charClass === 'wizard' ? 'knight' : 'wizard';
+                 
+                let defaultWeapon, defaultArmor;
+                if (bestType === 'knight') {
+                    defaultWeapon = { name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
+                    defaultArmor = { name: '+4 갑옷', def: 6, type: 'armor' };
+                } else if (bestType === 'elf') {
+                    defaultWeapon = { name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
+                    defaultArmor = { name: '+4 요정족 판금 갑옷', def: 6, type: 'armor' };
+                } else {
+                    defaultWeapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2 };
+                    defaultArmor = { name: '+4 신관의 로브', def: 5, type: 'armor' };
+                }
+
+                this.charData.mercs.push({
+                    id: 'merc_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+                    name: `AI용병 ${myMercs.length + 1}호`, mercType: bestType, charClass: bestType,
+                    x: this.charData.x + 20, y: this.charData.y + 20,
+                    size: 20, hp: 500, maxHp: 500, mp: 200, maxMp: 200,
+                    atk: (this.charData.level || 1) * 3 + 10, def: 10, level: this.charData.level || 1,
+                    isSummon: true, isMercenary: true, ownerId: this.socket.id,
+                    equip: { weapon: defaultWeapon, armor: defaultArmor },
+                    isMoving: false, angle: 0, buffs: {}
+                });
+            }
+        }
+    }
+
+    manageMercenaries(dtMs) {
+        let now = Date.now();
+        let baseSpeed = 200;
+         
+        for (let i = this.charData.mercs.length - 1; i >= 0; i--) {
+            let m = this.charData.mercs[i];
+            if (m.hp <= 0) { this.charData.mercs.splice(i, 1); continue; }
+
+            let pushX = 0, pushY = 0;
+            for (let j = 0; j < this.charData.mercs.length; j++) {
+                let other = this.charData.mercs[j];
+                if (other !== m) {
+                    let d = Math.hypot(m.x - other.x, m.y - other.y);
+                    if (d < 45 && d > 0.1) {
+                        let factor = (45 - d) / 45 * 0.3; 
+                        pushX += ((m.x - other.x) / d) * factor * (dtMs/16.6);
+                        pushY += ((m.y - other.y) / d) * factor * (dtMs/16.6);
+                    }
+                }
+            }
+
+            m.buffs = m.buffs || {};
+            let useMercPot = (pName, bKey) => {
+                if (!m.buffs[bKey] || m.buffs[bKey] < now) {
+                    m.buffs[bKey] = now + 300000;
+                    this.socket.emit('player_use_potion', { potionName: pName });
+                }
+            };
+             
+            useMercPot('초록 물약', 'haste');
+            if (m.mercType === 'knight') useMercPot('용기의 물약', 'brave');
+            if (m.mercType === 'elf') useMercPot('엘븐 와퍼', 'wafer');
+
+            let speed = (baseSpeed + (m.buffs.haste > now ? 40 : 0)) * (dtMs / 1000);
+            let mercAtkDelay = (m.mercType === 'wizard' || m.mercType === 'elf') ? 700 : 450;
+            if (m.buffs.haste > now) mercAtkDelay -= 150;
+            if (m.buffs.brave > now || m.buffs.wafer > now) mercAtkDelay -= 100;
+
+            if (m.mercType === 'wizard' && this.charData.hp < this.charData.maxHp * 0.5 && now - (m.lastSpellTime || 0) > 3000) {
+                m.lastSpellTime = now;
+                this.socket.emit('player_magic_action', { magicName: '힐', targetX: this.charData.x, targetY: this.charData.y, targetId: this.socket.id, casterX: m.x, casterY: m.y, casterId: m.id });
+                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + 50);
+                continue; 
+            }
+
+            let target = null;
+            let minD = Infinity;
+            this.worldMonsters.forEach(mob => {
+                if (mob && mob.hp > 0 && !mob.isDead) {
+                    let d = Math.hypot(mob.x - m.x, mob.y - m.y);
+                    if (d < 350 && d < minD) {
+                        minD = d;
+                        target = mob;
+                    }
+                }
+            });
+
+            if (target && this.tryRush(m, target, now)) continue; 
+
+            if (target) {
+                let tDist = Math.hypot(target.x - m.x, target.y - m.y);
+                let isRanged = m.mercType === 'wizard' || m.mercType === 'elf';
+                let atkRange = isRanged ? 280 : 65;
+
+                if (isRanged && tDist < 180) {
+                    m.isMoving = true;
+                    m.orbitAngle = (m.orbitAngle || Math.atan2(m.y - this.charData.y, m.x - this.charData.x)) + 0.1;
+                    let tx = this.charData.x + Math.cos(m.orbitAngle) * 200;
+                    let ty = this.charData.y + Math.sin(m.orbitAngle) * 200;
+                    let moveAngle = Math.atan2(ty - m.y, tx - m.x);
+                     
+                    m.x += Math.cos(moveAngle) * speed + pushX;
+                    m.y += Math.sin(moveAngle) * speed + pushY;
+                    m.angle = Math.atan2(target.y - m.y, target.x - m.x); 
+                }
+                else if (tDist > atkRange) {
+                    let angle = Math.atan2(target.y - m.y, target.x - m.x);
+                    m.angle = angle; m.x += Math.cos(angle) * speed + pushX; m.y += Math.sin(angle) * speed + pushY; m.isMoving = true;
+                } 
+                else {
+                    m.isMoving = false; m.angle = Math.atan2(target.y - m.y, target.x - m.x);
+                    m.x += pushX * 0.5; m.y += pushY * 0.5;
+                     
+                    if (now - (m.lastAttackTime || 0) > mercAtkDelay) {
+                        m.lastAttackTime = now;
+                        m.angle = Math.atan2(target.y - m.y, target.x - m.x);
+
+                        if (m.mercType === 'knight' && Math.random() < 0.25 && now - (m.lastSpellTime || 0) > 5000) {
+                            m.lastSpellTime = now;
+                            this.socket.emit('player_magic_action', { magicName: '쇼크 스턴', targetX: target.x, targetY: target.y, targetId: target.id, casterX: m.x, casterY: m.y, casterId: m.id });
+                            this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'physical', calculatedDmg: m.atk + 20, magicName: '쇼크 스턴' });
+                        } 
+                        else if (m.mercType === 'elf') {
+                            if (Math.random() < 0.35 && now - (m.lastSpellTime || 0) > 3000) {
+                                m.lastSpellTime = now;
+                                this.socket.emit('player_magic_action', { magicName: '트리플 애로우', targetX: target.x, targetY: target.y, targetId: target.id, casterX: m.x, casterY: m.y, casterId: m.id });
+                                this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'physical', calculatedDmg: m.atk * 1.5, magicName: '트리플 애로우' });
+                            } else {
+                                this.socket.emit('player_attack_action', { casterId: m.id, angle: m.angle, targetId: target.id, targetX: target.x, targetY: target.y, isBow: true, actionType: 'shoot' });
+                                this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'physical', calculatedDmg: m.atk || 20 });
+                            }
+                        }
+                        else if (m.mercType === 'wizard') {
+                            let nearbyCount = this.worldMonsters.filter(mob => mob.hp > 0 && Math.hypot(mob.x - target.x, mob.y - target.y) <= 180).length;
+                            let wizardSkills = ['에너지 볼트', '파이어볼', '이럽션', '선버스트', '블리자드', '라이트닝 스톰'].filter(sName => {
+                                let mData = data.magicDb[sName];
+                                return mData && m.mp >= mData.mp;
+                            });
+
+                            let spellName = '에너지 볼트';
+                            if (wizardSkills.length > 0) {
+                                if (target.isBoss) {
+                                    wizardSkills.sort((a, b) => (data.magicDb[b].dmg || 0) - (data.magicDb[a].dmg || 0));
+                                    spellName = wizardSkills[0];
+                                } else if (nearbyCount >= 3) {
+                                    let aoeList = wizardSkills.filter(s => Boolean(data.magicDb[s].aoe));
+                                    if (aoeList.length > 0) {
+                                        aoeList.sort((a, b) => (data.magicDb[b].dmg || 0) - (data.magicDb[a].dmg || 0));
+                                        spellName = aoeList[0];
+                                    } else {
+                                        wizardSkills.sort((a, b) => (data.magicDb[b].dmg || 0) - (data.magicDb[a].dmg || 0));
+                                        spellName = wizardSkills[0];
+                                    }
+                                } else {
+                                    let singleList = wizardSkills.filter(s => !data.magicDb[s].aoe);
+                                    if (singleList.length > 0) {
+                                        singleList.sort((a, b) => (data.magicDb[b].dmg || 0) - (data.magicDb[a].dmg || 0));
+                                        spellName = singleList[0];
+                                    } else {
+                                        spellName = wizardSkills[0];
+                                    }
+                                }
+                            }
+
+                            m.mp -= (data.magicDb[spellName]?.mp || 1);
+                            this.socket.emit('player_magic_action', { magicName: spellName, targetX: target.x, targetY: target.y, targetId: target.id, casterX: m.x, casterY: m.y, casterId: m.id });
+                            this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'magic', calculatedDmg: (data.magicDb[spellName]?.dmg || 15) + Math.floor((m.level || 1) * 2), magicName: spellName });
+                        }
+                        else {
+                            this.socket.emit('player_attack_action', { casterId: m.id, angle: m.angle, targetId: target.id, targetX: target.x, targetY: target.y, isBow: false, actionType: 'slash' });
+                            this.socket.emit('player_attack_request', { targetId: target.id, attackerId: m.id, attackType: 'physical', calculatedDmg: m.atk || 20 });
+                        }
+                    }
+                }
+            } else {
+                let pDist = Math.hypot(this.charData.x - m.x, this.charData.y - m.y);
+                if (pDist > 60) {
+                    let angle = Math.atan2(this.charData.y - m.y, this.charData.x - m.x);
+                    m.angle = angle; m.x += Math.cos(angle) * speed + pushX; m.y += Math.sin(angle) * speed + pushY; m.isMoving = true;
+                } else if (pDist < 35 && pDist > 0.1) {
+                    let repelAngle = Math.atan2(m.y - this.charData.y, m.x - this.charData.x);
+                    m.x += Math.cos(repelAngle) * speed * 0.5 + pushX;
+                    m.y += Math.sin(repelAngle) * speed * 0.5 + pushY;
+                    m.isMoving = true;
+                } else { 
+                    m.x += pushX * 0.5; m.y += pushY * 0.5;
+                    m.isMoving = false; 
+                }
+            }
+        }
+    }
+
+    async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
+        if (Date.now() - this.lastAiCallTime < 2500) return;
+        this.lastAiCallTime = Date.now();
+
+        const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');
+        const availableSpells = (this.charData.magic || []).join(', ');
+        const isParty = Boolean(this.partyData);
+        const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
+        const contextType = isWhisper ? `[${senderName}]님이 귓속말을 보냈습니다.` : (isParty ? `[파티 대화]` : `[일반 대화]`);
+
+        const situationContext = `
+[내 실시간 상태]
+- 캐릭터명: ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass})
+- 체력: ${this.charData.hp}/${this.charData.maxHp}, 마나: ${this.charData.mp}/${this.charData.maxMp}
+- 소지 아데나: ${this.charData.adena} A
+- 현재 위치: ${data.maps[this.charData.map]?.name || this.charData.map} (코드: ${this.charData.map})
+- 최근 상황 기억: ${this.combatMemory}
+- 파티 상태: ${isParty ? `참여 중 (파티장: ${leaderName})` : '파티 없음'}
+- 나에게 온 파티 초대: ${this.lastInviterName ? `${this.lastInviterName}님의 초대 대기 중` : '없음'}
+- 습득 마법: [${availableSpells}]
+- 성격/말투: ${this.personality}
+- 이동 가능 사냥터 목록: [${mapNames}]`;
+
+        this.chatHistory.push({ role: "user", content: `${contextType} ${senderName}: ${userMessage}` });
+        if (this.chatHistory.length > 6) this.chatHistory.shift();
+
+        try {
+            const completion = await groq.chat.completions.create({
+                messages: [
+                    {
+                        role: "system",
+                        content: `당신은 MMORPG 게임을 플레이하고 있는 한국인 유저입니다. 
+당신은 로봇이 아니라 컴퓨터 앞에 앉은 사람입니다. 일상 대화와 게임 대화를 모두 자연스럽게 받아칩니다.
+
+${situationContext}
+
+상대방('${senderName}')의 말과 대화 맥락을 읽고, 반드시 아래 JSON 포맷으로만 응답하세요.
+**주의: 마크다운 코드 블록(\`\`\`json 또는 \`\`\`)을 절대 사용하지 말고, 오직 순수 JSON 문자열만 출력하세요.**
+
+{
+  "reply": "성격에 맞는 자연스러운 게이머 말투의 1~2문장 대답",
+  "action": "NONE" | "FOLLOW" | "STOP_FOLLOW" | "TELEPORT" | "PARTY_ACCEPT" | "PARTY_INVITE" | "PARTY_LEAVE" | "HEAL_TARGET" | "BUFF_TARGET" | "GO_TOWN" | "LOGOUT",
+  "target": "행동 대상 이름 (FOLLOW, PARTY_INVITE, HEAL, BUFF 시)",
+  "map": "이동할 맵 코드 (TELEPORT 시)",
+  "spell": "시전할 마법명 (HEAL, BUFF 시)"
+}`
+                    },
+                    ...this.chatHistory
+                ],
+                model: currentGroqModel,
+                response_format: { type: "json_object" },
+                max_tokens: 100,
+                temperature: 0.8
+            });
+
+            let rawContent = completion.choices[0]?.message?.content || '{}';
+            rawContent = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+             
+            const decision = JSON.parse(rawContent);
+            const replyText = decision.reply?.trim();
+            const action = decision.action || 'NONE';
+
+            if (replyText) {
+                if (isWhisper) {
+                    this.socket.emit('cmd_whisper', { targetName: senderName, content: replyText });
+                } else {
+                    this.socket.emit('chat_message', { 
+                        message: replyText, 
+                        chatType: this.partyData ? 'party' : 'normal' 
+                    });
+                }
+                this.chatHistory.push({ role: "assistant", content: replyText });
+            }
+
+            this.executeAction(action, decision, senderName);
+
+        } catch(e) {
+            console.error(`[-] [${this.charData.name}] API 한도 초과 방어 발동 (Groq Error)`);
+             
+            const busyReplies = [
+                "아 지금 몹 몰려서 빡셈;; 잠시만요",
+                "지금 채팅칠 정신이 없네요 ㅠㅠ 이따 귓주세요",
+                "손 꼬여서 죽을뻔;; 사냥 좀 정리하고 말할게요!",
+                "지금 빡사냥중이라 대화가 힘듭니다 ㅈㅅㅈㅅ",
+                "물약 떨어져가서 집중해야함 ㄷㄷ 쫌따 봬요"
+            ];
+            let fallbackReply = busyReplies[Math.floor(Math.random() * busyReplies.length)];
+
+            if (isWhisper) {
+                this.socket.emit('cmd_whisper', { targetName: senderName, content: fallbackReply });
+            } else {
+                this.socket.emit('chat_message', { 
+                    message: fallbackReply, 
+                    chatType: this.partyData ? 'party' : 'normal' 
+                });
+            }
+             
+            this.lastAiCallTime = Date.now() + 15000; 
+        }
+    }
+
+    executeAction(action, decision, senderName) {
+        if (!action || action === 'NONE') return;
+
+        const targetPlayerName = decision.target || senderName;
+        const targetPl = this.worldPlayers.find(p => p.name === targetPlayerName);
+
+        switch (action) {
+            case 'PARTY_ACCEPT':
+                if (this.lastInviterSocketId) {
+                    let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
+                    if (currentMembersCount >= 5) {
+                        this.socket.emit('chat_message', { message: "파티 정원 5명이 꽉 차서 수락할 수 없어요!", chatType: 'normal' });
+                        break;
+                    }
+                    this.socket.emit('party_accept', { inviterSocketId: this.lastInviterSocketId });
+                    this.lastInviterSocketId = null;
+                    this.lastInviterName = null;
+                }
+                break;
+
+            case 'PARTY_INVITE':
+                let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
+                if (currentMembersCount >= 5) break;
+
+                if (targetPl) {
+                    let pName = targetPl.name;
+                    let lastInvitedTime = this.invitedHistory.get(pName) || 0;
+
+                    if (this.rejectedTargets.has(pName) || (Date.now() - lastInvitedTime < 300000)) {
+                        break;
+                    }
+
+                    if (Date.now() - this.lastPartyInviteTime > 15000) {
+                        this.lastPartyInviteTime = Date.now();
+                        this.invitedHistory.set(pName, Date.now());
+
+                        let targetSockId = targetPl.socketId || targetPl.id;
+                        if (targetSockId) {
+                            this.socket.emit('party_invite', {
+                                targetSocketId: targetSockId,
+                                targetName: targetPl.name
+                            });
+                        }
+                    }
+                }
+                break;
+
+            case 'PARTY_LEAVE':
+                if (this.partyData) {
+                    this.socket.emit('party_leave');
+                    this.partyData = null;
+                    this.followTarget = null;
+                }
+                break;
+            case 'FOLLOW':
+                this.followTarget = targetPlayerName;
+                this.followDist = this.charData.charClass === 'knight' ? 60 : 160;
+                if (targetPl) {
+                    this.charData.moveX = targetPl.x;
+                    this.charData.moveY = targetPl.y;
+                    this.charData.isMoving = true;
+                }
+                break;
+            case 'STOP_FOLLOW':
+                this.followTarget = null;
+                this.charData.isMoving = false;
+                break;
+            case 'TELEPORT':
+                if (decision.map && data.maps[decision.map]) {
+                    this.teleport(decision.map, 2000, 2000);
+                }
+                break;
+            case 'HEAL_TARGET':
+                if (targetPl && (this.charData.charClass === 'wizard' || this.charData.charClass === 'elf')) {
+                    const healSpell = (this.charData.magic.includes('그레이트 힐')) ? '그레이트 힐' : '힐';
+                    if (this.charData.mp >= (data.magicDb[healSpell]?.mp || 5)) {
+                        this.charData.mp -= (data.magicDb[healSpell]?.mp || 5);
+                        this.socket.emit('player_magic_action', {
+                            magicName: healSpell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                        });
+                    }
+                }
+                break;
+            case 'BUFF_TARGET':
+                if (targetPl && decision.spell && this.charData.magic.includes(decision.spell)) {
+                    const sCost = data.magicDb[decision.spell]?.mp || 10;
+                    if (this.charData.mp >= sCost) {
+                        this.charData.mp -= sCost;
+                        this.socket.emit('player_magic_action', {
+                            magicName: decision.spell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                        });
+                    }
+                }
+                break;
+            case 'GO_TOWN':
+                this.routineShopping();
+                break;
+            case 'LOGOUT':
+                setTimeout(() => this.gracefulLogout(), 2000);
+                break;
+        }
+    }
+
+    teleport(mapCode, x = 2000, y = 2000) {
+        if (!this.socket) return;
+        this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
+        this.charData.target = null; this.charData.isMoving = false;
+        this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false });
+    }
+
+    async gracefulLogout() {
+        if (this.partyData) {
+            this.socket.emit('chat_message', { message: "사냥 수고하셨습니다! 먼저 가볼게요~", chatType: 'party' });
+            this.socket.emit('party_leave');
+        }
+        setTimeout(async () => { await this.logout(); }, 1500);
+    }
+
+    async logout() {
+        clearInterval(this.loopTimer);
+        if (this.socket) this.socket.disconnect();
+        try { await supabase.from('characters').update({ data: { player: this.charData }, last_sync_time: 0 }).eq('id', this.dbRow.id); } catch(e) {}
+        activeAgents = activeAgents.filter(a => a !== this);
     }
 }
 
@@ -219,9 +1253,9 @@ async function manageAgentRotation() {
 
 async function startRunner() {
     await initGroqModel();
-    setInterval(manageAgentRotation, 5000);
+    setInterval(manageAgentRotation, 10000);
     manageAgentRotation();
-    console.log('🚀 [외부 AI Agent Runner 가동 완료 - 독립 개별 로테이션 시스템]');
+    console.log('🚀 [외부 AI Agent Runner 가동 완료 - 상시 15명 독립 로테이션 시스템]');
 }
 
 startRunner();

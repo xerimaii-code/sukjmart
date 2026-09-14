@@ -1,4 +1,4 @@
-// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원 및 어스바인드/스턴 통합 버전)
+// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원, 원거리 몬스터(활/마법) 사거리 및 투사체 연동 통합본)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -1128,7 +1128,7 @@ io.on('connection', (socket) => {
 }); 
 
 // ==========================================
-// 3. 서버 몬스터 AI & 보스 장판/타격 연산
+// 3. 서버 몬스터 AI & 보스 장판/원거리 투사체/타격 연산
 // ==========================================
 function processMonsterAI() {
     let now = Date.now();
@@ -1218,7 +1218,17 @@ function processMonsterAI() {
                 if (mob.stunnedUntil && now < mob.stunnedUntil) return;
 
                 let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
+
+                // 💡 1. 몬스터 타입별 원거리/마법 여부 및 공격 사거리 판정
+                let mName = mob.name || '';
+                let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;
+                let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || 
+                                 mName.includes('발터') || mName.includes('메르키오르') || mName.includes('네크로맨서') || 
+                                 mName.includes('마법사') || mob.isMagicMob;
+
                 let stopDist = (mob.size || 20) + 40;
+                if (isBowMob) stopDist = 320;        // 활 몬스터 사거리
+                else if (isSpellMob) stopDist = 280;  // 마법 몬스터 사거리
 
                 if (dist > stopDist) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
@@ -1232,10 +1242,12 @@ function processMonsterAI() {
                     let atkDelay = mob.isBoss ? 1200 : 1400;
                     if (now - (mob.lastAttackTime || 0) >= atkDelay) {
                         mob.lastAttackTime = now;
-                        let isMagicMob = mob.isBoss && (mob.isMagicBoss || Math.random() < 0.65);
+                        mob.angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                         let ownerSocketId = target.socketId || target.ownerSocketId;
 
-                        if (isMagicMob) {
+                        // [A] 보스 전용 장판 마법 연산 유지
+                        let isBossMagic = mob.isBoss && (mob.isMagicBoss || Math.random() < 0.65);
+                        if (isBossMagic) {
                             let hpPercent = mob.hp / mob.maxHp;
                             let magicPool = ['파이어볼', '콜 라이트닝', '이럽션'];
                             if (hpPercent <= 0.70) magicPool.push('라이트닝 스톰', '토네이도');
@@ -1280,7 +1292,6 @@ function processMonsterAI() {
                                 let pDist = Math.hypot(currentTarget.x - castTargetX, currentTarget.y - castTargetY);
 
                                 if (pDist <= cfg.radius + 45) {
-                                    // 💡 마법 방어력(MR) 기반 곡선형 피해 감소 적용 및 대미지 리덕션 차감
                                     let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
                                     let targetReduc = currentTarget.totalDmgReduction || 0;
                                     let magicRatio = 100 / (100 + targetMr);
@@ -1303,8 +1314,48 @@ function processMonsterAI() {
                                 }
                             }, cfg.delay * 1000);
 
+                        // [B] 💡 일반 원거리 활 / 마법 투사체 발사 연산
+                        } else if (isBowMob || isSpellMob) {
+                            let isMagic = isSpellMob;
+                            let spellName = isMagic ? (mName.includes('카스파') || mName.includes('발터') ? '파이어볼' : '에너지 볼트') : null;
+                            
+                            let targetDef = target.def || 0;
+                            let targetMr = target.totalMr || (target.int ? target.int * 2 : 50);
+                            let targetReduc = target.totalDmgReduction || 0;
+                            
+                            let ratio = isMagic ? (100 / (100 + targetMr)) : (100 / (100 + Math.max(0, targetDef)));
+                            let basePower = (mob.atk || 20);
+                            let calculatedDmg = Math.max(1, Math.floor(basePower * ratio) - targetReduc);
+
+                            // 화면에 화살/마법탄 날아가는 그래픽 브로드캐스트
+                            io.to(mapId).emit('monster_attack_action', {
+                                monsterId: mob.id,
+                                hitType: isMagic ? 'magic_proj' : 'bow',
+                                magicName: spellName,
+                                fromX: mob.x,
+                                fromY: mob.y,
+                                targetX: target.x,
+                                targetY: target.y,
+                                targetId: target.id || target.socketId,
+                                angle: mob.angle
+                            });
+
+                            // 투사체 도달 지연 후 피해 적용
+                            let flightTime = Math.max(200, Math.min(600, (dist / 400) * 1000));
+                            setTimeout(() => {
+                                target.hp = Math.max(0, target.hp - calculatedDmg);
+                                if (ownerSocketId) {
+                                    io.to(ownerSocketId).emit('take_damage', {
+                                        damage: calculatedDmg,
+                                        hitType: isMagic ? 'magic' : 'physical',
+                                        hpRemaining: target.hp,
+                                        targetId: target.id || target.socketId
+                                    });
+                                }
+                            }, flightTime);
+
+                        // [C] 💡 기본 근접 평타
                         } else {
-                            // 💡 물리 방어력(DEF) 기반 곡선형 피해 감소 적용 및 대미지 리덕션 차감
                             let targetDef = target.def || 0;
                             let targetReduc = target.totalDmgReduction || 0;
                             let defRatio = 100 / (100 + Math.max(0, targetDef));
