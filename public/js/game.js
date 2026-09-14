@@ -4627,6 +4627,9 @@ window.socket.on('monster_hit', (data) => {
     window.currentPartyData = null;
 
     window.renderPartyHUD = function() {
+    // 💡 [핵심 패치] 드래그 중일 때는 HTML 덮어쓰기를 일시 정지하여 드래그 끊김 방지
+    if (window._isPartyHudDragging) return;
+
     let data = window.currentPartyData;
     let hudList = document.getElementById('party-hud-list');
     if (!hudList || !data || !data.party) {
@@ -4634,7 +4637,7 @@ window.socket.on('monster_hit', (data) => {
         return;
     }
 
-    // 💡 [실시간 HP 동기화 추가] 파티원들의 현재 HP를 entities 및 player 객체와 실시간 일치화
+    // 파티원들의 현재 HP를 entities 및 player 객체와 실시간 일치화
     data.party.members.forEach(m => {
         if (m.socketId === window.socket?.id) {
             m.hp = player.hp;
@@ -4648,7 +4651,6 @@ window.socket.on('monster_hit', (data) => {
         }
     });
 
-    // 파티 HUD 컨테이너 기본 스타일
     hudList.style.position = 'fixed';
     hudList.style.top = hudList.style.top || '70px';
     hudList.style.left = hudList.style.left || '10px';
@@ -4658,10 +4660,10 @@ window.socket.on('monster_hit', (data) => {
 
     if (!hudList.dataset.dragInitialized) {
         hudList.dataset.dragInitialized = 'true';
-        let isDragging = false, startX, startY, initialLeft, initialTop, moved = false;
+        let startX, startY, initialLeft, initialTop, moved = false;
 
         const onDown = (e) => {
-            isDragging = true;
+            window._isPartyHudDragging = true; // 💡 드래그 시작 플래그 켜기
             moved = false;
             startX = e.clientX || (e.touches && e.touches[0].clientX);
             startY = e.clientY || (e.touches && e.touches[0].clientY);
@@ -4670,7 +4672,7 @@ window.socket.on('monster_hit', (data) => {
         };
 
         const onMove = (e) => {
-            if (!isDragging) return;
+            if (!window._isPartyHudDragging) return;
             let clientX = e.clientX || (e.touches && e.touches[0].clientX);
             let clientY = e.clientY || (e.touches && e.touches[0].clientY);
             let dx = clientX - startX;
@@ -4683,11 +4685,11 @@ window.socket.on('monster_hit', (data) => {
         };
 
         const onUp = () => {
-            if (isDragging && moved) {
+            if (window._isPartyHudDragging && moved) {
                 window._blockClickDueToDrag = true;
                 setTimeout(() => { window._blockClickDueToDrag = false; }, 100);
             }
-            isDragging = false;
+            window._isPartyHudDragging = false; // 💡 드래그 종료 플래그 끄기
         };
 
         hudList.addEventListener('mousedown', onDown);
