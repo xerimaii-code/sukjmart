@@ -651,9 +651,14 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
         }
         
         if (charClass !== 'wizard' && !isDeath) {
-            let legGrad = ctx.createLinearGradient(0, 0, 0, sz*0.8);
-            legGrad.addColorStop(0, '#222'); legGrad.addColorStop(1, '#4a4a4a');
-            ctx.fillStyle = legGrad; 
+            if (!window.cachedGradients) window.cachedGradients = {};
+let gradKey = `leg_${sz}`;
+if (!window.cachedGradients[gradKey]) {
+    let grad = ctx.createLinearGradient(0, 0, 0, sz*0.8);
+    grad.addColorStop(0, '#222'); grad.addColorStop(1, '#4a4a4a');
+    window.cachedGradients[gradKey] = grad;
+}
+ctx.fillStyle = window.cachedGradients[gradKey];
             
             ctx.fillRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
             ctx.strokeRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
@@ -1643,6 +1648,7 @@ function generateLightningPath(x, y) {
     return path;
 }
 
+// 🌟 [통합 완료] 모든 최적화가 적용된 완벽한 draw 함수
 function draw(timestamp) {
     ctx.imageSmoothingEnabled = false;
 
@@ -1655,8 +1661,8 @@ function draw(timestamp) {
 
     let pX = Math.round(player.x); 
     let pY = Math.round(player.y);
-    let camX = Math.max(0, Math.min(pX - Math.floor(worldW / 2), mapSize - worldW));
-    let camY = Math.max(0, Math.min(pY - Math.floor(visibleWorldH / 2), mapSize - visibleWorldH));
+    let camX = Math.round(Math.max(0, Math.min(pX - worldW / 2, mapSize - worldW)));
+let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - visibleWorldH)));
 
     ctx.save(); 
     ctx.scale(ZOOM, ZOOM); 
@@ -1686,7 +1692,6 @@ function draw(timestamp) {
         if(gameOptions.showNames) { drawNameTag(ctx, `${l.name} 이동`, l.x, l.y - 40, false, true); } 
     });
     
-    // 바닥 아이템 렌더링
     items.forEach(it => { 
         if (it && (it.map === currentMap || !it.map)) {
             if (it.x > camX - 50 && it.x < camX + worldW + 50 && it.y > camY - 50 && it.y < camY + worldH + 50) { 
@@ -1698,7 +1703,6 @@ function draw(timestamp) {
         }
     });
 
-    // NPC 렌더링
     npcs.forEach(n => { 
         if(n.map === currentMap) { 
             drawNPC(ctx, n, timestamp); 
@@ -1706,10 +1710,11 @@ function draw(timestamp) {
         } 
     });
 
-    // 💡 [1] 바닥 장판 파티클 렌더링 (magic_circle, magic_telegraph)
+    // 💡 [1] 바닥 장판 파티클 렌더링
     particles.forEach(p => {
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
-        
+        if (p.type !== 'magic_circle' && p.type !== 'magic_telegraph') return; 
+
         let progress = p.maxLife ? Math.max(0, Math.min(1, 1 - (p.life / p.maxLife))) : 0.5;
         let fadeAlpha = Math.sin(progress * Math.PI); 
         let r = p.size || 50; 
@@ -1822,7 +1827,6 @@ function draw(timestamp) {
     let allAuraUnits = [player, ...entities.filter(e => e && (e.isPlayer || e.isMercenary || e.isOtherMerc || e.isSummon))];
     allAuraUnits.forEach(unit => {
         if (!unit || unit.hp <= 0 || unit.isDead) return;
-        // 기사/광폭화 황금빛 버서커 오라
         if (Date.now() < (unit.furyUntil || 0)) {
             ctx.save();
             ctx.translate(unit.x, unit.y + 10);
@@ -1837,7 +1841,6 @@ function draw(timestamp) {
             ctx.stroke();
             ctx.restore();
         }
-        // 요정/실프의 폭풍 오라
         if ((unit.charClass === 'elf' || unit.mercType === 'elf') && Date.now() < (unit.elfFuryUntil || 0)) {
             ctx.save();
             ctx.translate(unit.x, unit.y + 10);
@@ -1854,14 +1857,12 @@ function draw(timestamp) {
         }
     });
 
-    // 💡 [3] 엔티티 렌더링 (플레이어 제외 타 유저, 몬스터, 용병)
+    // 💡 [3] 엔티티 렌더링
     entities.forEach(e => {
         if (!e || typeof e.x !== 'number' || typeof e.y !== 'number') return;
         if (e === player || (window.socket && e.id === window.socket.id)) return;
 
         if (e.map === currentMap && e.x > camX - 300 && e.x < camX + worldW + 300 && e.y > camY - 300 && e.y < camY + worldH + 300) {
-            
-            // 타겟 링
             if(player.target === e && !e.isDead) {
                 ctx.save();
                 ctx.translate(e.x, e.y);
@@ -1877,18 +1878,12 @@ function draw(timestamp) {
             let sz = e.size || 20;
             let isMobile = window.innerWidth < 768; 
             let rx = Math.round(e.x);
-
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;
 
            if (isMercOrSummon) {
-                // 용병 및 소환수
                 let ownerKey = e.ownerId || e.ownerSocketId || e.ownerName || (e.owner === player ? (window.socket?.id || player.name) : 'unknown');
                 let mercColor = getMercColorByOwner(ownerKey);
-                
-                // 💡 플레이어(모바일 15, PC 18)보다 작게 고정 폰트 사이즈 적용
                 let mercFontSize = isMobile ? 12 : 15; 
-                
-                // null 대신 mercFontSize를 전달하여 크기 축소
                 drawNameTag(ctx, e.name || '용병', rx, Math.round(e.y - sz - 15), false, false, mercFontSize, mercColor);
             }
             else if (e.isPlayer) {
@@ -1897,37 +1892,34 @@ function draw(timestamp) {
                 drawNameTag(ctx, displayName, rx, Math.round(e.y - sz - 33), false, false, null, tagColor);
                 
                 if (e.partyId) {
-    ctx.save();
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    let badgeText = '👑 PARTY';
-    let badgeWidth = isMobile ? 54 : 64;
-    let badgeHeight = isMobile ? 15 : 18; // 높이를 살짝 키워 답답함 해소
-    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 56));
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let badgeText = '👑 PARTY';
+                    let badgeWidth = isMobile ? 54 : 64;
+                    let badgeHeight = isMobile ? 15 : 18; 
+                    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 56));
 
-    // 💡 [핵심] 배경을 완전한 검은색으로, 테두리는 밝은 핑크빛으로 하여 눈에 띄게
-    ctx.shadowBlur = 4;
-    ctx.shadowColor = '#000000';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
-    ctx.strokeStyle = '#e879f9';
-    ctx.lineWidth = 1.5;
+                    ctx.shadowBlur = 4;
+                    ctx.shadowColor = '#000000';
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+                    ctx.strokeStyle = '#e879f9';
+                    ctx.lineWidth = 1.5;
 
-    ctx.beginPath();
-    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
-    ctx.fill();
-    ctx.stroke();
+                    ctx.beginPath();
+                    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
+                    ctx.fill();
+                    ctx.stroke();
 
-    ctx.shadowBlur = 0;
-    ctx.font = `bold ${isMobile ? 10 : 12}px "Malgun Gothic", sans-serif`;
-    
-    // 💡 [가독성 극대화] 글씨 테두리를 검정색으로 두르고 안을 순백색으로 채움
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#000000';
-    ctx.strokeText(badgeText, rx, badgeY + 1);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(badgeText, rx, badgeY + 1);
-    ctx.restore();
-}
+                    ctx.shadowBlur = 0;
+                    ctx.font = `bold ${isMobile ? 10 : 12}px "Malgun Gothic", sans-serif`;
+                    ctx.lineWidth = 2;
+                    ctx.strokeStyle = '#000000';
+                    ctx.strokeText(badgeText, rx, badgeY + 1);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(badgeText, rx, badgeY + 1);
+                    ctx.restore();
+                }
             } 
             else if (e.isBoss) {
                 drawNameTag(ctx, e.name, rx, Math.round(e.y - sz - 30), true, false);
@@ -1956,7 +1948,7 @@ function draw(timestamp) {
         }
     });
 
-    // 💡 [4] 플레이어 본체 렌더링
+    // 💡 [4] 플레이어 렌더링
     drawEntity(ctx, player, timestamp); 
     if(gameOptions.showNames) { 
         let pName = player.alignment > 10000 ? `[정의] ${player.name}` : (player.alignment < -10000 ? `[악인] ${player.name}` : player.name);
@@ -1998,10 +1990,10 @@ function draw(timestamp) {
         ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(player.x - barW/2, player.y - player.size - 25, barW, 6);
     }
 
-    // 💡 [5] 액티브 마법 파티클 렌더링
+    // 💡 [5] 액티브 파티클 렌더링
     particles.forEach(p => { 
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
-        if (p.type === 'magic_circle' || p.type === 'magic_telegraph') return; // 이미 바닥에 그림
+        if (p.type === 'magic_circle' || p.type === 'magic_telegraph') return; 
 
         ctx.save();
         try {
@@ -2015,22 +2007,19 @@ function draw(timestamp) {
 
             ctx.translate(p.x, p.y);
 
+            // 파티클 세부 로직
             if (p.isArrow) {
                 ctx.rotate(p.angle || 0);
                 let isSkill = p.color && p.color !== '#ffffff';
                 let mainColor = isSkill ? p.color : '#fde047'; 
                 let glowColor = isSkill ? p.color : '#ffaa00';
-                
                 ctx.shadowBlur = isSkill ? 15 : 8;
                 ctx.shadowColor = glowColor;
-
                 ctx.fillStyle = mainColor; 
                 ctx.fillRect(-14, -2, 22, isSkill ? 4 : 3); 
-                
                 ctx.fillStyle = '#ffffff'; 
                 ctx.beginPath(); 
                 ctx.moveTo(8, -5); ctx.lineTo(18, 0); ctx.lineTo(8, 5); ctx.fill(); 
-                
                 let trailGrad = ctx.createLinearGradient(-35, 0, -14, 0);
                 trailGrad.addColorStop(0, 'rgba(255,255,255,0)');
                 trailGrad.addColorStop(1, isSkill ? p.color : 'rgba(255,255,255,0.7)');
@@ -2055,20 +2044,12 @@ function draw(timestamp) {
                     let ang = (Math.PI / 2) * k + (progress * 12);
                     let sx = Math.cos(ang) * (r * 0.5);
                     let sy = Math.sin(ang) * (r * 0.25) - 35;
-                    ctx.beginPath();
-                    ctx.arc(sx, sy, 5 * (1 - progress * 0.5), 0, Math.PI * 2);
-                    ctx.fill();
-                    ctx.stroke();
+                    ctx.beginPath(); ctx.arc(sx, sy, 5 * (1 - progress * 0.5), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
                 }
 
                 if (progress < 0.3) {
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.moveTo(0, -120);
-                    ctx.lineTo((Math.random() - 0.5) * 20, -70);
-                    ctx.lineTo(0, -25);
-                    ctx.stroke();
+                    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
+                    ctx.beginPath(); ctx.moveTo(0, -120); ctx.lineTo((Math.random() - 0.5) * 20, -70); ctx.lineTo(0, -25); ctx.stroke();
                 }
             }
             else if (p.type === 'energy_bolt') {
@@ -2110,18 +2091,12 @@ function draw(timestamp) {
                 ctx.scale(1, 0.45);
                 ctx.strokeStyle = `rgba(52, 211, 153, ${1 - progress})`;
                 ctx.lineWidth = 4 * (1 - progress);
-                ctx.beginPath();
-                ctx.arc(0, 0, r, 0, Math.PI * 2);
-                ctx.stroke();
-
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
                 for (let k = 0; k < 8; k++) {
                     let ang = (Math.PI / 4) * k + (progress * 8);
-                    let bx = Math.cos(ang) * r;
-                    let by = Math.sin(ang) * r;
+                    let bx = Math.cos(ang) * r; let by = Math.sin(ang) * r;
                     ctx.fillStyle = '#6ee7b7';
-                    ctx.beginPath();
-                    ctx.arc(bx, by, 4 * (1 - progress * 0.5), 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(bx, by, 4 * (1 - progress * 0.5), 0, Math.PI * 2); ctx.fill();
                 }
                 ctx.restore();
             }
@@ -2129,7 +2104,6 @@ function draw(timestamp) {
                 let r = p.size || 95;
                 ctx.save(); ctx.scale(1, 0.42); 
                 ctx.shadowBlur = 15; ctx.shadowColor = '#991b1b'; 
-
                 ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 3.5;
                 for (let k = 0; k < 5; k++) {
                     let angle = (Math.PI * 2 / 5) * k + (k % 2 === 0 ? 0.3 : -0.3);
@@ -2139,14 +2113,12 @@ function draw(timestamp) {
                     ctx.lineTo(Math.cos(angle + 0.2) * maxLen, Math.sin(angle + 0.2) * maxLen);
                     ctx.stroke();
                 }
-
                 let glowGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * progress);
                 glowGrad.addColorStop(0, 'rgba(239, 68, 68, 0.8)');
                 glowGrad.addColorStop(0.5, 'rgba(185, 28, 28, 0.5)');
                 glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
                 ctx.fillStyle = glowGrad;
                 ctx.beginPath(); ctx.arc(0, 0, r * progress, 0, Math.PI * 2); ctx.fill();
-
                 ctx.fillStyle = '#78350f';
                 for (let i = 0; i < 6; i++) {
                     let pAngle = (Math.PI * 2 / 6) * i;
@@ -2159,21 +2131,15 @@ function draw(timestamp) {
                 if (progress % 0.2 < 0.12) {
                     let r = p.size || 90; 
                     ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 7; ctx.shadowBlur = 35; ctx.shadowColor = '#00ffff';
-                    
                     let boltCount = r > 150 ? 3 : 1; 
                     for(let b = 0; b < boltCount; b++) {
                         let offsetX = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.8) : 0;
                         let offsetY = boltCount > 1 ? (Math.random() - 0.5) * (r * 0.3) : 0;
-                        
                         ctx.beginPath(); ctx.moveTo(offsetX, -800);
                         let lx = offsetX, ly = -800;
-                        for(let k=0; k<7; k++) {
-                            lx += (Math.random() - 0.5) * 80; ly += 110;
-                            ctx.lineTo(lx, ly);
-                        }
+                        for(let k=0; k<7; k++) { lx += (Math.random() - 0.5) * 80; ly += 110; ctx.lineTo(lx, ly); }
                         ctx.lineTo(offsetX, offsetY); ctx.stroke();
                     }
-                    
                     let ringR = r * easeOut;
                     ctx.strokeStyle = '#88ffff'; ctx.lineWidth = 4.5;
                     ctx.beginPath(); ctx.ellipse(0, 0, ringR, ringR * 0.4, 0, 0, Math.PI * 2); ctx.stroke();
@@ -2182,36 +2148,24 @@ function draw(timestamp) {
             else if (p.type === 'disintegrate') { 
                 let h = 900;
                 let beamWidth = 35 * Math.sin(progress * Math.PI);
-
                 let impactR = 120 * easeOut;
                 ctx.save();
                 ctx.scale(1, 0.42);
-                ctx.strokeStyle = `rgba(180, 80, 255, ${1 - progress})`;
-                ctx.lineWidth = 8 * (1 - progress);
+                ctx.strokeStyle = `rgba(180, 80, 255, ${1 - progress})`; ctx.lineWidth = 8 * (1 - progress);
                 ctx.beginPath(); ctx.arc(0, 0, impactR, 0, Math.PI * 2); ctx.stroke();
-                ctx.strokeStyle = `rgba(255, 255, 255, ${1 - progress})`;
-                ctx.lineWidth = 4 * (1 - progress);
+                ctx.strokeStyle = `rgba(255, 255, 255, ${1 - progress})`; ctx.lineWidth = 4 * (1 - progress);
                 ctx.beginPath(); ctx.arc(0, 0, impactR * 0.6, 0, Math.PI * 2); ctx.stroke();
                 ctx.restore();
-
-                ctx.shadowBlur = 45; 
-                ctx.shadowColor = '#a855f7';
-
+                ctx.shadowBlur = 45; ctx.shadowColor = '#a855f7';
                 let grad = ctx.createLinearGradient(0, -h, 0, 0);
                 grad.addColorStop(0, 'rgba(255, 255, 255, 0)');
                 grad.addColorStop(0.3, 'rgba(168, 85, 247, 0.6)');
                 grad.addColorStop(0.8, 'rgba(192, 132, 252, 0.9)');
                 grad.addColorStop(1, '#ffffff');
-
                 ctx.fillStyle = grad;
                 ctx.beginPath();
-                ctx.moveTo(-beamWidth, -h);
-                ctx.lineTo(beamWidth, -h);
-                ctx.lineTo(beamWidth * 1.4, 0);
-                ctx.lineTo(-beamWidth * 1.4, 0);
-                ctx.closePath();
-                ctx.fill();
-
+                ctx.moveTo(-beamWidth, -h); ctx.lineTo(beamWidth, -h); ctx.lineTo(beamWidth * 1.4, 0); ctx.lineTo(-beamWidth * 1.4, 0);
+                ctx.closePath(); ctx.fill();
                 ctx.fillStyle = '#ffffff';
                 ctx.fillRect(-beamWidth * 0.4, -h, beamWidth * 0.8, h);
             }
@@ -2220,13 +2174,7 @@ function draw(timestamp) {
                 let h = 180 * Math.sin(progress * Math.PI);
                 ctx.shadowBlur = 20; ctx.shadowColor = '#00ffff';
                 ctx.fillStyle = `rgba(180, 255, 255, ${1 - progress})`;
-                
-                ctx.beginPath();
-                ctx.moveTo(0, -h);
-                ctx.lineTo(-r * 0.3, 0);
-                ctx.lineTo(r * 0.3, 0);
-                ctx.fill();
-                
+                ctx.beginPath(); ctx.moveTo(0, -h); ctx.lineTo(-r * 0.3, 0); ctx.lineTo(r * 0.3, 0); ctx.fill();
                 ctx.fillStyle = '#ffffff';
                 for(let k = 0; k < 6; k++) {
                     let px = Math.cos(k * 1.2) * (r * 0.4 * progress);
@@ -2252,20 +2200,11 @@ function draw(timestamp) {
             else if (p.type === 'blizzard') { 
                 let r = p.size || 300;
                 let ring1 = r * easeOut;
-                
-                ctx.strokeStyle = `rgba(100, 230, 255, ${0.9 * (1 - progress)})`; 
-                ctx.lineWidth = 3;
-                ctx.beginPath(); 
-                ctx.ellipse(0, 0, ring1, ring1 * 0.45, 0, 0, Math.PI * 2); 
-                ctx.stroke();
-
+                ctx.strokeStyle = `rgba(100, 230, 255, ${0.9 * (1 - progress)})`; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.ellipse(0, 0, ring1, ring1 * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
                 let ring2 = (r * 0.65) * easeOut;
-                ctx.strokeStyle = `rgba(200, 255, 255, ${0.7 * (1 - progress)})`; 
-                ctx.lineWidth = 2;
-                ctx.beginPath(); 
-                ctx.ellipse(0, 0, ring2, ring2 * 0.45, 0, 0, Math.PI * 2); 
-                ctx.stroke();
-
+                ctx.strokeStyle = `rgba(200, 255, 255, ${0.7 * (1 - progress)})`; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.ellipse(0, 0, ring2, ring2 * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
                 ctx.fillStyle = `rgba(230, 250, 255, ${1 - progress})`;
                 for(let k = 0; k < 12; k++) {
                     let ang = (k * Math.PI / 6) + (progress * 8);
@@ -2286,40 +2225,20 @@ function draw(timestamp) {
             }
             else if (p.type === 'earth_bind') {
                 let r = (p.size || 40) * (0.8 + Math.sin(progress * Math.PI) * 0.2);
-                
                 ctx.save();
                 ctx.scale(1, 0.45);
                 ctx.fillStyle = `rgba(60, 30, 10, ${0.7 * (1 - progress)})`;
-                ctx.beginPath();
-                ctx.arc(0, 0, r * 1.2, 0, Math.PI * 2);
-                ctx.fill();
+                ctx.beginPath(); ctx.arc(0, 0, r * 1.2, 0, Math.PI * 2); ctx.fill();
                 ctx.restore();
-
-                ctx.fillStyle = '#78350f';
-                ctx.strokeStyle = '#271005';
-                ctx.lineWidth = 2;
-
+                ctx.fillStyle = '#78350f'; ctx.strokeStyle = '#271005'; ctx.lineWidth = 2;
                 for (let k = 0; k < 5; k++) {
                     let ang = (Math.PI * 2 / 5) * k;
                     let rx = Math.cos(ang) * (r * 0.75);
                     let ry = Math.sin(ang) * (r * 0.35) - 20;
                     let rockH = 45 * Math.sin(Math.min(1, progress * 2) * Math.PI * 0.5);
-
-                    ctx.beginPath();
-                    ctx.moveTo(rx, ry - rockH);
-                    ctx.lineTo(rx - 12, ry + 10);
-                    ctx.lineTo(rx + 12, ry + 10);
-                    ctx.closePath();
-                    ctx.fill();
-                    ctx.stroke();
-
+                    ctx.beginPath(); ctx.moveTo(rx, ry - rockH); ctx.lineTo(rx - 12, ry + 10); ctx.lineTo(rx + 12, ry + 10); ctx.closePath(); ctx.fill(); ctx.stroke();
                     ctx.fillStyle = '#a16207';
-                    ctx.beginPath();
-                    ctx.moveTo(rx, ry - rockH);
-                    ctx.lineTo(rx, ry + 10);
-                    ctx.lineTo(rx + 12, ry + 10);
-                    ctx.closePath();
-                    ctx.fill();
+                    ctx.beginPath(); ctx.moveTo(rx, ry - rockH); ctx.lineTo(rx, ry + 10); ctx.lineTo(rx + 12, ry + 10); ctx.closePath(); ctx.fill();
                     ctx.fillStyle = '#78350f';
                 }
             }
@@ -2328,8 +2247,7 @@ function draw(timestamp) {
                 ctx.strokeStyle = 'rgba(255, 100, 210, 0.95)'; ctx.lineWidth = 4;
                 ctx.fillStyle = 'rgba(255, 140, 220, 0.25)';
                 let size = 50 + Math.sin(progress * Math.PI * 6) * 6;
-                ctx.beginPath();
-                ctx.moveTo(0, -35 - size); ctx.lineTo(size, -35); ctx.lineTo(0, -35 + size); ctx.lineTo(-size, -35);
+                ctx.beginPath(); ctx.moveTo(0, -35 - size); ctx.lineTo(size, -35); ctx.lineTo(0, -35 + size); ctx.lineTo(-size, -35);
                 ctx.closePath(); ctx.fill(); ctx.stroke();
             }
             else if (p.type === 'absolute_barrier') {
@@ -2511,12 +2429,17 @@ function draw(timestamp) {
         }
     }
 
-    // 💡 [8] 미니맵 렌더링
-    if(mCtx) {
+    // 💡 [8] 미니맵 렌더링 (초당 10프레임으로 연산 제한)
+    if (mCtx && (timestamp - (window.lastMinimapDraw || 0) > 100)) {
+        window.lastMinimapDraw = timestamp;
+
         mCtx.setTransform(1, 0, 0, 1, 0, 0); 
         mCtx.clearRect(0, 0, 150, 150); 
         mCtx.fillStyle = '#111'; mCtx.fillRect(0,0,150,150); 
-        mCtx.save(); mCtx.translate(75, 75); mCtx.scale(0.04, 0.04); mCtx.translate(-player.x, -player.y);
+        mCtx.save(); 
+        mCtx.translate(75, 75); 
+        mCtx.scale(0.04, 0.04); 
+        mCtx.translate(-player.x, -player.y);
         
         if(mData.safeZones) { 
             mCtx.fillStyle = 'rgba(0, 255, 0, 0.15)'; 
@@ -2543,49 +2466,48 @@ function draw(timestamp) {
         mCtx.fillStyle = '#0f0'; 
         mCtx.beginPath(); mCtx.arc(player.x, player.y, 120, 0, Math.PI*2); mCtx.fill(); 
         mCtx.restore();
-
-        let allPlayers = [player, ...entities.filter(e => e.isPlayer)];
-        allPlayers.forEach(pEnt => {
-            if (pEnt.bubbleText && pEnt.bubbleTimer && Date.now() < pEnt.bubbleTimer) {
-                ctx.save();
-                ctx.font = 'bold 12px "Malgun Gothic"';
-                ctx.textAlign = 'center';
-                
-                let textWidth = ctx.measureText(pEnt.bubbleText).width;
-                let boxWidth = textWidth + 16;
-                let boxHeight = 24;
-
-                let worldW = width / ZOOM;
-                let visibleWorldH = (height - (uiBar ? uiBar.offsetHeight : 165)) / ZOOM;
-                let camX = Math.max(0, Math.min(Math.round(player.x) - Math.floor(worldW / 2), mapSize - worldW));
-                let camY = Math.max(0, Math.min(Math.round(player.y) - Math.floor(visibleWorldH / 2), mapSize - visibleWorldH));
-
-                let screenX = (pEnt.x - camX) * ZOOM;
-                let screenY = (pEnt.y - camY) * ZOOM;
-
-                let bx = screenX;
-                let by = screenY - 55 - (pEnt.size || 20) + 15;
-
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath();
-                ctx.roundRect(bx - boxWidth / 2, by - boxHeight / 2, boxWidth, boxHeight, 6);
-                ctx.fill();
-                ctx.stroke();
-
-                ctx.fillStyle = '#ffffff';
-                ctx.fillText(pEnt.bubbleText, bx, by + 4);
-                ctx.restore();
-            } else if (pEnt.bubbleTimer && Date.now() >= pEnt.bubbleTimer) {
-                pEnt.bubbleText = null;
-                pEnt.bubbleTimer = null;
-            }
-        });
     }
+
+    // 💡 [9] 말풍선(Chat Bubble) 렌더링 (미니맵 제한과 무관하게 60FPS로 부드럽게 출력)
+    let allPlayers = [player, ...entities.filter(e => e.isPlayer)];
+    allPlayers.forEach(pEnt => {
+        if (pEnt.bubbleText && pEnt.bubbleTimer && Date.now() < pEnt.bubbleTimer) {
+            ctx.save();
+            ctx.font = 'bold 12px "Malgun Gothic"';
+            ctx.textAlign = 'center';
+            
+            let textWidth = ctx.measureText(pEnt.bubbleText).width;
+            let boxWidth = textWidth + 16;
+            let boxHeight = 24;
+
+            let worldW = width / ZOOM;
+            let visibleWorldH = (height - (uiBar ? uiBar.offsetHeight : 165)) / ZOOM;
+            let camX = Math.max(0, Math.min(Math.round(player.x) - Math.floor(worldW / 2), mapSize - worldW));
+            let camY = Math.max(0, Math.min(Math.round(player.y) - Math.floor(visibleWorldH / 2), mapSize - visibleWorldH));
+
+            let screenX = (pEnt.x - camX) * ZOOM;
+            let screenY = (pEnt.y - camY) * ZOOM;
+
+            let bx = screenX;
+            let by = screenY - 55 - (pEnt.size || 20) + 15;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.roundRect(bx - boxWidth / 2, by - boxHeight / 2, boxWidth, boxHeight, 6);
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(pEnt.bubbleText, bx, by + 4);
+            ctx.restore();
+        } else if (pEnt.bubbleTimer && Date.now() >= pEnt.bubbleTimer) {
+            pEnt.bubbleText = null;
+            pEnt.bubbleTimer = null;
+        }
+    });
 }
-
-
 
 // ==========================================
 // [4. 전투 및 이벤트 시스템]
@@ -3244,23 +3166,27 @@ function update(timestamp) {
     let moveDelta = Math.min(1.0, (dt / 1000) * 3.2);
 
     for (let i = 0; i < entities.length; i++) {
-        let e = entities[i];
-        if (!e) continue;
-        if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
-            let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
-            if (dist > 1.5) {
-                e.x += (e.moveX - e.x) * moveDelta;
-                e.y += (e.moveY - e.y) * moveDelta;
-                e.isMoving = true;
-                e.lastMoveAnimTime = timestamp;
-                e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
-            } else { 
-                if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
-                    e.isMoving = false; 
-                }
+    let e = entities[i];
+    if (!e) continue;
+    if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
+        let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
+        
+        // 💡 1.5 -> 3.0으로 데드존 완화 및 근접 시 스냅 처리
+        if (dist > 3.0) {
+            e.x += (e.moveX - e.x) * moveDelta;
+            e.y += (e.moveY - e.y) * moveDelta;
+            e.isMoving = true;
+            e.lastMoveAnimTime = timestamp;
+            e.angle = Math.atan2(e.moveY - e.y, e.moveX - e.x);
+        } else { 
+            e.x = e.moveX;
+            e.y = e.moveY;
+            if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
+                e.isMoving = false; 
             }
         }
     }
+}
 
     if (timestamp - (player.lastRegen || 0) > 2000) {
         player.lastRegen = timestamp;
@@ -3579,24 +3505,25 @@ function update(timestamp) {
     }
 
     if (player.moveX === undefined || player.moveY === undefined) {
-        player.isMoving = false;
+    player.isMoving = false;
+} else {
+    let dist = Math.hypot(player.moveX - player.x, player.moveY - player.y);
+    let moveStep = pSpeed * (dt / 1000);
+    
+    // 💡 최소 5px 이내 진입 시 강제 좌표 일치화 후 이동 종료
+    if (dist <= Math.max(moveStep, 5)) {
+        player.x = player.moveX; 
+        player.y = player.moveY; 
+        player.isMoving = false; 
+        player.moveX = undefined; 
+        player.moveY = undefined;
     } else {
-        let dist = Math.hypot(player.moveX - player.x, player.moveY - player.y);
-        let moveStep = pSpeed * (dt / 1000);
-        
-        if (dist <= Math.max(moveStep, 3)) {
-            player.x = Math.round(player.moveX); 
-            player.y = Math.round(player.moveY); 
-            player.isMoving = false; 
-            player.moveX = undefined; 
-            player.moveY = undefined;
-        } else {
-            player.isMoving = true;
-            player.angle = Math.atan2(player.moveY - player.y, player.moveX - player.x);
-            player.x = Math.max(50, Math.min(mapSize - 50, player.x + Math.cos(player.angle) * moveStep));
-            player.y = Math.max(50, Math.min(mapSize - 50, player.y + Math.sin(player.angle) * moveStep));
-        }
+        player.isMoving = true;
+        player.angle = Math.atan2(player.moveY - player.y, player.moveX - player.x);
+        player.x += Math.cos(player.angle) * moveStep;
+        player.y += Math.sin(player.angle) * moveStep;
     }
+}
 
     let margin = 30;
     player.x = Math.max(margin, Math.min(mapSize - margin, player.x));
