@@ -5252,38 +5252,51 @@ window.makeHudDraggable = function(el, defaultLeft, defaultTop) {
     el.style.zIndex = '99998';
     el.style.cursor = 'move';
     el.style.pointerEvents = 'auto';
+    el.style.touchAction = 'none'; // 💡 모바일 브라우저의 화면 스크롤 간섭 원천 차단
 
     if (el.dataset.dragInit) return;
     el.dataset.dragInit = 'true';
 
-    let isDragging = false, startX, startY, initialLeft, initialTop, moved = false;
+    let isDragging = false, startX = 0, startY = 0, initialLeft = 0, initialTop = 0, moved = false;
 
     const onDown = (e) => {
-        isDragging = true; moved = false;
-        startX = e.clientX || (e.touches && e.touches[0].clientX);
-        startY = e.clientY || (e.touches && e.touches[0].clientY);
+        isDragging = true; 
+        moved = false;
+        
+        let clientX = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+        let clientY = e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY;
+        
+        startX = clientX;
+        startY = clientY;
         initialLeft = el.offsetLeft;
         initialTop = el.offsetTop;
     };
 
     const onMove = (e) => {
         if (!isDragging) return;
-        let clientX = e.clientX || (e.touches && e.touches[0].clientX);
-        let clientY = e.clientY || (e.touches && e.touches[0].clientY);
+        if (e.cancelable) e.preventDefault(); // 💡 터치 이동 중 화면 튕김 방지
+
+        let clientX = e.touches && e.touches[0] ? e.touches[0].clientX : e.clientX;
+        let clientY = e.touches && e.touches[0] ? e.touches[0].clientY : e.clientY;
+        
         let dx = clientX - startX;
         let dy = clientY - startY;
 
         if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved = true;
 
-        el.style.left = (initialLeft + dx) + 'px';
-        el.style.top = (initialTop + dy) + 'px';
+        // 화면 밖으로 이탈하지 않도록 clamp
+        let maxLeft = window.innerWidth - el.offsetWidth - 4;
+        let maxTop = window.innerHeight - el.offsetHeight - 4;
+        
+        el.style.left = Math.max(4, Math.min(maxLeft, initialLeft + dx)) + 'px';
+        el.style.top = Math.max(4, Math.min(maxTop, initialTop + dy)) + 'px';
         el.style.right = 'auto'; 
     };
 
     const onUp = () => {
         if (isDragging && moved) {
             window._blockClickDueToDrag = true;
-            setTimeout(() => { window._blockClickDueToDrag = false; }, 100);
+            setTimeout(() => { window._blockClickDueToDrag = false; }, 120);
         }
         isDragging = false;
     };
@@ -5291,19 +5304,21 @@ window.makeHudDraggable = function(el, defaultLeft, defaultTop) {
     el.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    el.addEventListener('touchstart', onDown, {passive: true});
-    window.addEventListener('touchmove', onMove, {passive: true});
+
+    // 💡 passive: false로 지정하여 preventDefault가 정상 동작하도록 수정
+    el.addEventListener('touchstart', onDown, { passive: false });
+    window.addEventListener('touchmove', onMove, { passive: false });
     window.addEventListener('touchend', onUp);
+    window.addEventListener('touchcancel', onUp);
 };
 
 // ==========================================
-// 👑 [파티 HUD] 드래그 지원 & 파티장 왕관(👑) 표기
+// 👑 [파티 HUD] 가로 50% 축소(64px) 및 세로 슬림 압축 렌더링
 // ==========================================
 window.renderPartyHUD = function() {
     let data = window.currentPartyData;
     let hudList = document.getElementById('party-hud-list');
     
-    // 요소가 없으면 단독 HUD 컨테이너로 생성
     if (!hudList) {
         hudList = document.createElement('div');
         hudList.id = 'party-hud-list';
@@ -5318,15 +5333,15 @@ window.renderPartyHUD = function() {
 
     hudList.style.display = 'flex';
     hudList.style.flexDirection = 'column';
-    hudList.style.gap = '3px';
+    hudList.style.gap = '2px'; // 💡 세로 간격 3px -> 2px 압축
+    hudList.style.touchAction = 'none';
 
-    // 💡 [핵심] 컨테이너 자체를 마우스/터치로 어디서든 자유롭게 드래그 이동 가능하도록 설정
     if (typeof window.makeHudDraggable === 'function') {
-        window.makeHudDraggable(hudList, 10, 70);
+        window.makeHudDraggable(hudList, 8, 70);
     } else {
         hudList.style.position = 'fixed';
         if (!hudList.style.top) hudList.style.top = '70px';
-        if (!hudList.style.left) hudList.style.left = '10px';
+        if (!hudList.style.left) hudList.style.left = '8px';
         hudList.style.zIndex = '99998';
         hudList.style.cursor = 'move';
         hudList.style.pointerEvents = 'auto';
@@ -5350,21 +5365,25 @@ window.renderPartyHUD = function() {
     data.party.members.forEach(member => {
         let hpPct = Math.max(0, Math.min(100, (member.hp / (member.maxHp || 100)) * 100));
         let isLeader = data.party.leader === member.socketId;
-        let leaderIcon = isLeader ? '👑 ' : '';
+        let leaderIcon = isLeader ? '👑' : '';
         let displayName = `${leaderIcon}${member.name}`;
 
         let isSelected = (window.selectedAllyId === member.socketId);
-        let borderStyle = isSelected ? 'border: 2px solid #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.6);' : (isLeader ? 'border: 1px solid #facc15;' : 'border: 1px solid #444455;');
+        let borderStyle = isSelected 
+            ? 'border: 1.5px solid #4ade80; box-shadow: 0 0 5px rgba(74,222,128,0.7);' 
+            : (isLeader ? 'border: 1px solid #facc15;' : 'border: 1px solid #3b3b4f;');
         let nameColor = isLeader ? '#facc15' : '#ffffff';
 
-        // 💡 기존보다 가로 크기를 약 10% 줄인 width: 126px 적용 및 아군 선택(selectAlly) 로직 연동
+        // 💡 [변경] 가로 64px(50% 축소), 패딩 2px 3px, 폰트 9px, 바 높이 3px로 세로 압축
         html += `
-        <div style="cursor: pointer; position: relative; background: rgba(20,20,30,0.95); padding: 4px 6px; border-radius: 3px; width: 126px; box-sizing: border-box; ${borderStyle} transition: 0.15s;"
+        <div style="cursor: pointer; position: relative; background: rgba(16,16,24,0.92); padding: 2px 3px; border-radius: 3px; width: 64px; box-sizing: border-box; ${borderStyle} user-select: none; -webkit-user-select: none;"
              onclick="if(!window._blockClickDueToDrag) window.selectAlly('${member.socketId}', '${member.name}')"
              oncontextmenu="event.preventDefault(); if(!window._blockClickDueToDrag) window.handlePartyHudClick('${member.socketId}', '${member.name}'); return false;">
-            <div style="color: ${nameColor}; font-size: 10px; font-weight: bold; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
-            <div style="width: 100%; height: 4px; background: #111; border-radius: 2px; overflow: hidden; border: 0.5px solid #222;">
-                <div style="width: ${hpPct}%; height: 100%; background: #38bdf8; transition: width 0.2s;"></div>
+            <div style="color: ${nameColor}; font-size: 9px; font-weight: bold; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;">
+                ${displayName}
+            </div>
+            <div style="width: 100%; height: 3px; background: #111; border-radius: 1.5px; overflow: hidden; border: 0.5px solid #222;">
+                <div style="width: ${hpPct}%; height: 100%; background: #38bdf8; transition: width 0.15s;"></div>
             </div>
         </div>`;
     });

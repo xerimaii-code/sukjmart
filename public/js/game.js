@@ -1897,31 +1897,37 @@ function draw(timestamp) {
                 drawNameTag(ctx, displayName, rx, Math.round(e.y - sz - 33), false, false, null, tagColor);
                 
                 if (e.partyId) {
-                    ctx.save();
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    let badgeText = '👑 PARTY';
-                    let badgeWidth = isMobile ? 54 : 64;
-                    let badgeHeight = isMobile ? 14 : 16;
-                    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 54));
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    let badgeText = '👑 PARTY';
+    let badgeWidth = isMobile ? 54 : 64;
+    let badgeHeight = isMobile ? 15 : 18; // 높이를 살짝 키워 답답함 해소
+    let badgeY = Math.round(e.y - sz - (isMobile ? 52 : 56));
 
-                    ctx.shadowBlur = 8;
-                    ctx.shadowColor = '#a855f7';
-                    ctx.fillStyle = 'rgba(24, 10, 40, 0.9)';
-                    ctx.strokeStyle = '#c084fc';
-                    ctx.lineWidth = 1.5;
+    // 💡 [핵심] 배경을 완전한 검은색으로, 테두리는 밝은 핑크빛으로 하여 눈에 띄게
+    ctx.shadowBlur = 4;
+    ctx.shadowColor = '#000000';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.95)';
+    ctx.strokeStyle = '#e879f9';
+    ctx.lineWidth = 1.5;
 
-                    ctx.beginPath();
-                    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
-                    ctx.fill();
-                    ctx.stroke();
+    ctx.beginPath();
+    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
+    ctx.fill();
+    ctx.stroke();
 
-                    ctx.shadowBlur = 0;
-                    ctx.font = `bold ${isMobile ? 9.5 : 11}px "Malgun Gothic", sans-serif`;
-                    ctx.fillStyle = '#f5d0fe';
-                    ctx.fillText(badgeText, rx, badgeY + 1);
-                    ctx.restore();
-                }
+    ctx.shadowBlur = 0;
+    ctx.font = `bold ${isMobile ? 10 : 12}px "Malgun Gothic", sans-serif`;
+    
+    // 💡 [가독성 극대화] 글씨 테두리를 검정색으로 두르고 안을 순백색으로 채움
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(badgeText, rx, badgeY + 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(badgeText, rx, badgeY + 1);
+    ctx.restore();
+}
             } 
             else if (e.isBoss) {
                 drawNameTag(ctx, e.name, rx, Math.round(e.y - sz - 30), true, false);
@@ -4031,17 +4037,16 @@ if (window.socket) {
     window.socket.on('sync_entities', (data) => {
         if (!gameStarted || !currentUser) return;
 
-        // 💡 1. 몬스터 동기화 (새로 리스폰된 몬스터 추가 및 렉 유발 유령 몬스터 제거)
+        // 1. 몬스터 동기화
         if (data.monsters) {
             const serverMobIds = data.monsters.map(m => m.id);
             data.monsters.forEach(sm => {
                 let existingMob = entities.find(e => !e.isPlayer && !e.isSummon && !e.isOtherMerc && e.id === sm.id);
                 if (existingMob) {
-                    existingMob.hp = sm.hp;
+                    existingMob.hp = sm.h; // 💡 압축 키 h 사용
                     if (sm.maxHp) existingMob.maxHp = sm.maxHp;
-                    existingMob.angle = sm.angle;
+                    existingMob.angle = sm.a; // 💡 압축 키 a 사용
                     
-                    // 움직임 및 위치 동기화
                     if (sm.x !== undefined && sm.y !== undefined) {
                         let dist = Math.hypot(sm.x - existingMob.x, sm.y - existingMob.y);
                         if (dist > 150) {
@@ -4052,9 +4057,10 @@ if (window.socket) {
                         existingMob.moveY = sm.y;
                     }
                 } else {
-                    // 서버에서 새로 생성(리스폰)된 몬스터를 화면에 추가
                     entities.push({
                         ...sm,
+                        hp: sm.h, // 💡 압축 키로 초기화
+                        angle: sm.a, // 💡 압축 키로 초기화
                         map: currentMap,
                         moveX: sm.x,
                         moveY: sm.y
@@ -4062,7 +4068,6 @@ if (window.socket) {
                 }
             });
 
-            // 클라이언트에만 남아있는 유령 몬스터 삭제 (렉 원인 제거)
             for (let i = entities.length - 1; i >= 0; i--) {
                 let ent = entities[i];
                 if (!ent.isPlayer && !ent.isSummon && !ent.isOtherMerc && !ent.isBoss) {
@@ -4074,38 +4079,40 @@ if (window.socket) {
             }
         }
 
-        // 💡 2. 플레이어/에이전트 동기화 (기사 돌진 시 원거리에서 때리는 버그 수정)
+        // 2. 플레이어 동기화
         if (data.players) {
-            const serverPlayerIds = data.players.map(p => p.socketId);
+            const serverPlayerIds = data.players.map(p => p.id); // 💡 압축 키 id 사용
             data.players.forEach(sp => {
-                if (window.socket && sp.socketId === window.socket.id) return;
+                if (window.socket && sp.id === window.socket.id) return; // 💡 압축 키 id 사용
                 
-                let existingPlayer = entities.find(e => e.isPlayer && (e.id === sp.socketId || e.socketId === sp.socketId));
+                let existingPlayer = entities.find(e => e.isPlayer && (e.id === sp.id || e.socketId === sp.id)); // 💡 압축 키 id 사용
                 if (existingPlayer) {
                     if (sp.x !== undefined && sp.y !== undefined) {
                         let dist = Math.hypot(sp.x - existingPlayer.x, sp.y - existingPlayer.y);
-                        // 에이전트가 돌진 시 미끄러지지 않고 즉시 이동
-                        if (dist > 120) { 
+                        
+                        // 350px로 넉넉하게 주어 점프 억제
+                        if (dist > 350) { 
                             existingPlayer.x = sp.x;
                             existingPlayer.y = sp.y;
                         }
                         existingPlayer.moveX = sp.x; 
                         existingPlayer.moveY = sp.y;
+                        if (sp.m !== undefined) existingPlayer.isMoving = (sp.m === 1); // 💡 압축 키 m 해석
                     }
-                    existingPlayer.hp = sp.hp;
+                    existingPlayer.hp = sp.h; // 💡 압축 키 h 사용
                     if (sp.maxHp) existingPlayer.maxHp = sp.maxHp;
-                    if (sp.targetId !== undefined) existingPlayer.targetId = sp.targetId;
+                    if (sp.t !== undefined) existingPlayer.targetId = sp.t; // 💡 압축 키 t 사용
                     if (sp.partyId !== undefined) existingPlayer.partyId = sp.partyId;
                     if (sp.charClass) existingPlayer.charClass = sp.charClass;
                     if (sp.equip) existingPlayer.equip = sp.equip;
                     if (sp.name) existingPlayer.name = sp.name;
-                    if (sp.angle !== undefined) existingPlayer.angle = sp.angle;
+                    if (sp.a !== undefined) existingPlayer.angle = sp.a; // 💡 압축 키 a 사용
                 } else {
                     entities.push({
-                        id: sp.socketId, socketId: sp.socketId, isPlayer: true, name: sp.name, charClass: sp.charClass || 'knight',
+                        id: sp.id, socketId: sp.id, isPlayer: true, name: sp.name, charClass: sp.charClass || 'knight', // 💡 압축 키 id 사용
                         x: sp.x, y: sp.y, moveX: sp.x, moveY: sp.y,
-                        hp: sp.hp, maxHp: sp.maxHp, size: 20, map: currentMap,
-                        equip: sp.equip || { weapon: null, armor: null }, partyId: sp.partyId, targetId: sp.targetId, angle: sp.angle || 0
+                        hp: sp.h, maxHp: sp.maxHp, size: 20, map: currentMap, // 💡 압축 키 h 사용
+                        equip: sp.equip || { weapon: null, armor: null }, partyId: sp.partyId, targetId: sp.t, angle: sp.a || 0 // 💡 압축 키 t, a 사용
                     });
                 }
             });
@@ -4118,7 +4125,7 @@ if (window.socket) {
             }
         }
 
-        // 💡 3. 타 유저의 용병/소환수 동기화
+        // 3. 타 유저의 용병/소환수 동기화
         if (data.mercs) {
             const serverMercIds = data.mercs.map(m => m.id);
             data.mercs.forEach(sm => {
@@ -4137,10 +4144,10 @@ if (window.socket) {
                         existingMerc.moveX = sm.x;
                         existingMerc.moveY = sm.y;
                     }
-                    existingMerc.hp = sm.hp;
+                    existingMerc.hp = sm.h; // 💡 압축 키 h 사용
                     if (sm.maxHp) existingMerc.maxHp = sm.maxHp;
-                    if (sm.angle !== undefined) existingMerc.angle = sm.angle;
-                    if (sm.isMoving !== undefined) existingMerc.isMoving = sm.isMoving;
+                    if (sm.a !== undefined) existingMerc.angle = sm.a; // 💡 압축 키 a 사용
+                    if (sm.m !== undefined) existingMerc.isMoving = (sm.m === 1); // 💡 압축 키 m 해석
                     if (sm.equip) existingMerc.equip = sm.equip;
                     if (sm.mercType) existingMerc.mercType = sm.mercType;
                     if (sm.charClass) existingMerc.charClass = sm.charClass;
@@ -4148,7 +4155,9 @@ if (window.socket) {
                     if (sm.ownerName) existingMerc.ownerName = sm.ownerName;
                 } else {
                     entities.push({
-                        ...sm, isOtherMerc: true, isSummon: true, size: 20, map: currentMap,
+                        ...sm, 
+                        hp: sm.h, angle: sm.a, isMoving: (sm.m === 1), // 💡 압축 키 초기화
+                        isOtherMerc: true, isSummon: true, size: 20, map: currentMap,
                         moveX: sm.x, moveY: sm.y, charClass: sm.charClass || sm.mercType || 'knight',
                         mercType: sm.mercType || 'knight', equip: sm.equip || { weapon: null, armor: null, helmet: null, cloak: null }
                     });
