@@ -1,5 +1,5 @@
 // =========================================================================
-// aiAgentRunner.js (Groq LLM 연동, 자율 파티 초대, 맵 이동/점사 추적 통합본)
+// aiAgentRunner.js (Groq LLM 연동, 자율 파티 초대, 맵 이동/점사 추적 + 🚀 네트워크 최적화)
 // =========================================================================
 require('dotenv').config();
 const io = require('socket.io-client');
@@ -15,6 +15,8 @@ const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const groq = new Groq({ apiKey: GROQ_API_KEY });
+
+const fastHypot = (dx, dy) => Math.sqrt(dx * dx + dy * dy); // 💡 수학 연산 최적화 함수
 
 let currentGroqModel = 'qwen/qwen3.8-27b';
 
@@ -51,7 +53,7 @@ async function initGroqModel() {
 }
 
 let activeAgents = []; 
-const MAX_CONCURRENT = 50; // 💡 상시 접속 에이전트 50명 유지[cite: 8]
+const MAX_CONCURRENT = 50;
 
 class AIAgentClient {
     constructor(dbRow) {
@@ -65,6 +67,12 @@ class AIAgentClient {
         this.charData.moveY = undefined;
         this.charData.ignoredTargetId = null;
         this.charData.ignoredUntil = 0;
+
+        // 💡 네트워크 최적화를 위한 상태 기록 변수
+        this.lastSentHp = -1;
+        this.lastSentTargetId = null;
+        this.lastForcedUpdate = 0;
+        this.lastSentTargetEventId = null;
 
         if (!this.charData.charClass) {
             let nameLower = (this.charData.name || '').toLowerCase();
@@ -95,7 +103,7 @@ class AIAgentClient {
         this.isShopping = false; 
         this.sessionStart = Date.now();
         
-        let randomMinutes = Math.floor(Math.random() * 121) + 60; // 60분 ~ 180분
+        let randomMinutes = Math.floor(Math.random() * 121) + 60;
         this.sessionDuration = randomMinutes * 60 * 1000; 
          
         this.lastAiCallTime = 0;
@@ -120,7 +128,7 @@ class AIAgentClient {
         this.lastInviterName = null;
         this.followTarget = null;
         this.followDist = 60;
-        this.warpAllowed = false; // 💡 파티장 맵 이동 허가 플래그[cite: 8]
+        this.warpAllowed = false; 
 
         this.lastTalkedUser = null;
         this.lastTalkTime = 0;
@@ -166,7 +174,7 @@ class AIAgentClient {
                 level: this.charData.level || 1,
                 totalMr: this.charData.totalMr || 50,
                 totalDmgReduction: this.charData.totalDmgReduction || 0,
-                isAI: true // 💡 서버 측 AI 소켓 식별 플래그 전송[cite: 8]
+                isAI: true
             });
             this.setupListeners();
             this.startLoop();
@@ -184,12 +192,73 @@ class AIAgentClient {
             }, 1000);
         });
 
+        // 💡 [수정] 압축 키(h, a, m, t)와 일반 키 모두 완벽 복원하여 엔티티 동기화
         this.socket.on('sync_entities', (packet) => {
-            this.worldPlayers = (packet.players || []).map(p => ({ ...p, map: this.charData.map, isPlayer: true }));
+            this.worldPlayers = (packet.players || []).map(p => ({
+                ...p,
+                hp: (p.hp !== undefined) ? p.hp : (p.h !== undefined ? p.h : 150),
+                maxHp: p.maxHp || 150,
+                angle: (p.angle !== undefined) ? p.angle : (p.a || 0),
+                isMoving: p.isMoving !== undefined ? p.isMoving : (p.m === 1),
+                targetId: (p.targetId !== undefined) ? p.targetId : p.t,
+                map: this.charData.map,
+                isPlayer: true
+            }));
+
             if (packet.monsters) {
-                this.worldMonsters = packet.monsters.map(m => ({ ...m, map: this.charData.map }));
+                this.worldMonsters = packet.monsters.map(m => ({
+                    ...m,
+                    hp: (m.hp !== undefined) ? m.hp : (m.h !== undefined ? m.h : 100),
+                    maxHp: m.maxHp || 100,
+                    angle: (m.angle !== undefined) ? m.angle : (m.a || 0),
+                    targetId: (m.targetId !== undefined) ? m.targetId : m.t,
+                    map: this.charData.map
+                }));
             }
-            this.worldMercs = (packet.mercs || []).map(m => ({ ...m, map: this.charData.map, isSummon: true, isOtherMerc: true }));
+
+            this.worldMercs = (packet.mercs || []).map(m => ({
+                ...m,
+                hp: (m.hp !== undefined) ? m.hp : (m.h !== undefined ? m.h : 100),
+                maxHp: m.maxHp || 100,
+                angle: (m.angle !== undefined) ? m.angle : (m.a || 0),
+                isMoving: m.isMoving !== undefined ? m.isMoving : (m.m === 1),
+                map: this.charData.map,
+                isSummon: true,
+                isOtherMerc: true
+            }));
+        });
+
+        // 💡 [추가] 맵 입장 시 초기 몬스터/아이템 동기화
+        this.socket.on('sync_map_state', (packet) => {
+            if (packet.monsters) {
+                this.worldMonsters = packet.monsters.map(m => ({
+                    ...m,
+                    hp: (m.hp !== undefined) ? m.hp : (m.h !== undefined ? m.h : 100),
+                    maxHp: m.maxHp || 100,
+                    map: this.charData.map
+                }));
+            }
+            if (packet.items) {
+                this.worldItems = packet.items;
+            }
+        });
+
+        // 💡 [추가] 몬스터 피격 시 실시간 체력 반영
+        this.socket.on('monster_hit', (data) => {
+            let mob = this.worldMonsters.find(m => m.id === data.monsterId);
+            if (mob && data.hpRemaining !== undefined) {
+                mob.hp = data.hpRemaining;
+            }
+        });
+
+        // 💡 [추가] 몬스터 사망 시 즉시 타겟 해제 및 목록에서 삭제
+        this.socket.on('monster_dead', (data) => {
+            this.worldMonsters = this.worldMonsters.filter(m => m.id !== data.monsterId);
+            if (this.charData.target && this.charData.target.id === data.monsterId) {
+                this.charData.target = null;
+                this.charData.targetId = null;
+                this.charData.isMoving = false;
+            }
         });
 
         this.socket.on('item_spawned', (packet) => this.worldItems.push(packet.item));
@@ -276,10 +345,8 @@ class AIAgentClient {
             if (packet && packet.rejectorName) {
                 if (packet.type === 'hard') {
                     this.rejectedTargets.add(packet.rejectorName);
-                    console.log(`[파티 거절-차단] ${packet.rejectorName}님이 초대를 차단했습니다.`);
                 } else {
                     this.invitedHistory.set(packet.rejectorName, Date.now());
-                    console.log(`[파티 거절-단순] ${packet.rejectorName}님이 초대를 거절했습니다. 5분 뒤 쿨타임 해제.`);
                 }
             }
         });
@@ -292,10 +359,7 @@ class AIAgentClient {
                 this.followTarget = null;
                 this.charData.target = null;
                 this.warpAllowed = false;
-                this.socket.emit('chat_message', { 
-                    message: "파티 사냥 수고하셨습니다! 득템하세요~", 
-                    chatType: 'normal' 
-                });
+                this.socket.emit('chat_message', { message: "파티 사냥 수고하셨습니다! 득템하세요~", chatType: 'normal' });
             }
         });
 
@@ -311,6 +375,7 @@ class AIAgentClient {
             const sharedMob = this.worldMonsters.find(m => m.id === packet.targetId && m.hp > 0 && !m.isDead);
             if (sharedMob) {
                 this.charData.target = sharedMob;
+                this.charData.targetId = sharedMob.id;
                 this.charData.isMoving = false;
                 this.combatMemory = `파티장 명령으로 ${sharedMob.name}을(를) 점사 중입니다!`;
                 
@@ -320,7 +385,6 @@ class AIAgentClient {
             }
         });
 
-        // 💡 파티장 맵 이동 패킷 수신 처리[cite: 8]
         this.socket.on('party_leader_map_move', (data) => {
             if (this.warpAllowed || data.map === 'boss_raid') {
                 this.warpAllowed = false;
@@ -404,7 +468,7 @@ class AIAgentClient {
             let lvDiff = Math.abs((p.level || 1) - (this.charData.level || 1));
             if (lvDiff > 5) return false;
 
-            let dist = Math.hypot(p.x - this.charData.x, p.y - this.charData.y);
+            let dist = fastHypot(p.x - this.charData.x, p.y - this.charData.y);
             return dist <= 500;
         });
 
@@ -425,13 +489,13 @@ class AIAgentClient {
     }
 
     startLoop() {
-        this.isLoggingOut = false; // 💡 로그아웃 중복 방지 플래그 추가
+        this.isLoggingOut = false; 
         
         this.loopTimer = setInterval(() => {
-            if (this.isLoggingOut) return; // 💡 이미 퇴장 처리 중이면 루프 스킵
+            if (this.isLoggingOut) return; 
 
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
-                this.isLoggingOut = true; // 💡 퇴장 시작 상태로 변경
+                this.isLoggingOut = true; 
                 console.log(`[🤖 에이전트 퇴장] ${this.charData.name}님이 활동 시간을 채워 교체됩니다.`);
                 this.gracefulLogout(); 
                 return;
@@ -459,31 +523,47 @@ class AIAgentClient {
             this.checkMercenaryHire(); 
             this.manageMercenaries(200); 
 
-            this.socket.emit('player_update', {
-                userId: this.dbRow.id,
-                name: this.charData.name, 
-                charClass: this.charData.charClass,
-                x: Math.round(this.charData.x), 
-                y: Math.round(this.charData.y),
-                angle: Number((this.charData.angle || 0).toFixed(2)),
-                hp: this.charData.hp, 
-                maxHp: this.charData.maxHp,
-                mp: this.charData.mp,
-                maxMp: this.charData.maxMp,
-                atk: this.charData.atk, 
-                def: this.charData.def,
-                level: this.charData.level, 
-                map: this.charData.map || 'talking_island',
-                targetId: this.charData.targetId || null,
-                isMoving: Boolean(this.charData.isMoving),
-                equip: this.charData.equip || {},
-                mercs: this.charData.mercs || [],
-                totalMr: this.charData.totalMr || 50,
-                totalDmgReduction: this.charData.totalDmgReduction || 0
-            });
+            // 💡 [네트워크 최적화] 캐릭터 상태가 변경되었거나 2초가 지났을 때 서버에 동기화
+            let hasChanged = this.charData.isMoving || 
+                             this.charData.hp !== this.lastSentHp || 
+                             this.charData.targetId !== this.lastSentTargetId ||
+                             (now - this.lastForcedUpdate > 2000);
 
-            if (this.charData.targetId) {
+            if (hasChanged) {
+                this.lastSentHp = this.charData.hp;
+                this.lastSentTargetId = this.charData.targetId;
+                this.lastForcedUpdate = now;
+
+                this.socket.emit('player_update', {
+                    userId: this.dbRow.id,
+                    name: this.charData.name, 
+                    charClass: this.charData.charClass,
+                    x: Math.round(this.charData.x), 
+                    y: Math.round(this.charData.y),
+                    angle: Number((this.charData.angle || 0).toFixed(2)),
+                    hp: this.charData.hp, 
+                    maxHp: this.charData.maxHp,
+                    mp: this.charData.mp,
+                    maxMp: this.charData.maxMp,
+                    atk: this.charData.atk, 
+                    def: this.charData.def,
+                    level: this.charData.level, 
+                    map: this.charData.map || 'talking_island',
+                    targetId: this.charData.targetId || null,
+                    isMoving: Boolean(this.charData.isMoving),
+                    equip: this.charData.equip || {},
+                    mercs: this.charData.mercs || [],
+                    totalMr: this.charData.totalMr || 50,
+                    totalDmgReduction: this.charData.totalDmgReduction || 0
+                });
+            }
+
+            if (this.charData.targetId && this.charData.targetId !== this.lastSentTargetEventId) {
+                this.lastSentTargetEventId = this.charData.targetId;
                 this.socket.emit('player_target', { targetId: this.charData.targetId });
+            } else if (!this.charData.targetId && this.lastSentTargetEventId) {
+                this.lastSentTargetEventId = null;
+                this.socket.emit('player_target', { targetId: null });
             }
         }, 200); 
     }
@@ -491,7 +571,7 @@ class AIAgentClient {
     executeFollowMovement() {
         let leader = this.worldPlayers.find(p => p.name === this.followTarget);
         if (leader) {
-            let dist = Math.hypot(leader.x - this.charData.x, leader.y - this.charData.y);
+            let dist = fastHypot(leader.x - this.charData.x, leader.y - this.charData.y);
             if (dist > this.followDist + 30) {
                 let angle = Math.atan2(leader.y - this.charData.y, leader.x - this.charData.x);
                 this.charData.moveX = leader.x - Math.cos(angle) * this.followDist;
@@ -505,7 +585,7 @@ class AIAgentClient {
         let eClass = entity.charClass || entity.mercType;
         if (eClass !== 'knight' || !target) return false;
          
-        let dist = Math.hypot(target.x - entity.x, target.y - entity.y);
+        let dist = fastHypot(target.x - entity.x, target.y - entity.y);
         if (dist > 55 && dist <= 350 && (now - (entity.lastRushTime || 0) > 2000)) {
             entity.lastRushTime = now;
             let rushAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
@@ -573,7 +653,7 @@ class AIAgentClient {
 
     updateMovement(dtMs) {
         if (this.charData.isMoving && this.charData.moveX !== undefined && this.charData.moveY !== undefined) {
-            let dist = Math.hypot(this.charData.moveX - this.charData.x, this.charData.moveY - this.charData.y);
+            let dist = fastHypot(this.charData.moveX - this.charData.x, this.charData.moveY - this.charData.y);
             let speed = 130 * (dtMs / 1000); 
             if (this.charData.buffs && this.charData.buffs.haste && this.charData.buffs.haste > Date.now()) speed += 50;
 
@@ -629,7 +709,7 @@ class AIAgentClient {
                 let aimAngle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
                 this.charData.angle = aimAngle; 
                 
-                if (target.isBoss || (target.name && (target.name.includes('바포매트') || target.name.includes('발라카с') || target.name.includes('안타라스')))) {
+                if (target.isBoss || (target.name && (target.name.includes('바포매트') || target.name.includes('발라카스') || target.name.includes('안타라스')))) {
                     this.socket.emit('boss_spotted', { bossId: target.id, bossName: target.name });
                 }
 
@@ -693,7 +773,7 @@ class AIAgentClient {
                     .filter(m => m.data && (m.data.type === 'attack' || m.data.dmg) && this.charData.mp >= m.data.mp);
                 if (available.length === 0) return null;
                  
-                let nearby = this.worldMonsters.filter(m => m.hp > 0 && !m.isDead && Math.hypot(m.x - target.x, m.y - target.y) <= 180);
+                let nearby = this.worldMonsters.filter(m => (m.hp > 0 || m.h > 0) && !m.isDead && fastHypot(m.x - target.x, m.y - target.y) <= 180);
                 if (nearby.length >= 3) {
                     let aoe = available.filter(m => m.data.aoe);
                     if (aoe.length > 0) return aoe.sort((a,b) => (b.data.dmg||0) - (a.data.dmg||0))[0].name;
@@ -748,10 +828,7 @@ class AIAgentClient {
     }
 
     checkSmartMapNavigation() {
-        // 💡 파티 중일 때는 파티장의 맵 이동 패킷이나 대화 명령어로만 제어
-        if (this.partyData) {
-            return; 
-        }
+        if (this.partyData) return; 
 
         if (Date.now() - this.lastMapCheckTime > 180000) { 
             this.lastMapCheckTime = Date.now();
@@ -886,7 +963,7 @@ class AIAgentClient {
             for (let j = 0; j < this.charData.mercs.length; j++) {
                 let other = this.charData.mercs[j];
                 if (other !== m) {
-                    let d = Math.hypot(m.x - other.x, m.y - other.y);
+                    let d = fastHypot(m.x - other.x, m.y - other.y);
                     if (d < 45 && d > 0.1) {
                         let factor = (45 - d) / 45 * 0.3; 
                         pushX += ((m.x - other.x) / d) * factor * (dtMs/16.6);
@@ -922,8 +999,9 @@ class AIAgentClient {
             let target = null;
             let minD = Infinity;
             this.worldMonsters.forEach(mob => {
-                if (mob && mob.hp > 0 && !mob.isDead) {
-                    let d = Math.hypot(mob.x - m.x, mob.y - m.y);
+                let mobHp = mob.hp !== undefined ? mob.hp : mob.h;
+                if (mob && mobHp > 0 && !mob.isDead) {
+                    let d = fastHypot(mob.x - m.x, mob.y - m.y);
                     if (d < 350 && d < minD) {
                         minD = d;
                         target = mob;
@@ -934,7 +1012,7 @@ class AIAgentClient {
             if (target && this.tryRush(m, target, now)) continue; 
 
             if (target) {
-                let tDist = Math.hypot(target.x - m.x, target.y - m.y);
+                let tDist = fastHypot(target.x - m.x, target.y - m.y);
                 let isRanged = m.mercType === 'wizard' || m.mercType === 'elf';
                 let atkRange = isRanged ? 280 : 65;
 
@@ -977,7 +1055,7 @@ class AIAgentClient {
                             }
                         }
                         else if (m.mercType === 'wizard') {
-                            let nearbyCount = this.worldMonsters.filter(mob => mob.hp > 0 && Math.hypot(mob.x - target.x, mob.y - target.y) <= 180).length;
+                            let nearbyCount = this.worldMonsters.filter(mob => (mob.hp > 0 || mob.h > 0) && fastHypot(mob.x - target.x, mob.y - target.y) <= 180).length;
                             let wizardSkills = ['에너지 볼트', '파이어볼', '이럽션', '선버스트', '블리자드', '라이트닝 스톰'].filter(sName => {
                                 let mData = data.magicDb[sName];
                                 return mData && m.mp >= mData.mp;
@@ -1019,7 +1097,7 @@ class AIAgentClient {
                     }
                 }
             } else {
-                let pDist = Math.hypot(this.charData.x - m.x, this.charData.y - m.y);
+                let pDist = fastHypot(this.charData.x - m.x, this.charData.y - m.y);
                 if (pDist > 60) {
                     let angle = Math.atan2(this.charData.y - m.y, this.charData.x - m.x);
                     m.angle = angle; m.x += Math.cos(angle) * speed + pushX; m.y += Math.sin(angle) * speed + pushY; m.isMoving = true;
@@ -1045,7 +1123,6 @@ class AIAgentClient {
         const isParty = Boolean(this.partyData);
         const leaderName = this.partyData ? this.partyData.members.find(m => m.socketId === this.partyData.leader)?.name : '없음';
 
-        // 💡 파티 대화 중 파티장이 "맵이동", "따라와", "이동" 등을 외쳤을 때 즉시 워프[cite: 8]
         if (isParty && senderName === leaderName) {
             const isMoveCommand = ['맵이동', '이동', '와라', '따라와', '모여'].some(k => userMessage.includes(k));
             if (isMoveCommand) {
@@ -1261,7 +1338,9 @@ ${situationContext}
     teleport(mapCode, x = 2000, y = 2000) {
         if (!this.socket) return;
         this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
-        this.charData.target = null; this.charData.isMoving = false;
+        this.charData.target = null; this.charData.targetId = null; this.charData.isMoving = false;
+        this.worldMonsters = []; // 💡 맵 이동 시 몬스터 목록 초기화
+        this.worldItems = [];
         this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false });
     }
 
@@ -1292,7 +1371,7 @@ async function manageAgentRotation() {
                 .from('characters')
                 .select('*')
                 .gte('slot_index', 100)
-                .limit(400); // 💡 300명 이상 데이터 한 번에 읽기[cite: 8]
+                .limit(400);
             if (!aiChars || aiChars.length === 0) return;
 
             let offlineList = aiChars.filter(dbChar => !activeAgents.some(a => a.dbRow.id === dbChar.id));

@@ -1,4 +1,4 @@
-// server.js (방어력/마법방어력 곡선형 피격 공식, 귀걸이 슬롯 지원, 원거리 몬스터(활/마법) 사거리 및 투사체 연동, 파티 맵 이동 AI/플레이어 분기 처리 통합본)
+// server.js (최종 통합 최적화 버전)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -185,7 +185,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
         const memberSocket = io.sockets.sockets.get(member.socketId);
         if (!memberSocket) return;
 
-        // 💡 AI 에이전트 소켓 식별: "맵이동" 호출 또는 자동 워프 패킷 전송
         if (memberSocket.isAI) {
             memberSocket.emit('party_leader_map_move', {
                 map: targetMap,
@@ -193,9 +192,7 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
                 y: targetY,
                 autoWarp: true
             });
-        } 
-        // 💡 실제 유저(브라우저): 선택 팝업 요청 전송
-        else {
+        } else {
             memberSocket.emit('party_warp_request', {
                 leaderName: party.leaderName || (players[leaderSocketId] ? players[leaderSocketId].name : '파티장'),
                 map: targetMap,
@@ -207,9 +204,7 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
     });
 }
 
-// ==========================================
 // 2. 소켓 통신 처리
-// ==========================================
 io.on('connection', (socket) => {
     console.log(`[+] 유저 연결됨: ${socket.id}`);
 
@@ -230,7 +225,6 @@ io.on('connection', (socket) => {
     socket.on('player_join', (payload = {}) => {
         const { id, name, charClass, x, y, map } = payload;
         
-        // 💡 AI 봇 여부 확인 및 소켓 플래그 자동 세팅
         if (payload.isAI || (id && String(id).startsWith('ai_')) || (name && name.startsWith('AI_'))) {
             socket.isAI = true;
         }
@@ -248,14 +242,14 @@ io.on('connection', (socket) => {
             socketId: socket.id, 
             userId: id || 'guest_' + socket.id, 
             name: name || '모험가', 
-            charClass: charClass || 'knight',
+            charClass: charClass || 'knight', 
             x: x || 2000, 
             y: y || 2000, 
             map: currentMap, 
-            hp: 150,
-            maxHp: 150,
-            mp: 30,
-            maxMp: 30,
+            hp: 150, 
+            maxHp: 150, 
+            mp: 30, 
+            maxMp: 30, 
             targetId: null, 
             partyId: null, 
             equip: {},
@@ -395,12 +389,12 @@ io.on('connection', (socket) => {
                 socketId: socket.id, 
                 userId: payload.userId || 'guest_' + socket.id, 
                 name: payload.name || '모험가', 
-                charClass: payload.charClass || 'knight',
+                charClass: payload.charClass || 'knight', 
                 x: payload.x || 2000, 
                 y: payload.y || 2000, 
                 map: currentMap, 
-                hp: payload.hp || 150,
-                maxHp: payload.maxHp || 150,
+                hp: payload.hp || 150, 
+                maxHp: payload.maxHp || 150, 
                 atk: payload.atk || 20,
                 def: payload.def || 0,
                 str: payload.str || 18,
@@ -421,7 +415,6 @@ io.on('connection', (socket) => {
             return;
         }
 
-        // 💡 맵 이동 감지 시 파티원 워프 / 선택 분기 처리 실행
         if (p.map !== payload.map && payload.map) {
             let prevMap = p.map;
             let targetMap = payload.map;
@@ -646,28 +639,26 @@ io.on('connection', (socket) => {
     });
 
     socket.on('cmd_who', () => {
-    let count = 0;
-    let listText = "==== [현재 월드 접속자] ====\n";
-    for (let sid in players) {
-        let pl = players[sid];
-        let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
-        let mData = data.maps[pl.map];
-        let mapName = mData ? mData.name : pl.map;
-        let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
+        let count = 0;
+        let listText = "==== [현재 월드 접속자] ====\n";
+        for (let sid in players) {
+            let pl = players[sid];
+            let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
+            let mData = data.maps[pl.map];
+            let mapName = mData ? mData.name : pl.map;
+            let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
 
-        // 💡 [추가] 파티 소속 여부 및 파티장/파티원 판별 로직
-        let partyStr = '';
-        if (pl.partyId && parties[pl.partyId]) {
-            partyStr = parties[pl.partyId].leader === sid ? ' [👑파티장]' : ' [👥파티원]';
+            let partyStr = '';
+            if (pl.partyId && parties[pl.partyId]) {
+                partyStr = parties[pl.partyId].leader === sid ? ' [👑파티장]' : ' [👥파티원]';
+            }
+
+            listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}]${partyStr} - ${mapName}\n`;
+            count++;
         }
-
-        // 출력 텍스트에 partyStr 결합
-        listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}]${partyStr} - ${mapName}\n`;
-        count++;
-    }
-    listText += `------------------------\n총 접속자 수: ${count}명`;
-    socket.emit('system_message', { message: listText, color: '#38bdf8' });
-});
+        listText += `------------------------\n총 접속자 수: ${count}명`;
+        socket.emit('system_message', { message: listText, color: '#38bdf8' });
+    });
 
     socket.on('cmd_whisper', (payload = {}) => {
         let sender = players[socket.id];
@@ -789,9 +780,6 @@ io.on('connection', (socket) => {
     socket.on('admin_reboot_all', handleAdminReboot);
     socket.on('admin_reboot_server', handleAdminReboot);
 
-    // ==========================================
-    // ⚔️ [플레이어 타격 연산 및 마법 상태이상 구현]
-    // ==========================================
     const handlePlayerAttack = (payload = {}) => {
         let p = players[socket.id];
         if (!p || !mapsState[p.map]) return;
@@ -814,14 +802,12 @@ io.on('connection', (socket) => {
         let spellName = payload.magicName;
         let finalDamage = 10;
 
-        // 💡 어스 바인드 등 무적 상태면 데미지 무시 (0 고정)
         if (monster.invincibleUntil && Date.now() < monster.invincibleUntil) {
             finalDamage = 0;
         } else {
-            // 💡 몬스터 방어력(DEF) 곡선형 피격 공식 적용 (방어력 100 기준 50% 피해 감소)
             let mDef = monster.def || 0;
             let mDefRatio = 100 / (100 + Math.max(0, mDef));
-            
+
             if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
                 finalDamage = Math.max(1, Math.floor(payload.calculatedDmg * mDefRatio));
             } else {
@@ -834,7 +820,6 @@ io.on('connection', (socket) => {
 
         monster.hp -= finalDamage;
         
-        // 💡 스턴 및 어스 바인드 상태 이상 적용
         if (spellName === '쇼크 스턴') {
             monster.stunnedUntil = Date.now() + 3000;
         } else if (spellName === '어스 바인드') {
@@ -1037,9 +1022,6 @@ io.on('connection', (socket) => {
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
 
-    // ==========================================
-    // 👥 [파티 관련 이벤트 리스너]
-    // ==========================================
     socket.on('party_invite', (payload = {}) => {
         let targetSocket = io.sockets.sockets.get(payload.targetSocketId);
         if (targetSocket) {
@@ -1192,11 +1174,10 @@ io.on('connection', (socket) => {
     });
 }); 
 
-// ==========================================
-// 3. 서버 몬스터 AI & 보스 장판/원거리 투사체/타격 연산
-// ==========================================
+// 3. 서버 몬스터 AI & 보스 장판/타격 연산
 function processMonsterAI() {
     let now = Date.now();
+    const getDistSq = (x1, y1, x2, y2) => (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2);
     
     if (Math.random() < 0.2) { 
         for (let pKey in parties) {
@@ -1239,7 +1220,6 @@ function processMonsterAI() {
             }
         });
 
-        // 💡 [에러 방어] 좌표(x, y)가 누락된 비정상 객체가 섞이는 것을 원천 차단
         allEntitiesInMap = allEntitiesInMap.filter(e => e && typeof e.x === 'number' && typeof e.y === 'number');
 
         state.monsters.forEach(mob => {
@@ -1264,18 +1244,18 @@ function processMonsterAI() {
             }
 
             let target = allEntitiesInMap.find(e => (e.socketId || e.id) === mob.targetId);
-            let isTooFar = target ? Math.hypot(target.x - mob.x, target.y - mob.y) > (mob.isBoss ? 900 : 700) : false;
+            let isTooFar = target ? getDistSq(target.x, target.y, mob.x, mob.y) > (mob.isBoss ? 810000 : 490000) : false;
 
             if (!target || target.hp <= 0 || data.isInSafeZone(mapId, target.x, target.y) || isTooFar) {
                 mob.targetId = null;
                 mob.damageMap = {};
                 
-                let minDist = mob.isBoss ? 650 : 400;
+                let minDistSq = mob.isBoss ? 422500 : 160000;
                 allEntitiesInMap.forEach(e => {
                     if (e.hp > 0 && !data.isInSafeZone(mapId, e.x, e.y)) {
-                        let d = Math.hypot(e.x - mob.x, e.y - mob.y);
-                        if (d < minDist) {
-                            minDist = d;
+                        let dSq = getDistSq(e.x, e.y, mob.x, mob.y);
+                        if (dSq < minDistSq) {
+                            minDistSq = dSq;
                             mob.targetId = e.socketId || e.id;
                             target = e;
                         }
@@ -1286,7 +1266,7 @@ function processMonsterAI() {
             if (mob.targetId && target) {
                 if (mob.stunnedUntil && now < mob.stunnedUntil) return;
 
-                let dist = Math.hypot(target.x - mob.x, target.y - mob.y);
+                let dist = Math.sqrt(getDistSq(target.x, target.y, mob.x, mob.y));
                 let mName = mob.name || '';
                 let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;
                 let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || 
@@ -1449,22 +1429,25 @@ function processMonsterAI() {
         });
 
         io.to(mapId).emit('sync_entities', {
-            // 💡 [수정] 플레이어 압축 전송
             players: playersInMap.map(p => ({ 
                 id: p.socketId, 
+                socketId: p.socketId,
                 name: p.name, 
                 charClass: p.charClass || 'knight',
                 x: Math.round(p.x), 
                 y: Math.round(p.y), 
+                hp: Math.round(p.hp), 
                 h: Math.round(p.hp), 
                 maxHp: p.maxHp, 
+                angle: Number((p.angle || 0).toFixed(2)), 
                 a: Number((p.angle || 0).toFixed(2)), 
+                isMoving: Boolean(p.isMoving), 
                 m: p.isMoving ? 1 : 0, 
                 equip: p.equip, 
                 partyId: p.partyId, 
+                targetId: p.targetId,
                 t: p.targetId 
             })),
-            // 💡 [수정] 용병 압축 전송
             mercs: allMercsForSync.map(m => ({ 
                 id: m.id, 
                 name: m.name, 
@@ -1474,32 +1457,35 @@ function processMonsterAI() {
                 ownerName: m.ownerName, 
                 x: Math.round(m.x), 
                 y: Math.round(m.y), 
+                hp: Math.round(m.hp), 
                 h: Math.round(m.hp), 
                 maxHp: m.maxHp, 
                 equip: m.equip, 
+                angle: Number((m.angle || 0).toFixed(2)), 
                 a: Number((m.angle || 0).toFixed(2)), 
+                isMoving: Boolean(m.isMoving), 
                 m: m.isMoving ? 1 : 0 
             })),
-            // 💡 [수정] 몬스터 압축 전송
             monsters: state.monsters.filter(m => m.hp > 0).map(m => ({ 
                 id: m.id, 
                 name: m.name, 
                 x: Math.round(m.x), 
                 y: Math.round(m.y), 
+                hp: Math.round(m.hp), 
                 h: Math.round(m.hp), 
                 maxHp: m.maxHp, 
                 isBoss: m.isBoss, 
+                angle: Number((m.angle || 0).toFixed(2)), 
                 a: Number((m.angle || 0).toFixed(2)), 
-                color: m.color,
+                color: m.color, 
+                targetId: m.targetId,
                 t: m.targetId 
             }))
         });
     }
 }
 
-// ==========================================
-// 4. 몬스터 스폰 및 타이머 
-// ==========================================
+// 몬스터 자동 리스폰
 function processMonsterSpawning() {
     for (let mapId in data.maps) {
         let mData = data.maps[mapId];
@@ -1570,7 +1556,7 @@ setInterval(() => {
 }, 10000); 
 
 setInterval(processMonsterSpawning, 1000);
-setInterval(processMonsterAI, 150);
+setInterval(processMonsterAI, 80);
 
 // ==========================================
 // 🔥 [보스 레이드 멀티 인스턴스 방 객체 및 15초 카운트다운 루프]
