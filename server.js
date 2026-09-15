@@ -646,21 +646,28 @@ io.on('connection', (socket) => {
     });
 
     socket.on('cmd_who', () => {
-        let count = 0;
-        let listText = "==== [현재 월드 접속자] ====\n";
-        for (let sid in players) {
-            let pl = players[sid];
-            let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
-            let mData = data.maps[pl.map];
-            let mapName = mData ? mData.name : pl.map;
-            let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
+    let count = 0;
+    let listText = "==== [현재 월드 접속자] ====\n";
+    for (let sid in players) {
+        let pl = players[sid];
+        let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
+        let mData = data.maps[pl.map];
+        let mapName = mData ? mData.name : pl.map;
+        let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
 
-            listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}] - ${mapName}\n`;
-            count++;
+        // 💡 [추가] 파티 소속 여부 및 파티장/파티원 판별 로직
+        let partyStr = '';
+        if (pl.partyId && parties[pl.partyId]) {
+            partyStr = parties[pl.partyId].leader === sid ? ' [👑파티장]' : ' [👥파티원]';
         }
-        listText += `------------------------\n총 접속자 수: ${count}명`;
-        socket.emit('system_message', { message: listText, color: '#38bdf8' });
-    });
+
+        // 출력 텍스트에 partyStr 결합
+        listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}]${partyStr} - ${mapName}\n`;
+        count++;
+    }
+    listText += `------------------------\n총 접속자 수: ${count}명`;
+    socket.emit('system_message', { message: listText, color: '#38bdf8' });
+});
 
     socket.on('cmd_whisper', (payload = {}) => {
         let sender = players[socket.id];
@@ -1442,20 +1449,22 @@ function processMonsterAI() {
         });
 
         io.to(mapId).emit('sync_entities', {
+            // 💡 [수정] 플레이어 압축 전송
             players: playersInMap.map(p => ({ 
-                socketId: p.socketId, 
+                id: p.socketId, 
                 name: p.name, 
                 charClass: p.charClass || 'knight',
                 x: Math.round(p.x), 
                 y: Math.round(p.y), 
-                hp: Math.round(p.hp), 
+                h: Math.round(p.hp), 
                 maxHp: p.maxHp, 
-                angle: Number((p.angle || 0).toFixed(2)), 
-                isMoving: Boolean(p.isMoving), 
+                a: Number((p.angle || 0).toFixed(2)), 
+                m: p.isMoving ? 1 : 0, 
                 equip: p.equip, 
                 partyId: p.partyId, 
-                targetId: p.targetId 
+                t: p.targetId 
             })),
+            // 💡 [수정] 용병 압축 전송
             mercs: allMercsForSync.map(m => ({ 
                 id: m.id, 
                 name: m.name, 
@@ -1465,23 +1474,24 @@ function processMonsterAI() {
                 ownerName: m.ownerName, 
                 x: Math.round(m.x), 
                 y: Math.round(m.y), 
-                hp: Math.round(m.hp), 
+                h: Math.round(m.hp), 
                 maxHp: m.maxHp, 
                 equip: m.equip, 
-                angle: Number((m.angle || 0).toFixed(2)), 
-                isMoving: Boolean(m.isMoving) 
+                a: Number((m.angle || 0).toFixed(2)), 
+                m: m.isMoving ? 1 : 0 
             })),
+            // 💡 [수정] 몬스터 압축 전송
             monsters: state.monsters.filter(m => m.hp > 0).map(m => ({ 
                 id: m.id, 
                 name: m.name, 
                 x: Math.round(m.x), 
                 y: Math.round(m.y), 
-                hp: Math.round(m.hp), 
+                h: Math.round(m.hp), 
                 maxHp: m.maxHp, 
                 isBoss: m.isBoss, 
-                angle: Number((m.angle || 0).toFixed(2)), 
+                a: Number((m.angle || 0).toFixed(2)), 
                 color: m.color,
-                targetId: m.targetId 
+                t: m.targetId 
             }))
         });
     }
@@ -1560,7 +1570,7 @@ setInterval(() => {
 }, 10000); 
 
 setInterval(processMonsterSpawning, 1000);
-setInterval(processMonsterAI, 80);
+setInterval(processMonsterAI, 150);
 
 // ==========================================
 // 🔥 [보스 레이드 멀티 인스턴스 방 객체 및 15초 카운트다운 루프]
