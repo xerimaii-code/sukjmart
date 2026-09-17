@@ -1,4 +1,4 @@
-// server.js (최종 통합 최적화 버전)
+// server.js (최종 통합 최적화 및 AI 채팅 최적화 버전)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -257,7 +257,8 @@ io.on('connection', (socket) => {
             isMoving: false,
             angle: 0,
             totalMr: payload.totalMr || 50,
-            totalDmgReduction: payload.totalDmgReduction || 0
+            totalDmgReduction: payload.totalDmgReduction || 0,
+            isAI: socket.isAI
         };
         socket.join(currentMap);
         socket.emit('sync_map_state', { 
@@ -408,7 +409,8 @@ io.on('connection', (socket) => {
                 isMoving: payload.isMoving || false, 
                 angle: payload.angle || 0,
                 totalMr: payload.totalMr || 50,
-                totalDmgReduction: payload.totalDmgReduction || 0
+                totalDmgReduction: payload.totalDmgReduction || 0,
+                isAI: socket.isAI
             };
             socket.join(currentMap);
             socket.emit('sync_map_state', { monsters: mapsState[currentMap].monsters, items: mapsState[currentMap].items });
@@ -421,6 +423,17 @@ io.on('connection', (socket) => {
             let targetX = payload.x || 2000;
             let targetY = payload.y || 2000;
 
+            if (mapsState[prevMap] && mapsState[prevMap].monsters) {
+                mapsState[prevMap].monsters.forEach(mob => {
+                    if (mob.damageMap && mob.damageMap[socket.id]) {
+                        delete mob.damageMap[socket.id];
+                    }
+                    if (mob.targetId === socket.id) {
+                        mob.targetId = null;
+                    }
+                });
+            }
+
             if (p.partyId && parties[p.partyId]) {
                 let party = parties[p.partyId];
                 if (party.leader === socket.id) {
@@ -432,6 +445,7 @@ io.on('connection', (socket) => {
             socket.join(targetMap); 
             p.map = targetMap;
             p.targetId = null;
+            p.damageMap = {};
             
             if (!mapsState[p.map]) {
                 mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
@@ -461,7 +475,18 @@ io.on('connection', (socket) => {
             p.targetId = payload.targetId;
         }
 
-        if (payload.hp !== undefined && payload.hp > p.hp) p.hp = payload.hp; 
+        if (payload.hp !== undefined && payload.hp <= 0) {
+            p.hp = 0;
+            p.targetId = null;
+            if (mapsState[p.map] && mapsState[p.map].monsters) {
+                mapsState[p.map].monsters.forEach(m => {
+                    if (m.damageMap) delete m.damageMap[socket.id];
+                    if (m.targetId === socket.id) m.targetId = null;
+                });
+            }
+        } else if (payload.hp !== undefined && payload.hp > p.hp) {
+            p.hp = payload.hp;
+        }
         p.maxHp = payload.maxHp !== undefined ? payload.maxHp : p.maxHp;
         p.atk = payload.atk || p.atk || 20;
         p.def = payload.def || p.def || 0;
@@ -608,13 +633,12 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ==========================================
-    // 💬 [채팅 라우팅 & 시스템/운영자 명령어 리스너]
-    // ==========================================
+    // 💡 [채팅 라우팅 - isAI 플래그 포함 브로드캐스트]
     socket.on('chat_message', (payload = {}) => {
         let p = players[socket.id];
         let name = p ? p.name : (payload.name || '모험가');
         let chatType = payload.chatType || 'normal';
+        let isAI = p ? Boolean(p.isAI) : false;
 
         if (chatType === 'party' && p && p.partyId && parties[p.partyId]) {
             parties[p.partyId].members.forEach(m => {
@@ -623,7 +647,8 @@ io.on('connection', (socket) => {
                     socketId: socket.id,
                     name: name,
                     message: payload.message,
-                    chatType: 'party'
+                    chatType: 'party',
+                    isAI: isAI
                 });
             });
             return;
@@ -634,7 +659,8 @@ io.on('connection', (socket) => {
             socketId: socket.id,
             name: name,
             message: payload.message,
-            chatType: 'normal'
+            chatType: 'normal',
+            isAI: isAI
         });
     });
 
@@ -646,7 +672,7 @@ io.on('connection', (socket) => {
             let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
             let mData = data.maps[pl.map];
             let mapName = mData ? mData.name : pl.map;
-            let isAi = (pl.name.startsWith('모험가') || io.sockets.sockets.get(sid)?.isAI) ? '🤖' : '👤';
+            let isAi = (pl.name.startsWith('모험가') || pl.isAI) ? '🤖' : '👤';
 
             let partyStr = '';
             if (pl.partyId && parties[pl.partyId]) {
@@ -661,10 +687,11 @@ io.on('connection', (socket) => {
     });
 
     socket.on('cmd_whisper', (payload = {}) => {
-        let sender = players[socket.id];
-        let senderName = sender ? sender.name : '모험가';
+        let p = players[socket.id];
+        let senderName = p ? p.name : '모험가';
         let targetName = payload.targetName;
         let content = payload.content;
+        let isAI = p ? Boolean(p.isAI) : false;
 
         let targetSocketId = Object.keys(players).find(sid => players[sid].name === targetName);
 
@@ -675,7 +702,8 @@ io.on('connection', (socket) => {
                 name: senderName,
                 message: content,
                 chatType: 'whisper',
-                isWhisper: true
+                isWhisper: true,
+                isAI: isAI
             });
         } else {
             socket.emit('system_message', {
@@ -741,9 +769,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // ==========================================
-    // ⚡ [운영자] server.js + aiAgentRunner.js 원클릭 동시 재부팅
-    // ==========================================
     const handleAdminReboot = () => {
         console.log("⚡ [운영자 명령] server.js 및 aiAgentRunner.js 전체 재부팅을 시작합니다!");
 
@@ -855,6 +880,10 @@ io.on('connection', (socket) => {
             let baseAdenaCount = monster.isBoss 
                 ? Math.floor(Math.random() * 150000 + 50000)
                 : Math.floor(Math.random() * 200 + 50);
+
+            if (monster.scalingBonus && monster.scalingBonus > 1.0) {
+                baseAdenaCount = Math.floor(baseAdenaCount * monster.scalingBonus);
+            }
 
             if (p.partyId && parties[p.partyId]) {
                 let party = parties[p.partyId];
@@ -1400,9 +1429,14 @@ function processMonsterAI() {
                         } else {
                             let targetDef = target.def || 0;
                             let targetReduc = target.totalDmgReduction || 0;
+                            if (target.charClass === 'knight' || target.charClass === 'royal') {
+                                targetDef += 15; 
+                                targetReduc += 5 + Math.floor((target.level || 1) / 10); 
+                            }
                             let defRatio = 100 / (100 + Math.max(0, targetDef));
                             
-                            let rawDmg = Math.floor((mob.atk || 15) * defRatio);
+                            let mobAtkRoll = (mob.atk || 15) * (1.0 + Math.random() * 0.2); 
+                            let rawDmg = Math.floor(mobAtkRoll * defRatio);
                             let dmg = Math.max(1, rawDmg - targetReduc);
 
                             target.hp = Math.max(0, target.hp - dmg);
@@ -1430,62 +1464,26 @@ function processMonsterAI() {
 
         io.to(mapId).emit('sync_entities', {
             players: playersInMap.map(p => ({ 
-                id: p.socketId, 
-                socketId: p.socketId,
-                name: p.name, 
-                charClass: p.charClass || 'knight',
-                x: Math.round(p.x), 
-                y: Math.round(p.y), 
-                hp: Math.round(p.hp), 
-                h: Math.round(p.hp), 
-                maxHp: p.maxHp, 
-                angle: Number((p.angle || 0).toFixed(2)), 
-                a: Number((p.angle || 0).toFixed(2)), 
-                isMoving: Boolean(p.isMoving), 
-                m: p.isMoving ? 1 : 0, 
-                equip: p.equip, 
-                partyId: p.partyId, 
-                targetId: p.targetId,
-                t: p.targetId 
+                id: p.socketId, socketId: p.socketId, name: p.name, level: p.level || 1, charClass: p.charClass || 'knight',
+                x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), h: Math.round(p.hp), maxHp: p.maxHp, 
+                angle: Number((p.angle || 0).toFixed(2)), a: Number((p.angle || 0).toFixed(2)), isMoving: Boolean(p.isMoving), m: p.isMoving ? 1 : 0, 
+                equip: p.equip, partyId: p.partyId, targetId: p.targetId, t: p.targetId 
             })),
             mercs: allMercsForSync.map(m => ({ 
-                id: m.id, 
-                name: m.name, 
-                mercType: m.mercType, 
-                charClass: m.charClass, 
-                ownerId: m.ownerId, 
-                ownerName: m.ownerName, 
-                x: Math.round(m.x), 
-                y: Math.round(m.y), 
-                hp: Math.round(m.hp), 
-                h: Math.round(m.hp), 
-                maxHp: m.maxHp, 
-                equip: m.equip, 
-                angle: Number((m.angle || 0).toFixed(2)), 
-                a: Number((m.angle || 0).toFixed(2)), 
-                isMoving: Boolean(m.isMoving), 
-                m: m.isMoving ? 1 : 0 
+                id: m.id, name: m.name, mercType: m.mercType, charClass: m.charClass, ownerId: m.ownerId, ownerName: m.ownerName, 
+                x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), h: Math.round(m.hp), maxHp: m.maxHp, equip: m.equip, 
+                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), isMoving: Boolean(m.isMoving), m: m.isMoving ? 1 : 0 
             })),
-            monsters: state.monsters.filter(m => m.hp > 0).map(m => ({ 
-                id: m.id, 
-                name: m.name, 
-                x: Math.round(m.x), 
-                y: Math.round(m.y), 
-                hp: Math.round(m.hp), 
-                h: Math.round(m.hp), 
-                maxHp: m.maxHp, 
-                isBoss: m.isBoss, 
-                angle: Number((m.angle || 0).toFixed(2)), 
-                a: Number((m.angle || 0).toFixed(2)), 
-                color: m.color, 
-                targetId: m.targetId,
-                t: m.targetId 
+            monsters: state.monsters.filter(m => m.hp > 0 || (m.deadTime && now - m.deadTime < 1500)).map(m => ({ 
+                id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), 
+                hp: Math.max(0, Math.round(m.hp)), h: Math.max(0, Math.round(m.hp)), maxHp: m.maxHp, 
+                isBoss: m.isBoss, isDead: Boolean(m.isDead || m.hp <= 0),
+                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), color: m.color, targetId: m.targetId, t: m.targetId 
             }))
         });
     }
 }
 
-// 몬스터 자동 리스폰
 function processMonsterSpawning() {
     for (let mapId in data.maps) {
         let mData = data.maps[mapId];
@@ -1497,17 +1495,36 @@ function processMonsterSpawning() {
         let spawnBatch = Math.min(deficit, 4);
 
         if (spawnBatch > 0 && mData.m?.length > 0) {
+            let mapScalingMultiplier = 1.0;
+            let isEndgameMap = mData.recLv && (mData.recLv.includes('100+') || mData.recLv.includes('105+'));
+
+            if (isEndgameMap) {
+                let playersInMap = Object.values(players).filter(p => p && p.map === mapId);
+                let maxLevelInMap = 105;
+                playersInMap.forEach(p => { if (p.level > maxLevelInMap) maxLevelInMap = p.level; });
+
+                if (maxLevelInMap > 105) {
+                    let overLevel = maxLevelInMap - 105;
+                    mapScalingMultiplier = 1.0 + (overLevel * 0.15); 
+                }
+            }
+
             for (let i = 0; i < spawnBatch; i++) {
                 let mobId = mData.m[Math.floor(Math.random() * mData.m.length)];
                 let t = data.templates.mobs[mobId];
                 if (t) {
                     let rx = Math.random() * 3600 + 200, ry = Math.random() * 3600 + 200;
                     if (!data.isInSafeZone(mapId, rx, ry)) {
+                        let finalHp = Math.floor(t.hp * mapScalingMultiplier);
+                        let finalAtk = Math.floor(t.atk * mapScalingMultiplier);
+                        let finalDef = Math.floor(t.def * mapScalingMultiplier) || t.def;
+                        let finalExp = Math.floor(t.exp * mapScalingMultiplier);
+
                         state.monsters.push({
                             ...t, 
                             id: 'mob_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-                            x: rx, y: ry, maxHp: t.hp, hp: t.hp, map: mapId,
-                            isBoss: false, targetId: null, lastAttackTime: 0
+                            x: rx, y: ry, maxHp: finalHp, hp: finalHp, atk: finalAtk, def: finalDef, exp: finalExp,
+                            map: mapId, scalingBonus: mapScalingMultiplier, isBoss: false, targetId: null, lastAttackTime: 0
                         });
                     }
                 }
@@ -1523,25 +1540,18 @@ setInterval(() => {
         if (!state) continue;
 
         if (state.monsters) {
-            state.monsters = state.monsters.filter(m => {
-                return !(m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000));
-            });
+            state.monsters = state.monsters.filter(m => !(m.hp <= 0 && m.deadTime && (now - m.deadTime > 3000)));
         }
-        
         if (state.items) {
-            state.items = state.items.filter(item => {
-                return (now - item.spawnTime) < 60000;
-            });
+            state.items = state.items.filter(item => (now - item.spawnTime) < 60000);
         }
-
         if (state.deadBosses) {
             state.deadBosses = state.deadBosses.filter(db => {
                 if (now - db.deadTime > 300000) { 
                     let bt = data.templates.bosses[db.baseBossId];
                     if (bt) {
                         state.monsters.push({
-                            ...bt, 
-                            id: 'boss_' + db.baseBossId + '_' + Date.now(),
+                            ...bt, id: 'boss_' + db.baseBossId + '_' + Date.now(),
                             baseBossId: db.baseBossId, spawnX: db.spawnX, spawnY: db.spawnY, 
                             maxHp: bt.hp, hp: bt.hp, x: db.spawnX, y: db.spawnY, map: mapId,
                             isBoss: true, targetId: null, lastAttackTime: 0
@@ -1558,104 +1568,59 @@ setInterval(() => {
 setInterval(processMonsterSpawning, 1000);
 setInterval(processMonsterAI, 80);
 
-// ==========================================
-// 🔥 [보스 레이드 멀티 인스턴스 방 객체 및 15초 카운트다운 루프]
-// ==========================================
 function startRaidCountdown(roomId) {
     let room = raidRooms[roomId];
     if (!room) return;
-
     let countdown = 15; 
     let timer = setInterval(() => {
-        if (!raidRooms[roomId]) {
-            clearInterval(timer);
-            return;
-        }
-
+        if (!raidRooms[roomId]) { clearInterval(timer); return; }
         countdown--;
-        room.members.forEach(sockId => {
-            io.to(sockId).emit('raid_countdown_tick', { countdown });
-        });
-
+        room.members.forEach(sockId => { io.to(sockId).emit('raid_countdown_tick', { countdown }); });
         if (countdown <= 0) {
             clearInterval(timer);
             room.status = 'STARTED'; 
-
             let totalLv = 0;
-            room.members.forEach(sockId => {
-                let memberP = players[sockId];
-                if (memberP) totalLv += (memberP.level || 1);
-            });
+            room.members.forEach(sockId => { let memberP = players[sockId]; if (memberP) totalLv += (memberP.level || 1); });
             let finalAvgLv = Math.floor(totalLv / Math.max(1, room.members.length));
             let finalTier = Math.min(4, Math.floor(finalAvgLv / 20)); 
-
-            room.members.forEach(sockId => {
-                io.to(sockId).emit('raid_battle_start', { tierIndex: finalTier });
-            });
+            room.members.forEach(sockId => { io.to(sockId).emit('raid_battle_start', { tierIndex: finalTier }); });
         }
     }, 1000);
 }
 
-// 🧹 유령방 및 빈 방 자동 청소 코드
 setInterval(() => {
     let now = Date.now();
     for (let rId in raidRooms) {
         let room = raidRooms[rId];
         let activeMembers = room.members.filter(sockId => players[sockId]);
         room.members = activeMembers;
-
         let isGhostRoom = (room.members.length === 0 && (now - room.createdAt > 30000));
         let isExpired = (now - room.createdAt > 7200000); 
-
-        if (isGhostRoom || isExpired) {
-            delete raidRooms[rId];
-        }
+        if (isGhostRoom || isExpired) delete raidRooms[rId];
     }
 }, 10000);
 
-// =======================================================
-// 💡 매주 일요일 새벽 4시 서버 자동 재부팅 (KST 기준)
-// =======================================================
 let isWarningSent = false;
 let isRebootTriggered = false;
 
 setInterval(() => {
     const now = new Date();
     const kstTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (9 * 60 * 60 * 1000));
-
     if (kstTime.getDay() === 0 && kstTime.getHours() === 3 && kstTime.getMinutes() === 59) {
         if (!isWarningSent) {
             isWarningSent = true;
-            io.emit('system_message', { 
-                message: '⚠️ [서버 공지] 1분 뒤 정기 점검을 위해 서버가 재부팅됩니다. 데이터가 안전하게 자동 저장됩니다!', 
-                color: '#ff2200' 
-            });
+            io.emit('system_message', { message: '⚠️ [서버 공지] 1분 뒤 정기 점검을 위해 서버가 재부팅됩니다. 데이터가 안전하게 자동 저장됩니다!', color: '#ff2200' });
             io.emit('force_client_save'); 
-            console.log("[서버] 1분 후 자동 재부팅됩니다. (강제 저장 신호 발송 완료)");
         }
     }
-
     if (kstTime.getDay() === 0 && kstTime.getHours() === 4 && kstTime.getMinutes() === 0) {
-        if (!isRebootTriggered) {
-            isRebootTriggered = true;
-            console.log("[서버] 정기 자동 재부팅을 실행합니다.");
-            process.exit(0); 
-        }
+        if (!isRebootTriggered) { isRebootTriggered = true; process.exit(0); }
     }
-    
-    if (kstTime.getHours() === 5) {
-        isWarningSent = false;
-        isRebootTriggered = false;
-    }
+    if (kstTime.getHours() === 5) { isWarningSent = false; isRebootTriggered = false; }
 }, 1000);
 
-process.on('uncaughtException', (err) => {
-    console.error('[-] 치명적 오류 발생 (Uncaught Exception):', err);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-    console.error('[-] 처리되지 않은 프로미스 거부 (Unhandled Rejection):', reason);
-});
+process.on('uncaughtException', (err) => { console.error('[-] 치명적 오류 발생:', err); });
+process.on('unhandledRejection', (reason, promise) => { console.error('[-] 처리되지 않은 프로미스 거부:', reason); });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`[✔] 서버 가동 완료: http://localhost:${PORT}`));

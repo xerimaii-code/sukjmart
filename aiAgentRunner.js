@@ -8,6 +8,7 @@ const Groq = require('groq-sdk');
 const SharedAI = require('./public/js/sharedAI.js'); 
 const data = require('./public/js/data.js'); 
 
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY; 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -154,7 +155,11 @@ class AIAgentClient {
     }
 
     connect() {
-        this.socket = io(SERVER_URL, { transports: ['websocket'], upgrade: false });
+      
+        this.socket = io(SERVER_URL, { 
+            transports: ['websocket'], 
+            upgrade: false
+        });
         this.socket.on('connect', () => {
             this.charData.id = this.socket.id; 
             console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass}) - 자율초대확률: ${this.autoInviteChance*100}%`);
@@ -206,14 +211,27 @@ class AIAgentClient {
             }));
 
             if (packet.monsters) {
-                this.worldMonsters = packet.monsters.map(m => ({
-                    ...m,
-                    hp: (m.hp !== undefined) ? m.hp : (m.h !== undefined ? m.h : 100),
-                    maxHp: m.maxHp || 100,
-                    angle: (m.angle !== undefined) ? m.angle : (m.a || 0),
-                    targetId: (m.targetId !== undefined) ? m.targetId : m.t,
-                    map: this.charData.map
-                }));
+                // 살아있는 몬스터만 필터링하여 목록 갱신
+                this.worldMonsters = packet.monsters
+                    .filter(m => (m.hp > 0 || m.h > 0) && !m.isDead)
+                    .map(m => ({
+                        ...m,
+                        hp: (m.hp !== undefined) ? m.hp : (m.h !== undefined ? m.h : 100),
+                        maxHp: m.maxHp || 100,
+                        angle: (m.angle !== undefined) ? m.angle : (m.a || 0),
+                        targetId: (m.targetId !== undefined) ? m.targetId : m.t,
+                        map: this.charData.map
+                    }));
+
+                // 기존 타겟이 몬스터 목록에서 사라졌다면 즉시 해제
+                if (this.charData.target) {
+                    let stillAlive = this.worldMonsters.some(m => m.id === this.charData.target.id);
+                    if (!stillAlive) {
+                        this.charData.target = null;
+                        this.charData.targetId = null;
+                        this.charData.isMoving = false;
+                    }
+                }
             }
 
             this.worldMercs = (packet.mercs || []).map(m => ({
@@ -283,7 +301,9 @@ class AIAgentClient {
 
         this.socket.on('chat_broadcast', async (packet) => {
             if (packet.socketId === this.socket.id) return;
-             
+            let senderEnt = this.worldPlayers.find(p => p.socketId === packet.socketId);
+            if (!senderEnt || senderEnt.map !== this.charData.map) return;
+            if (packet.isAI) return;
             let baseName = this.charData.name.replace(/[0-9]/g, '');
             let isAddressedToMe = packet.message.includes(this.charData.name) || 
                                   (baseName && packet.message.includes(baseName));
@@ -460,7 +480,8 @@ class AIAgentClient {
         let candidates = this.worldPlayers.filter(p => {
             if (!p || p.socketId === this.socket.id) return false;
             if (p.map !== this.charData.map) return false;
-            if (this.rejectedTargets.has(p.name)) return false; 
+            if (p.partyId) return false; 
+            if (this.rejectedTargets.has(p.name)) return false;
 
             let lastInvited = this.invitedHistory.get(p.name) || 0;
             if (now - lastInvited < 300000) return false;
@@ -469,7 +490,7 @@ class AIAgentClient {
             if (lvDiff > 5) return false;
 
             let dist = fastHypot(p.x - this.charData.x, p.y - this.charData.y);
-            return dist <= 500;
+            return dist <= 1500;
         });
 
         if (candidates.length === 0) return;
@@ -491,8 +512,29 @@ class AIAgentClient {
     startLoop() {
         this.isLoggingOut = false; 
         
+        // 💡 200ms -> 100ms 로 줄여 플레이어(클라이언트)와 이동 동기화 매칭 (순간이동 현상 해결)
         this.loopTimer = setInterval(() => {
             if (this.isLoggingOut) return; 
+
+            // 💡 [멍때림 방지] 에이전트 지형 끼임 탈출 로직
+            if (this.charData.isMoving) {
+                if (!this.stuckCheckTime) this.stuckCheckTime = Date.now();
+                if (!this.lastX) { this.lastX = this.charData.x; this.lastY = this.charData.y; }
+                if (Date.now() - this.stuckCheckTime > 2000) {
+                    let movedDist = fastHypot(this.charData.x - this.lastX, this.charData.y - this.lastY);
+                    if (movedDist < 10) {
+                        this.charData.x += (Math.random() * 400 - 200); // 안전한 곳으로 랜덤 탈출
+                        this.charData.y += (Math.random() * 400 - 200);
+                        this.charData.target = null;
+                        this.charData.targetId = null;
+                    }
+                    this.lastX = this.charData.x;
+                    this.lastY = this.charData.y;
+                    this.stuckCheckTime = Date.now();
+                }
+            } else {
+                this.stuckCheckTime = Date.now();
+            }
 
             if (Date.now() - this.sessionStart >= this.sessionDuration) {
                 this.isLoggingOut = true; 
@@ -518,12 +560,11 @@ class AIAgentClient {
 
             this.executeSharedAILoop();
             this.tryRush(this.charData, this.charData.target, now);
-            this.updateMovement(200); 
+            this.updateMovement(100);    
              
             this.checkMercenaryHire(); 
-            this.manageMercenaries(200); 
-
-            // 💡 [네트워크 최적화] 캐릭터 상태가 변경되었거나 2초가 지났을 때 서버에 동기화
+            this.manageMercenaries(100); 
+        
             let hasChanged = this.charData.isMoving || 
                              this.charData.hp !== this.lastSentHp || 
                              this.charData.targetId !== this.lastSentTargetId ||
@@ -565,7 +606,7 @@ class AIAgentClient {
                 this.lastSentTargetEventId = null;
                 this.socket.emit('player_target', { targetId: null });
             }
-        }, 200); 
+        }, 100); 
     }
 
     executeFollowMovement() {
@@ -701,39 +742,44 @@ class AIAgentClient {
             spawnParticle: () => {}, 
             spawnArrow: (from, to, dmg) => {
                 let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
-                this.charData.angle = aimAngle; 
-                this.socket.emit('player_attack_action', { casterId: this.socket.id, angle: aimAngle, targetId: to.id, targetX: to.x, targetY: to.y, isBow: true, actionType: 'shoot' });
-                this.socket.emit('player_attack_request', { targetId: to.id, attackerId: this.socket.id, attackType: 'physical', calculatedDmg: dmg });
+                let casterId = from.isSummon ? from.id : this.socket.id; // 💡 본체인지 용병인지 명확히 구분
+                if (from.isSummon) from.angle = aimAngle; else this.charData.angle = aimAngle;
+                
+                this.socket.emit('player_attack_action', { casterId: casterId, angle: aimAngle, targetId: to.id, targetX: to.x, targetY: to.y, isBow: true, actionType: 'shoot' });
+                this.socket.emit('player_attack_request', { targetId: to.id, attackerId: casterId, attackType: 'physical', calculatedDmg: dmg });
             },
             damageEntity: (target, dmg, attacker, hitType, magicName) => {
                 let aimAngle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
-                this.charData.angle = aimAngle; 
+                let casterId = attacker.isSummon ? attacker.id : this.socket.id; 
+                if (attacker.isSummon) attacker.angle = aimAngle; else this.charData.angle = aimAngle;
                 
                 if (target.isBoss || (target.name && (target.name.includes('바포매트') || target.name.includes('발라카스') || target.name.includes('안타라스')))) {
                     this.socket.emit('boss_spotted', { bossId: target.id, bossName: target.name });
                 }
 
                 if (hitType === 'physical') {
-                    this.socket.emit('player_attack_action', { casterId: this.socket.id, angle: aimAngle, targetId: target.id, targetX: target.x, targetY: target.y, actionType: 'slash' });
+                    this.socket.emit('player_attack_action', { casterId: casterId, angle: aimAngle, targetId: target.id, targetX: target.x, targetY: target.y, actionType: 'slash' });
                 }
-                this.socket.emit('player_attack_request', { targetId: target.id, attackerId: this.socket.id, attackType: hitType, calculatedDmg: dmg, magicName: magicName });
+                this.socket.emit('player_attack_request', { targetId: target.id, attackerId: casterId, attackType: hitType, calculatedDmg: dmg, magicName: magicName });
             },
-            castAttackSpell: (target, spellName) => {
+            castAttackSpell: (target, spellName, caster) => {
+                let realCaster = caster || this.charData; // 💡 용병이 스킬 시전 시 용병 기준 처리
                 let mData = data.magicDb[spellName];
-                if (mData && this.charData.mp >= mData.mp) {
-                    this.charData.spellCooldowns = this.charData.spellCooldowns || {};
+                if (mData && realCaster.mp >= mData.mp) {
+                    realCaster.spellCooldowns = realCaster.spellCooldowns || {};
                     let spellCd = mData.cd || 0;
-                    if (spellCd > 0 && Date.now() - (this.charData.spellCooldowns[spellName] || 0) < spellCd) {
+                    if (spellCd > 0 && Date.now() - (realCaster.spellCooldowns[spellName] || 0) < spellCd) {
                         return; 
                     }
 
-                    this.charData.mp -= mData.mp;
-                    this.charData.spellCooldowns[spellName] = Date.now();
+                    realCaster.mp -= mData.mp;
+                    realCaster.spellCooldowns[spellName] = Date.now();
                      
                     if (!target || typeof target.x === 'undefined') return;
 
-                    let aimAngle = Math.atan2(target.y - this.charData.y, target.x - this.charData.x);
-                    this.charData.angle = aimAngle; 
+                    let aimAngle = Math.atan2(target.y - realCaster.y, target.x - realCaster.x);
+                    let casterId = realCaster.isSummon ? realCaster.id : this.socket.id;
+                    if (realCaster.isSummon) realCaster.angle = aimAngle; else this.charData.angle = aimAngle;
 
                     if (target.isBoss || (target.name && target.name.includes('바포매트'))) {
                         this.socket.emit('boss_spotted', { bossId: target.id, bossName: target.name });
@@ -741,10 +787,10 @@ class AIAgentClient {
 
                     this.socket.emit('player_magic_action', { 
                         magicName: spellName, targetX: target.x, targetY: target.y, targetId: target.id, 
-                        casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id 
+                        casterX: realCaster.x, casterY: realCaster.y, casterId: casterId 
                     });
                     this.socket.emit('player_attack_request', { 
-                        targetId: target.id, attackerId: this.socket.id, attackType: 'magic', 
+                        targetId: target.id, attackerId: casterId, attackType: 'magic', 
                         calculatedDmg: mData.dmg || 150, magicName: spellName 
                     });
                 }
@@ -1114,8 +1160,14 @@ class AIAgentClient {
         }
     }
 
-    async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
-        if (Date.now() - this.lastAiCallTime < 2500) return;
+  async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
+      
+        if (Date.now() - this.lastAiCallTime < 20000) return;
+        
+     
+        const ignoreKeywords = ["수락했습니다", "초대", "파티 사냥", "수고하셨습니다", "죄송한데", "열렙합시다", "득템하세요"];
+        if (ignoreKeywords.some(k => userMessage.includes(k))) return;
+
         this.lastAiCallTime = Date.now();
 
         const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');
@@ -1205,7 +1257,10 @@ ${situationContext}
             this.executeAction(action, decision, senderName);
 
         } catch(e) {
-            console.error(`[-] [${this.charData.name}] API 한도 초과 방어 발동 (Groq Error)`);
+          
+            if (Math.random() < 0.05) {
+                console.error(`[-] [${this.charData.name}] API 한도 초과 방어 발동 (Groq RPM 제한)`);
+            }
              
             const busyReplies = [
                 "아 지금 몹 몰려서 빡셈;; 잠시만요",
@@ -1225,7 +1280,7 @@ ${situationContext}
                 });
             }
              
-            this.lastAiCallTime = Date.now() + 15000; 
+            this.lastAiCallTime = Date.now() + 30000;
         }
     }
 
