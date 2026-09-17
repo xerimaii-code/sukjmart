@@ -1,4 +1,4 @@
-// sharedAI.js - 플레이어, 용병, 에이전트 공통 AI 엔진 (🚀 fastHypot 수학 최적화 및 용병/타겟팅 좌표 정밀 연동본)
+// sharedAI.js - 플레이어, 용병, 에이전트 공통 AI 엔진 (완전 통합 수정본)
 (function(global) {
     const fastHypot = (dx, dy) => Math.sqrt(dx * dx + dy * dy);
 
@@ -92,37 +92,22 @@
                     let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
                     let distToLeader = leaderEnt ? fastHypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y) : 0;
                     
-                    if ((!entity.target || (entity.target.hp ?? entity.target.h ?? 0) <= 0) && leaderEnt && distToLeader > 700) {
-                        entity.target = null;
-                        entity.targetId = null;
-                        let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
-                        entity.moveX = leaderEnt.x - Math.cos(angle) * 100;
-                        entity.moveY = leaderEnt.y - Math.sin(angle) * 100;
-                        entity.isMoving = true;
-                        skipSearch = true;
-                    } else if (leaderTargetMob) {
+                    if (!leaderTargetMob) {
+                        if (distToLeader > 450) {
+                            entity.target = null;
+                            entity.targetId = null;
+                            let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
+                            entity.moveX = leaderEnt.x - Math.cos(angle) * 150;
+                            entity.moveY = leaderEnt.y - Math.sin(angle) * 150;
+                            entity.isMoving = true;
+                            skipSearch = true;
+                        } else {
+                            skipSearch = false; 
+                        }
+                    } else {
                         if (!entity.target || entity.target.id !== leaderTargetMob.id) {
                             entity.target = leaderTargetMob;
                             entity.targetId = leaderTargetMob.id;
-                            entity.isMoving = false;
-                            entity.moveX = undefined;
-                            entity.moveY = undefined;
-                        }
-                        skipSearch = true;
-                    } else if (leaderEnt) {
-                        if (entity.target) {
-                            entity.target = null;
-                            entity.targetId = null;
-                        }
-                        if (distToLeader > 90) {
-                            let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
-                            entity.moveX = leaderEnt.x - Math.cos(angle) * 60;
-                            entity.moveY = leaderEnt.y - Math.sin(angle) * 60;
-                            entity.isMoving = true;
-                        } else {
-                            entity.isMoving = false;
-                            entity.moveX = undefined;
-                            entity.moveY = undefined;
                         }
                         skipSearch = true;
                     }
@@ -170,7 +155,7 @@
                         entity.target = nearbyDangerMob;
                         entity.targetId = nearbyDangerMob.id;
                     } else if (!target.isBoss) {
-                        if (bossAttacker) {
+                        if (bossAttacker && fastHypot(bossAttacker.x - entity.x, bossAttacker.y - entity.y) < 350) {
                             entity.target = bossAttacker;
                             entity.targetId = bossAttacker.id;
                             if (typeof env.shareTarget === 'function') env.shareTarget(bossAttacker.id);
@@ -219,9 +204,10 @@
                             let rawDist = fastHypot(e.x - entity.x, e.y - entity.y);
                             let edgeDist = Math.max(0, rawDist - (e.size || 20));
                             
-                            if (edgeDist <= 900) {
+                            if (edgeDist <= 450) {
                                 let score = edgeDist;
-                                if (e.isBoss) score -= 5000; 
+                                if (e.isBoss && edgeDist <= 200) score -= 50; 
+                                
                                 if (score < bestScore) {
                                     bestScore = score;
                                     bestTarget = e;
@@ -240,21 +226,34 @@
                         entity.targetId = bestTarget.id;
                         if (typeof env.shareTarget === 'function') env.shareTarget(bestTarget.id);
                     } else if (fallbackTarget) {
+                        entity.target = fallbackTarget;
+                        entity.targetId = fallbackTarget.id;
                         let approachAngle = Math.atan2(fallbackTarget.y - entity.y, fallbackTarget.x - entity.x);
                         let maxMap = env.mapSize || 4000;
-                        entity.moveX = Math.max(150, Math.min(maxMap - 150, entity.x + Math.cos(approachAngle) * 350));
-                        entity.moveY = Math.max(150, Math.min(maxMap - 150, entity.y + Math.sin(approachAngle) * 350));
+                        entity.moveX = Math.max(150, Math.min(maxMap - 150, fallbackTarget.x - Math.cos(approachAngle) * 60));
+                        entity.moveY = Math.max(150, Math.min(maxMap - 150, fallbackTarget.y - Math.sin(approachAngle) * 60));
                         entity.isMoving = true;
                     } else {
                         if (!entity.isMoving || (entity.moveX && fastHypot(entity.moveX - entity.x, entity.moveY - entity.y) < 20)) {
                             let maxMap = env.mapSize || 4000;
-                            let rx = entity.x + (Math.random() * 600 - 300); 
-                            let ry = entity.y + (Math.random() * 600 - 300);
-                            if (rx > 150 && rx < maxMap - 150 && ry > 150 && ry < maxMap - 150) {
-                                if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, rx, ry))) {
-                                    entity.moveX = rx; 
-                                    entity.moveY = ry; 
-                                    entity.isMoving = true;
+                            let currentlyInSafeZone = env.isInSafeZone && env.isInSafeZone(env.currentMap, entity.x, entity.y);
+                            
+                            if (currentlyInSafeZone) {
+                                let escapeAngle = Math.random() * Math.PI * 2;
+                                let rx = entity.x + Math.cos(escapeAngle) * 800; 
+                                let ry = entity.y + Math.sin(escapeAngle) * 800;
+                                entity.moveX = Math.max(150, Math.min(maxMap - 150, rx));
+                                entity.moveY = Math.max(150, Math.min(maxMap - 150, ry));
+                                entity.isMoving = true;
+                            } else {
+                                let rx = entity.x + (Math.random() * 1200 - 600); 
+                                let ry = entity.y + (Math.random() * 1200 - 600);
+                                if (rx > 150 && rx < maxMap - 150 && ry > 150 && ry < maxMap - 150) {
+                                    if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, rx, ry))) {
+                                        entity.moveX = rx; 
+                                        entity.moveY = ry; 
+                                        entity.isMoving = true;
+                                    }
                                 }
                             }
                         }
@@ -531,7 +530,8 @@
                         }
                     } 
                     else if (isWizardWithoutMp) {
-                        // MP 부족 시 물리 타격 생략
+                        if (typeof env.playSound === 'function') env.playSound('swing');
+                        if (typeof env.damageEntity === 'function') env.damageEntity(target, Math.max(1, baseAtk - (target.def || 0)), entity, 'physical');
                     } 
                     else {
                         if (pClass === 'knight' || pClass === 'royal') {
@@ -600,7 +600,6 @@
                                 splashTargets.forEach(st => {
                                     if (typeof env.damageEntity === 'function') env.damageEntity(st, furyAtk, entity, 'physical', '실프의 폭풍');
                                     totalFuryDamage += furyAtk;
-                                    // 💡 [수정] 용병이 화살을 쏠 때 시전자 좌표(entity)가 정확히 반영되도록 수정
                                     if (typeof env.spawnArrow === 'function') env.spawnArrow(entity, st, furyAtk, '#34d399');
                                 });
 
@@ -624,7 +623,6 @@
                                     if (typeof env.damageEntity === 'function') env.damageEntity(target, trueDmg, entity, 'magic', '에코 오브 실프');
                                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('에코 오브 실프', target.x, target.y, target.id, 'normal', entity);
                                 } else {
-                                    // 💡 [수정] 일반 활 발사 시에도 시전자(entity) 전달
                                     if (typeof env.spawnArrow === 'function') env.spawnArrow(entity, target, baseAtk, '#ffffff');
                                     else if (typeof env.damageEntity === 'function') env.damageEntity(target, baseAtk, entity, 'physical');
                                 }

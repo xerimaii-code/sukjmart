@@ -23,6 +23,7 @@ window.closeAllWindows = function() {
 
 // 서버 주도형 멀티플레이를 위한 Socket.io 객체 준비 (추후 server.js와 연동)
 // 💡 [LTE 환경 패킷 지연 차단] WebSocket 단독 연결로 통신 지연 제거
+
 window.socket = typeof io !== 'undefined' ? io({
     transports: ['websocket'],
     upgrade: false,
@@ -688,7 +689,7 @@ window.playBossThemeByEntity = function(targetEntity) {
 };
 
 const customAudio = {
-    swing: [new Audio('/sound/sword-miss3.ogg'), new Audio('/sound/fishing-cast.ogg')],
+    swing: [new Audio('/sound/sword-miss3.ogg')],
     hit_flesh: [new Audio('/sound/sword-flesh3.ogg'), new Audio('/sound/sword-flesh4.ogg')],
     hit_stone: [new Audio('/sound/sword-stone.ogg')],
     hit_armor: [new Audio('/sound/sword-leather.ogg')],
@@ -760,16 +761,25 @@ function playSound(type, targetEntity = null) {
         let now = audioCtx.currentTime;
 
         if (type === 'bow') {
+            // 💡 화살 소리가 1초에 수십 번 겹쳐 타닥거리는 버그 방지 (최소 80ms 간격 제한)
+            let nowMs = performance.now();
+            if (nowMs - (lastSoundPlayTime['bow'] || 0) < 80) return;
+            lastSoundPlayTime['bow'] = nowMs;
+
             const osc = audioCtx.createOscillator(); 
             let gain = audioCtx.createGain(); 
             gain.connect(audioCtx.destination);
             osc.connect(gain); 
-            osc.type = 'sine'; 
-            osc.frequency.setValueAtTime(800, now); 
-            osc.frequency.exponentialRampToValueAtTime(100, now + 0.08); 
-            gain.gain.setValueAtTime(baseVol * 0.04, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08); 
-            osc.start(now); osc.stop(now + 0.08); 
+            osc.type = 'triangle'; // 💡 날카로운 sine파 대신 부드러운 triangle파 사용
+            
+            // 💡 딱딱거리는 고주파(800Hz) 대신 묵직한 활시위 소리(400Hz -> 150Hz)로 완화
+            osc.frequency.setValueAtTime(400, now); 
+            osc.frequency.exponentialRampToValueAtTime(150, now + 0.09); 
+            
+            gain.gain.setValueAtTime(baseVol * 0.035, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09); 
+            osc.start(now); 
+            osc.stop(now + 0.09); 
             return;
         }
 
@@ -839,64 +849,202 @@ function playSound(type, targetEntity = null) {
             return; 
         }
 
-        let vol = gameOptions.volume;
-        let gain = audioCtx.createGain(); gain.connect(audioCtx.destination);
+       let vol = baseVol; 
+        let gain = audioCtx.createGain(); 
+        gain.connect(audioCtx.destination);
 
+        // 🔥 [파이어볼 / 이럽션 / 폭발 마법] 묵직한 타격 충격파 + 불덩이가 화아악 타오르는 화염 파열음
         if (type === 'fireball') { 
+            // 1. 가슴을 울리는 서브베이스 폭발음 (140Hz -> 30Hz 묵직한 쿵)
+            const subOsc = audioCtx.createOscillator();
+            const subGain = audioCtx.createGain();
+            subOsc.type = 'sine';
+            subOsc.frequency.setValueAtTime(140, now);
+            subOsc.frequency.exponentialRampToValueAtTime(32, now + 0.35);
+            subGain.gain.setValueAtTime(vol * 0.45, now);
+            subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            subOsc.connect(subGain); 
+            subGain.connect(gain);
+            subOsc.start(now); 
+            subOsc.stop(now + 0.35);
+
+            // 2. 불꽃이 거세게 타오르며 퍼지는 노이즈 버스트 (화아아앙)
+            let bufferSize = audioCtx.sampleRate * 0.45; 
+            let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); 
+            let data = buffer.getChannelData(0); 
+            for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1); 
+            let noise = audioCtx.createBufferSource(); 
+            noise.buffer = buffer; 
+
+            let filter = audioCtx.createBiquadFilter(); 
+            filter.type = 'bandpass'; 
+            filter.frequency.setValueAtTime(700, now); 
+            filter.frequency.exponentialRampToValueAtTime(160, now + 0.45); 
+            filter.Q.setValueAtTime(2.2, now);
+
+            let nGain = audioCtx.createGain();
+            nGain.gain.setValueAtTime(vol * 0.4, now); 
+            nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.45); 
+            
+            noise.connect(filter);
+            filter.connect(nGain);
+            nGain.connect(gain);
+            noise.start(now); 
+        }
+
+        // ⚡ [콜 라이트닝 / 라이트닝 스톰] 8비트 레이저 대신 날카로운 벼락 파열음
+        else if (type === 'lightning') { 
+            const osc = audioCtx.createOscillator(); 
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1200, now);
+            filter.frequency.exponentialRampToValueAtTime(200, now + 0.22);
+            filter.Q.setValueAtTime(4, now);
+
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(220, now); 
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.22); 
+            
+            let lGain = audioCtx.createGain();
+            lGain.gain.setValueAtTime(vol * 0.35, now); 
+            lGain.gain.exponentialRampToValueAtTime(0.001, now + 0.22); 
+            
+            osc.connect(filter);
+            filter.connect(lGain);
+            lGain.connect(gain);
+            osc.start(now); 
+            osc.stop(now + 0.22); 
+        }
+
+        // ❄️ [블리자드 / 아이스 스파이크] 뾰오옹 소리 제거 -> 얼어붙는 한기와 얼음 파편 파열음
+        else if (type === 'blizzard') { 
             let bufferSize = audioCtx.sampleRate * 0.4; 
             let buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate); 
             let data = buffer.getChannelData(0); 
-            for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1; 
-            let noise = audioCtx.createBufferSource(); noise.buffer = buffer; 
-            let filter = audioCtx.createBiquadFilter(); filter.type = 'lowpass'; 
-            filter.frequency.setValueAtTime(400, now); 
-            filter.frequency.exponentialRampToValueAtTime(100, now + 0.4); 
-            noise.connect(filter).connect(gain); 
-            gain.gain.setValueAtTime(vol * 0.3, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); 
+            for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1); 
+            let noise = audioCtx.createBufferSource(); 
+            noise.buffer = buffer; 
+
+            let filter = audioCtx.createBiquadFilter(); 
+            filter.type = 'highpass'; 
+            filter.frequency.setValueAtTime(1400, now); 
+            filter.frequency.exponentialRampToValueAtTime(600, now + 0.4); 
+
+            let nGain = audioCtx.createGain();
+            nGain.gain.setValueAtTime(vol * 0.3, now); 
+            nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4); 
+            
+            noise.connect(filter);
+            filter.connect(nGain);
+            nGain.connect(gain);
             noise.start(now); 
         }
-        else if (type === 'lightning') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sawtooth'; 
-            osc.frequency.setValueAtTime(400,now); osc.frequency.exponentialRampToValueAtTime(50,now+0.2); 
-            gain.gain.setValueAtTime(vol * 0.2, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001,now+0.2); 
-            osc.start(now); osc.stop(now+0.2); 
-        }
+
+        // 💚 [힐 / 치유 마법] 맑고 은은한 상승 회복음
         else if (type === 'heal') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine'; 
-            osc.frequency.setValueAtTime(400,now); osc.frequency.linearRampToValueAtTime(800,now+0.3); 
-            gain.gain.setValueAtTime(vol * 0.2, now); 
-            gain.gain.linearRampToValueAtTime(0.001,now+0.4); 
-            osc.start(now); osc.stop(now+0.4); 
+            const osc = audioCtx.createOscillator(); 
+            osc.type = 'sine'; 
+            osc.frequency.setValueAtTime(320, now); 
+            osc.frequency.linearRampToValueAtTime(640, now + 0.28); 
+            
+            let hGain = audioCtx.createGain();
+            hGain.gain.setValueAtTime(vol * 0.2, now); 
+            hGain.gain.linearRampToValueAtTime(0.001, now + 0.35); 
+            
+            osc.connect(hGain);
+            hGain.connect(gain);
+            osc.start(now); 
+            osc.stop(now + 0.35); 
         }
+
+        // ✨ [버프 / 보조 마법] 뵹~ 소리 제거 -> 신비로운 마법 종소리(화음)
         else if (type === 'spell') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='sine';
-            osc.frequency.setValueAtTime(300,now); osc.frequency.exponentialRampToValueAtTime(100,now+0.25); 
-            gain.gain.setValueAtTime(vol * 0.15, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001,now+0.25); 
-            osc.start(now); osc.stop(now+0.25); 
+            const osc1 = audioCtx.createOscillator(); 
+            const osc2 = audioCtx.createOscillator(); 
+            osc1.type = 'sine';
+            osc2.type = 'sine';
+            osc1.frequency.setValueAtTime(523.25, now); // C5 (도)
+            osc2.frequency.setValueAtTime(659.25, now); // E5 (미)
+            
+            let sGain = audioCtx.createGain();
+            sGain.gain.setValueAtTime(vol * 0.12, now); 
+            sGain.gain.exponentialRampToValueAtTime(0.001, now + 0.32); 
+            
+            osc1.connect(sGain); 
+            osc2.connect(sGain); 
+            sGain.connect(gain);
+            osc1.start(now); osc1.stop(now + 0.32); 
+            osc2.start(now); osc2.stop(now + 0.32); 
         }
+
+        // ⚡ [에너지 볼트] 만화 같은 뽕! 제거 -> 날카롭고 빠른 마력 탄환(Arcane Pulse)
         else if (type === 'energy_bolt') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; 
-            osc.frequency.setValueAtTime(500, now); osc.frequency.exponentialRampToValueAtTime(200, now+0.15); 
-            gain.gain.setValueAtTime(vol * 0.1, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001, now+0.15); 
-            osc.start(now); osc.stop(now+0.15); 
+            const osc = audioCtx.createOscillator(); 
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1500, now);
+            filter.frequency.exponentialRampToValueAtTime(400, now + 0.12);
+            filter.Q.setValueAtTime(3.5, now);
+
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(700, now); 
+            osc.frequency.exponentialRampToValueAtTime(180, now + 0.12); 
+            
+            let eGain = audioCtx.createGain();
+            eGain.gain.setValueAtTime(vol * 0.22, now); 
+            eGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12); 
+            
+            osc.connect(filter);
+            filter.connect(eGain);
+            eGain.connect(gain);
+            osc.start(now); 
+            osc.stop(now + 0.12); 
         }
+
+        // 👑 [디스인티그레이트 / 저지먼트] 붕~ 소리 완전 제거! 
+        // 2중 톱니파 디튠 간섭으로 뼛속까지 울리는 거친 전기 굉음 "지이이이잉~~~~~"
+        else if (type === 'disintegrate' || type === 'judgment') { 
+            const osc1 = audioCtx.createOscillator(); 
+            const osc2 = audioCtx.createOscillator(); 
+            const filter = audioCtx.createBiquadFilter(); 
+            const mainGain = audioCtx.createGain(); 
+
+            // 💡 [핵심] 고주파를 100Hz로 깎지 않고 1200Hz까지 열어 거친 금속성 파괴음('징~~')을 그대로 살림
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1200, now);
+            filter.frequency.exponentialRampToValueAtTime(300, now + 1.2);
+            filter.Q.setValueAtTime(8, now); // 진동 공명치 강화
+
+            osc1.type = 'sawtooth'; 
+            osc2.type = 'sawtooth'; 
+            
+            // 💡 54Hz와 57.2Hz의 미세한 주파수 차이로 초당 3.2회 찢어지는 위상 맥놀이("징-징-징-징") 생성
+            osc1.frequency.setValueAtTime(54, now); 
+            osc1.frequency.exponentialRampToValueAtTime(32, now + 1.2); 
+            osc2.frequency.setValueAtTime(57.2, now); 
+            osc2.frequency.exponentialRampToValueAtTime(34.5, now + 1.2); 
+
+            mainGain.gain.setValueAtTime(vol * 0.45, now); 
+            mainGain.gain.exponentialRampToValueAtTime(0.001, now + 1.2); 
+
+            osc1.connect(filter);
+            osc2.connect(filter);
+            filter.connect(mainGain);
+            mainGain.connect(gain);
+
+            osc1.start(now); osc1.stop(now + 1.2); 
+            osc2.start(now); osc2.stop(now + 1.2); 
+        }
+
         else if (type === 'click') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type='triangle'; 
-            osc.frequency.setValueAtTime(800,now); 
-            gain.gain.setValueAtTime(vol * 0.1, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001,now+0.05); 
-            osc.start(now); osc.stop(now+0.05); 
-        }
-        else if (type === 'disintegrate') { 
-            const osc = audioCtx.createOscillator(); osc.connect(gain); osc.type = 'sine'; 
-            osc.frequency.setValueAtTime(1800, now); osc.frequency.exponentialRampToValueAtTime(200, now + 1.0); 
-            gain.gain.setValueAtTime(vol * 0.5, now); 
-            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0); 
-            osc.start(now); osc.stop(now + 1.0); 
+            const osc = audioCtx.createOscillator(); 
+            osc.connect(gain); 
+            osc.type = 'triangle'; 
+            osc.frequency.setValueAtTime(800, now); 
+            gain.gain.setValueAtTime(vol * 0.08, now); 
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05); 
+            osc.start(now); 
+            osc.stop(now + 0.05); 
         }
     } catch(e) {}
 }
@@ -1416,24 +1564,32 @@ window.toggleAutoPotion = function() {
 };
 
 window.respawnPlayer = function() {
-    // 💡 만약 현재 맵이 보스 레이드('boss_raid')라면 마을로 보내지 않고 그 자리(안전 좌표)에서 즉시 부활!
+    // 💡 부활하는 순간 클라이언트의 모든 타겟팅 상태를 강제 소거
+    player.target = null;
+    player.targetId = null;
+    player.ignoredTargetId = null;
+    player.ignoredUntil = performance.now() + 3000; // 부활 후 3초간 자동 반격 타겟팅 방지
+    player.isMoving = false;
+    player.moveX = undefined;
+    player.moveY = undefined;
+
+    if (window.socket && currentUser) {
+        window.socket.emit('player_target', { targetId: null });
+    }
+
     if (currentMap === 'boss_raid') {
         player.hp = currentMaxHp;
         player.mp = currentMaxMp;
         player.isDead = false;
-        player.autoHunt = true; // 레이드 중이므로 사냥 유지 가능
-        player.target = null;
-        player.isMoving = false;
-
-        // 보스 방 입장 초기 좌표로 부활
+        player.autoHunt = false;
+        player.autoPotion = false;
         player.x = 2000;
         player.y = 3500;
 
         if (typeof addMessage === 'function') {
-            addMessage("💀 사망하였으나 차원의 틈새 안에서 부활했습니다! 전투를 계속합니다.", "#f55");
+            addMessage("💀 사망하였으나 차원의 틈새 안에서 부활했습니다!", "#f55");
         }
     } else {
-        // 일반 필드인 경우 기존처럼 마을로 부활
         let townMaps = ['talking_island', 'gludin', 'silver_knight_town', 'windawood', 'giran'];
         let targetMap = townMaps.includes(currentMap) ? currentMap : 'silver_knight_town';
         let targetX = 2000, targetY = 2000;
@@ -1448,19 +1604,9 @@ window.respawnPlayer = function() {
         player.isDead = false;
         player.autoHunt = false;
         player.autoPotion = false;
-        player.target = null;
-        player.isMoving = false;
         
         changeMap(targetMap, targetX, targetY);
         addMessage("마을 안전지대에서 부활하였습니다.", "#f55");
-    }
-
-    if (window.socket && currentUser) {
-        window.socket.emit('player_update', {
-            name: player.name, charClass: player.charClass,
-            x: player.x, y: player.y, hp: player.hp, maxHp: currentMaxHp, map: currentMap,
-            equip: player.equip
-        });
     }
 
     updateUI();
@@ -3368,22 +3514,33 @@ document.addEventListener('visibilitychange', async () => { 
 });
 
 function saveOnExit() {
-    if (!gameStarted || typeof currentUser === 'undefined' || !currentUser) return;
-    let saveData = getCompleteSavePayload(null, 0); 
+    if (!gameStarted || typeof currentUser === 'undefined' || !currentUser) return;
+    
+    let saveData = getCompleteSavePayload(null, 0); 
 
-    const endpoint = `${SUPABASE_URL}/rest/v1/characters?user_id=eq.${currentUser.id}&slot_index=eq.${currentSlotIndex}`;
-    const payload = JSON.stringify({
-        name: saveData.player.name,
-        class_name: classData[saveData.player.charClass] ? classData[saveData.player.charClass].name : '기사',
-        data: saveData,
-        updated_at: new Date()
-    });
+    const endpoint = `${SUPABASE_URL}/rest/v1/characters?user_id=eq.${currentUser.id}&slot_index=eq.${currentSlotIndex}`;
+    const payload = JSON.stringify({
+        name: saveData.player.name,
+        class_name: classData[saveData.player.charClass] ? classData[saveData.player.charClass].name : '기사',
+        data: saveData,
+        updated_at: new Date()
+    });
 
-    if (navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' });
-        navigator.sendBeacon(endpoint, blob);
-    }
+    fetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+            'Content-Type': 'application/json',
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${window.mySessionToken ? window.mySessionToken : SUPABASE_ANON_KEY}`,
+            'Prefer': 'return=minimal'
+        },
+        body: payload,
+        keepalive: true
+    }).catch(err => console.log('안전 종료 저장 지연:', err));
 }
+
+
+
 
 window.addEventListener('pagehide', (e) => { if (gameStarted) { saveOnExit(); } });
 window.addEventListener('beforeunload', (e) => { if (gameStarted) { saveOnExit(); } });
@@ -4995,18 +5152,27 @@ async function generateAIAgents() {
 window.changeMap = function(newMap, nx, ny) { 
     if (typeof playSound === 'function') playSound('spell'); 
 
-    // 💡 이 부분이 반드시 있어야 맵 이동 시 음악이 바뀝니다!
     if (typeof changeBGM === 'function') changeBGM(newMap);
 
     currentMap = newMap; 
     player.map = newMap;
     
-    // 💡 1. 맵 이동 시 이전 타겟, 아이템 타겟, 이동 상태 완벽 초기화
+    // 💡 이전 맵의 타겟 참조를 완전 소멸시키고 1.5초간 탐색 지연 부여
     player.target = null;
+    player.targetId = null;
+    player.ignoredTargetId = null;
     player.targetItem = null;
     player.isMoving = false; 
     player.moveX = undefined; 
     player.moveY = undefined; 
+    player.manualOverrideUntil = performance.now() + 1500; // 💡 1.5초간 AI 루틴 강제 대기
+
+    // 💡 맵에 남아있던 이전 맵 몬스터 엔티티 즉시 소거 (서버의 sync_map_state를 새로 받아옴)
+    for (let i = entities.length - 1; i >= 0; i--) {
+        if (!entities[i].isSummon && !entities[i].isPlayer) {
+            entities.splice(i, 1);
+        }
+    }
     
     if (typeof clearPlayerAggro === 'function') clearPlayerAggro();
 
@@ -5326,40 +5492,25 @@ window.renderPartyHUD = function() {
     }
 
     if (!data || !data.party || !data.party.members || data.party.members.length === 0) {
-        hudList.style.display = 'none';
-        hudList.innerHTML = '';
+        if (hudList.style.display !== 'none') hudList.style.display = 'none';
         return;
     }
 
-    hudList.style.display = 'flex';
-    hudList.style.flexDirection = 'column';
-    hudList.style.gap = '2px'; // 💡 세로 간격 3px -> 2px 압축
-    hudList.style.touchAction = 'none';
+ 
+    let partyHash = data.party.members.map(m => m.socketId + '_' + m.hp + '_' + (m.maxHp||100)).join('|');
+    if (window._lastPartyHudHash === partyHash) return; // 변동 없으면 렌더링 생략
+    window._lastPartyHudHash = partyHash;
 
-    if (typeof window.makeHudDraggable === 'function') {
-        window.makeHudDraggable(hudList, 8, 70);
-    } else {
-        hudList.style.position = 'fixed';
-        if (!hudList.style.top) hudList.style.top = '70px';
-        if (!hudList.style.left) hudList.style.left = '8px';
-        hudList.style.zIndex = '99998';
-        hudList.style.cursor = 'move';
-        hudList.style.pointerEvents = 'auto';
-    }
-
-    // 실시간 HP 동기화
-    data.party.members.forEach(m => {
-        if (m.socketId === window.socket?.id) {
-            m.hp = player.hp;
-            m.maxHp = window.currentMaxHp || player.maxHp;
-        } else {
-            let ent = entities.find(e => e.isPlayer && (e.id === m.socketId || e.socketId === m.socketId));
-            if (ent) {
-                m.hp = ent.hp;
-                m.maxHp = ent.maxHp || m.maxHp;
-            }
+    if (hudList.style.display !== 'flex') {
+        hudList.style.display = 'flex';
+        hudList.style.flexDirection = 'column';
+        hudList.style.gap = '2px';
+        hudList.style.touchAction = 'none';
+        if (typeof window.makeHudDraggable === 'function') {
+            let defaultTop = window.innerWidth < 768 ? 140 : 75;
+            window.makeHudDraggable(hudList, 10, defaultTop);
         }
-    });
+    }
 
     let html = '';
     data.party.members.forEach(member => {
@@ -5367,23 +5518,15 @@ window.renderPartyHUD = function() {
         let isLeader = data.party.leader === member.socketId;
         let leaderIcon = isLeader ? '👑' : '';
         let displayName = `${leaderIcon}${member.name}`;
-
         let isSelected = (window.selectedAllyId === member.socketId);
-        let borderStyle = isSelected 
-            ? 'border: 1.5px solid #4ade80; box-shadow: 0 0 5px rgba(74,222,128,0.7);' 
-            : (isLeader ? 'border: 1px solid #facc15;' : 'border: 1px solid #3b3b4f;');
-        let nameColor = isLeader ? '#facc15' : '#ffffff';
+        let borderStyle = isSelected ? 'border: 1.5px solid #4ade80;' : (isLeader ? 'border: 1px solid #facc15;' : 'border: 1px solid #3b3b4f;');
 
-        // 💡 [변경] 가로 64px(50% 축소), 패딩 2px 3px, 폰트 9px, 바 높이 3px로 세로 압축
         html += `
-        <div style="cursor: pointer; position: relative; background: rgba(16,16,24,0.92); padding: 2px 3px; border-radius: 3px; width: 64px; box-sizing: border-box; ${borderStyle} user-select: none; -webkit-user-select: none;"
-             onclick="if(!window._blockClickDueToDrag) window.selectAlly('${member.socketId}', '${member.name}')"
-             oncontextmenu="event.preventDefault(); if(!window._blockClickDueToDrag) window.handlePartyHudClick('${member.socketId}', '${member.name}'); return false;">
-            <div style="color: ${nameColor}; font-size: 9px; font-weight: bold; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.1;">
-                ${displayName}
-            </div>
-            <div style="width: 100%; height: 3px; background: #111; border-radius: 1.5px; overflow: hidden; border: 0.5px solid #222;">
-                <div style="width: ${hpPct}%; height: 100%; background: #38bdf8; transition: width 0.15s;"></div>
+        <div style="cursor: pointer; position: relative; background: rgba(16,16,24,0.92); padding: 2px 3px; border-radius: 3px; width: 64px; box-sizing: border-box; ${borderStyle}"
+             onclick="if(!window._blockClickDueToDrag) window.selectAlly('${member.socketId}', '${member.name}')">
+            <div style="color: ${isLeader ? '#facc15' : '#fff'}; font-size: 9px; font-weight: bold; margin-bottom: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${displayName}</div>
+            <div style="width: 100%; height: 3px; background: #111; border-radius: 1.5px; overflow: hidden;">
+                <div style="width: ${hpPct}%; height: 100%; background: #38bdf8;"></div>
             </div>
         </div>`;
     });
@@ -5404,10 +5547,15 @@ window.renderMercenaryHUD = function() {
     }
 
     if (activeMercs.length === 0) {
-        listEl.style.display = 'none';
-        listEl.innerHTML = '';
+        if (listEl.style.display !== 'none') listEl.style.display = 'none';
         return;
     }
+
+    let mercHash = activeMercs.map(m => m.id + '_' + m.hp + '_' + m.mp).join('|');
+    if (window._lastMercHudHash === mercHash) return; // 변동 없으면 렌더링 스킵
+    window._lastMercHudHash = mercHash;
+
+
 
     // 미니맵 기준 위치 및 크기 비율 실시간 계산
     let minimapEl = document.getElementById('minimap');

@@ -2,6 +2,7 @@
 // 💻 [PC 백그라운드 사냥 유지 & 모바일 백그라운드 차단 엔진]
 // ========================================================
 let bgGameInterval = null;
+let mainLoopId = null; // 💡 메인 루프 중복 방지 식별자
 const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 // PC 환경에서만 탭 전환/화면 가림 시 백그라운드 사냥 가동 (모바일은 백그라운드 차단)
@@ -22,7 +23,8 @@ document.addEventListener('visibilitychange', () => {
         // 💡 [핵심] 복귀하는 순간 이전 밀린 시간을 완전히 버리고 현재 시점으로 강제 리셋!
         lastTime = performance.now();
         if (typeof update === 'function') {
-            requestAnimationFrame(update);
+            cancelAnimationFrame(mainLoopId); // 💡 기존 루프를 확실히 취소하여 가속 버그 원천 차단
+            mainLoopId = requestAnimationFrame(update);
         }
     }
 });
@@ -1990,6 +1992,7 @@ let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - vis
         ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(player.x - barW/2, player.y - player.size - 25, barW, 6);
     }
 
+  
     // 💡 [5] 액티브 파티클 렌더링
     particles.forEach(p => { 
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number' || isNaN(p.x) || isNaN(p.y)) return;
@@ -2010,9 +2013,10 @@ let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - vis
             // 파티클 세부 로직
             if (p.isArrow) {
                 ctx.rotate(p.angle || 0);
-                let isSkill = p.color && p.color !== '#ffffff';
-                let mainColor = isSkill ? p.color : '#fde047'; 
-                let glowColor = isSkill ? p.color : '#ffaa00';
+                let safeColor = p.color || '#fde047'; // 💡 color가 날아갔을 경우 기본 색상 복구
+                let isSkill = safeColor !== '#ffffff';
+                let mainColor = isSkill ? safeColor : '#fde047'; 
+                let glowColor = isSkill ? safeColor : '#ffaa00';
                 ctx.shadowBlur = isSkill ? 15 : 8;
                 ctx.shadowColor = glowColor;
                 ctx.fillStyle = mainColor; 
@@ -2022,7 +2026,7 @@ let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - vis
                 ctx.moveTo(8, -5); ctx.lineTo(18, 0); ctx.lineTo(8, 5); ctx.fill(); 
                 let trailGrad = ctx.createLinearGradient(-35, 0, -14, 0);
                 trailGrad.addColorStop(0, 'rgba(255,255,255,0)');
-                trailGrad.addColorStop(1, isSkill ? p.color : 'rgba(255,255,255,0.7)');
+                trailGrad.addColorStop(1, isSkill ? safeColor : 'rgba(255,255,255,0.7)');
                 ctx.fillStyle = trailGrad; 
                 ctx.fillRect(-35, -2.5, 21, isSkill ? 5 : 4);
             }
@@ -2353,11 +2357,11 @@ let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - vis
                 ctx.fillRect(-s/2, -s/2, s, s);
             }
             else if (p.type === 'fire_spark') {
-                let alpha = Math.max(0, p.life / p.maxLife);
-                ctx.globalAlpha = alpha;
+                let alphaValue = Math.max(0, p.life / p.maxLife);
+                ctx.globalAlpha = alphaValue;
                 ctx.fillStyle = p.color || '#ff4400';
                 ctx.beginPath();
-                ctx.arc(0, 0, Math.max(1, (p.size || 4) * alpha), 0, Math.PI * 2);
+                ctx.arc(0, 0, Math.max(1, (p.size || 4) * alphaValue), 0, Math.PI * 2);
                 ctx.fill();
             }
             else if (p.type === 'fireball_core_flash') {
@@ -2698,7 +2702,7 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             else if (magicName === '파이어볼' || magicName === '이럽션' || magicName === '선버스트') playSound('fireball'); 
             else if (magicName === '콜 라이트닝' || magicName === '라이트닝 스톰') playSound('lightning'); 
             else if (magicName === '블리자드' || magicName === '헤일 스톰' || magicName === '아이스 스파이크') playSound('blizzard'); 
-            else if (magicName === '디스인티그레이트') playSound('disintegrate');
+            else if (magicName === '디스인티그레이트' || magicName === '저지먼트') playSound(magicName === '저지먼트' ? 'judgment' : 'disintegrate');
             else playSound('spell');
         } else {
             if (typeof playSound === 'function') playSound('fireball');
@@ -3163,7 +3167,7 @@ function update(timestamp) {
         window.processAutoConsumablesAndBuffs();
     }
 
-    let moveDelta = Math.min(1.0, (dt / 1000) * 3.2);
+    let moveDelta = Math.min(1.0, (dt / 1000) * 4.5);
 
     for (let i = 0; i < entities.length; i++) {
     let e = entities[i];
@@ -3171,8 +3175,7 @@ function update(timestamp) {
     if ((e.isPlayer || e.isOtherMerc || !e.isSummon) && e.moveX !== undefined && e.moveY !== undefined) {
         let dist = Math.hypot(e.moveX - e.x, e.moveY - e.y);
         
-        // 💡 1.5 -> 3.0으로 데드존 완화 및 근접 시 스냅 처리
-        if (dist > 3.0) {
+     if (dist > 4.0) {
             e.x += (e.moveX - e.x) * moveDelta;
             e.y += (e.moveY - e.y) * moveDelta;
             e.isMoving = true;
@@ -3181,7 +3184,7 @@ function update(timestamp) {
         } else { 
             e.x = e.moveX;
             e.y = e.moveY;
-            if (timestamp - (e.lastMoveAnimTime || 0) > 120) {
+            if (timestamp - (e.lastMoveAnimTime || 0) > 100) {
                 e.isMoving = false; 
             }
         }
@@ -3594,7 +3597,7 @@ function update(timestamp) {
         } catch (renderErr) {
             console.error("[-] 렌더링 중 일시적 오류 발생 (루프 유지됨):", renderErr);
         }
-        requestAnimationFrame(update);
+        mainLoopId = requestAnimationFrame(update); // 💡 루프 ID 할당
     }
 }
 
@@ -3731,6 +3734,10 @@ if (window.socket) {
         let ty = data.targetY !== undefined ? data.targetY : (targetEnt ? targetEnt.y : p.y + Math.sin(p.angle) * 300);
         let calcAngle = Math.atan2(ty - p.y, tx - p.x);
 
+        // 💡 [핵심] 내 캐릭터 또는 내 용병이거나, 내 화면(isEntityOnScreen) 안에 있을 때만 소리 재생 허용
+        let isMine = (p === player || (p.isSummon && p.owner === player));
+        let canPlayAudio = isMine || (typeof isEntityOnScreen === 'function' && isEntityOnScreen(p));
+
         if (data.isBow || (p.equip && p.equip.weapon && p.equip.weapon.isBow)) {
             let arrowColor = data.color || '#ffffff'; 
             let shootArrow = (delay = 0) => {
@@ -3742,7 +3749,7 @@ if (window.socket) {
                             type: 'arrow', angle: calcAngle, target: targetEnt || { x: tx, y: ty }
                         });
                     }
-                    if (typeof playSound === 'function') playSound('bow');
+                    if (canPlayAudio && typeof playSound === 'function') playSound('bow', p);
                 }, delay);
             };
 
@@ -3754,7 +3761,7 @@ if (window.socket) {
                 }
             }
         } else {
-            if (typeof playSound === 'function') playSound('swing');
+            if (canPlayAudio && typeof playSound === 'function') playSound('swing', p);
             if (data.actionType === 'crit_slash') {
                 if (typeof particles !== 'undefined') {
                     particles.push({ x: tx, y: ty, life: 0.4, maxLife: 0.4, type: 'explosion', size: 55, color: '#ff2200' });
@@ -3765,7 +3772,6 @@ if (window.socket) {
             }
         }
     });
-
     window.spawnMagicParticle = function(cX, cY, mName, angle = 0, tX = cX, tY = cY) {
         if (typeof particles === 'undefined' || window.isBgTick) return;
 
@@ -3917,7 +3923,7 @@ if (window.socket) {
             if (mName.includes('파이어') || mName === '선버스트' || mName === '이럽션') playSound('fireball');
             else if (mName.includes('라이트닝') || mName === '쇼크 스턴') playSound('lightning');
             else if (mName.includes('블리자드') || mName === '아이스' || mName === '헤일 스톰') playSound('blizzard');
-            else if (mName === '디스인티그레이트') playSound('disintegrate');
+            else if (mName === '디스인티그레이트' || mName === '저지먼트') playSound(mName === '저지먼트' ? 'judgment' : 'disintegrate');
             else if (mName.includes('힐') || mName === '네이쳐스 터치') playSound('heal');
             else if (mName.includes('애로우') || mName.includes('실프의 폭풍')) playSound('bow');
             else if (mName.includes('클리브') || mName.includes('광폭화')) playSound('swing');
@@ -3938,7 +3944,9 @@ if (window.socket) {
                     });
                 }
             }
-            if (typeof playSound === 'function') playSound('drink');
+            // 💡 다른 모험가(AI)들이 물약 먹는 소리는 스피커로 내보내지 않음 (내 캐릭터/용병만 소리 재생)
+            let isMine = (p === player || (p.isSummon && p.owner === player));
+            if (isMine && typeof playSound === 'function') playSound('drink', p);
         }
     });
 
@@ -4542,19 +4550,24 @@ window.updateMercenaryAI = function() {
     if (activeMercs.length === 0) return;
 
     let playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
-    let baseSpeed = player.currentSpeed || 180;
-    let followSpeed = (baseSpeed + 30 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
-    let combatApproachSpeed = (baseSpeed + 15 + (playerHasHaste ? 50 : 0)) * (dt / 1000);
+    
+    // 💡 [속도 동기화 패치 유지] 플레이어의 이동 속도를 기준으로 보폭 설정
+    let pSpeed = player.currentSpeed || 130;
+    let baseSpeed = pSpeed * 1.05;
+    let followSpeed = baseSpeed * (dt / 1000);       
+    let combatApproachSpeed = (baseSpeed * 0.9) * (dt / 1000);
 
+    // 💡 [에러 원인 완벽 해결] 문제가 되던 env.castAttackSpell -> castAttackSpell 로 롤백
     const executeMercAttack = (e, chosenSpell) => {
         e.lastAttack = now;
-        if (chosenSpell && magicDb?.[chosenSpell] && e.mp >= magicDb[chosenSpell].mp) {
+        if (chosenSpell && typeof magicDb !== 'undefined' && magicDb[chosenSpell] && e.mp >= magicDb[chosenSpell].mp) {
             if (typeof castAttackSpell === 'function') {
-                castAttackSpell(e.target, chosenSpell, e, true);
+                // 용병(e)을 시전자로 명확하게 전달
+                castAttackSpell(e.target, chosenSpell, e, true); 
             }
         } else {
             if (e.mercType === 'wizard') return; 
-            let totalAtk = typeof getEntityTotalAtk === 'function' ? getEntityTotalAtk(e) : (e.atk || 15);
+            let totalAtk = e.atk || 15;
             let isBow = Boolean(e.equip?.weapon?.isBow);
             if (typeof playSound === 'function') playSound(isBow ? 'bow' : 'swing');
             if (typeof damageEntity === 'function') {
@@ -4566,7 +4579,7 @@ window.updateMercenaryAI = function() {
     activeMercs.forEach(e => {
         let pDist = Math.hypot(player.x - e.x, player.y - e.y);
 
-        if (pDist > 700) {
+        if (pDist > 600) {
             let angle = Math.random() * Math.PI * 2;
             e.x = player.x + Math.cos(angle) * 40;
             e.y = player.y + Math.sin(angle) * 40;
@@ -4615,8 +4628,11 @@ window.updateMercenaryAI = function() {
             e.target = null;
             if (pDist > 50) {
                 let angle = Math.atan2(player.y - e.y, player.x - e.x);
-                e.x += Math.cos(angle) * followSpeed;
-                e.y += Math.sin(angle) * followSpeed;
+                // 💡 [안전지대 스무딩] 부드러운 추적 (Lerp)
+                let destX = player.x - Math.cos(angle) * 50;
+                let destY = player.y - Math.sin(angle) * 50;
+                e.x += (destX - e.x) * 0.15;
+                e.y += (destY - e.y) * 0.15;
                 e.isMoving = true;
             } else { e.isMoving = false; }
             return;
@@ -4657,7 +4673,7 @@ window.updateMercenaryAI = function() {
             if (e.mercType === 'wizard') {
                 if (target.isBoss) {
                     let bossSpells = ['디스인티그레이트', '저지먼트', '블리자드', '선버스트', '이럽션', '파이어볼', '에너지 볼트'];
-                    let validSpell = bossSpells.find(s => magicDb?.[s] && e.mp >= magicDb[s].mp && e.skills.includes(s));
+                    let validSpell = bossSpells.find(s => typeof magicDb !== 'undefined' && magicDb[s] && e.mp >= magicDb[s].mp && e.skills.includes(s));
                     chosenSpell = validSpell || '에너지 볼트';
                 } else {
                     let nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - target.x, en.y - target.y) <= 180).length;
@@ -4674,8 +4690,7 @@ window.updateMercenaryAI = function() {
             if (other !== e) {
                 let d = Math.hypot(e.x - other.x, e.y - other.y);
                 if (d < 55 && d > 0.1) {
-                    let force = (55 - d) / 55; 
-                    let factor = force * 1.5 * (dt / 16.6);
+                    let factor = ((55 - d) / 55) * 1.5 * (dt / 16.6);
                     pushX += ((e.x - other.x) / d) * factor;
                     pushY += ((e.y - other.y) / d) * factor;
                 }
@@ -4705,10 +4720,10 @@ window.updateMercenaryAI = function() {
                 
                 let safeSpotX = player.x + Math.cos(e.orbitAngle) * 240;
                 let safeSpotY = player.y + Math.sin(e.orbitAngle) * 240;
-                let moveAngle = Math.atan2(safeSpotY - e.y, safeSpotX - e.x);
-
-                e.x += Math.cos(moveAngle) * combatApproachSpeed * 0.9 + pushX;
-                e.y += Math.sin(moveAngle) * combatApproachSpeed * 0.9 + pushY;
+                
+                // 💡 [카이팅 스무딩] 마법사/요정이 거리를 벌릴 때 미끄러지듯 이동
+                e.x += (safeSpotX - e.x) * 0.15 + pushX;
+                e.y += (safeSpotY - e.y) * 0.15 + pushY;
                 e.angle = Math.atan2(target.y - e.y, target.x - e.x);
 
                 if (now - (e.lastAttack || 0) >= mercAtkDelay && distToEnemy <= maxAttackRange) {
@@ -4718,8 +4733,12 @@ window.updateMercenaryAI = function() {
             else if (distToEnemy > maxAttackRange) {
                 e.isMoving = true;
                 let moveAngle = Math.atan2(target.y - e.y, target.x - e.x);
-                e.x += Math.cos(moveAngle) * combatApproachSpeed + pushX;
-                e.y += Math.sin(moveAngle) * combatApproachSpeed + pushY;
+                let destX = target.x - Math.cos(moveAngle) * (maxAttackRange - 10);
+                let destY = target.y - Math.sin(moveAngle) * (maxAttackRange - 10);
+                
+                // 💡 [전투 진입 스무딩] 적에게 다가갈 때 미끄러지듯 추적
+                e.x += (destX - e.x) * 0.2 + pushX;
+                e.y += (destY - e.y) * 0.2 + pushY;
                 e.angle = moveAngle;
             } 
             else {
@@ -4733,8 +4752,12 @@ window.updateMercenaryAI = function() {
         } else {
             if (pDist > 90) {
                 let angle = Math.atan2(player.y - e.y, player.x - e.x);
-                e.x += Math.cos(angle) * followSpeed + pushX;
-                e.y += Math.sin(angle) * followSpeed + pushY;
+                let destX = player.x - Math.cos(angle) * 60;
+                let destY = player.y - Math.sin(angle) * 60;
+                
+                // 💡 [플레이어 추적 스무딩] 툭툭 끊기지 않고 부드럽게 쫓아옴
+                e.x += (destX - e.x) * 0.25 + pushX;
+                e.y += (destY - e.y) * 0.25 + pushY;
                 e.angle = angle;
                 e.isMoving = true;
             } else if (pDist < 45) {
@@ -4754,7 +4777,6 @@ window.updateMercenaryAI = function() {
         }
     });
 };
-
 window.selectOptimalSpell = function(unit, nearbyEnemiesCount, target) {
     if (!unit.skills || unit.skills.length === 0) return null;
 
