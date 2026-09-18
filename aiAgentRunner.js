@@ -361,6 +361,17 @@ class AIAgentClient {
             }, 300);
         });
 
+        this.socket.on('party_leader_request_received', (packet) => {
+            if (this.partyData && this.partyData.leader === this.socket.id) {
+                // 파티장이면 쿨하게 위임
+                this.socket.emit('party_change_leader', { newLeaderSocketId: packet.requesterSocketId });
+                setTimeout(() => {
+                    this.socket.emit('chat_message', { message: "네! 파티장 넘겨드릴게요. 오더 부탁드려요~", chatType: 'party' });
+                }, 300);
+            }
+        });
+
+
         this.socket.on('party_reject', (packet) => {
             if (packet && packet.rejectorName) {
                 if (packet.type === 'hard') {
@@ -406,7 +417,8 @@ class AIAgentClient {
         });
 
         this.socket.on('party_leader_map_move', (data) => {
-            if (this.warpAllowed || data.map === 'boss_raid') {
+           
+            if (data.autoWarp || this.warpAllowed || data.map === 'boss_raid') {
                 this.warpAllowed = false;
                 this.teleport(data.map, data.x || 2000, data.y || 2000);
             }
@@ -469,8 +481,12 @@ class AIAgentClient {
 
     checkProactivePartyInvite() {
         let now = Date.now();
+        // 💡 1. 잦은 탐색 방지 (15초 유지)
         if (now - this.lastProactiveInviteCheck < 15000) return;
         this.lastProactiveInviteCheck = now;
+
+        // 💡 2. 에이전트 본인의 글로벌 초대 쿨타임 적용 (최근 3분 이내에 초대를 보냈다면 무조건 휴식)
+        if (now - this.lastPartyInviteTime < 180000) return; 
 
         if (this.autoInviteChance <= 0) return;
         let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
@@ -483,6 +499,7 @@ class AIAgentClient {
             if (p.partyId) return false; 
             if (this.rejectedTargets.has(p.name)) return false;
 
+            // 💡 특정 유저에 대한 개별 쿨타임 (5분)
             let lastInvited = this.invitedHistory.get(p.name) || 0;
             if (now - lastInvited < 300000) return false;
 
@@ -490,7 +507,7 @@ class AIAgentClient {
             if (lvDiff > 5) return false;
 
             let dist = fastHypot(p.x - this.charData.x, p.y - this.charData.y);
-            return dist <= 1500;
+            return dist <= 800; // 💡 3. 탐색 반경 축소 (1500 -> 800) - 화면 근처 유저에게만 초대
         });
 
         if (candidates.length === 0) return;
@@ -498,6 +515,7 @@ class AIAgentClient {
         if (Math.random() <= this.autoInviteChance) {
             let target = candidates[Math.floor(Math.random() * candidates.length)];
             this.invitedHistory.set(target.name, now);
+            this.lastPartyInviteTime = now; // 💡 4. 초대 성공 시 글로벌 쿨타임 갱신
 
             let targetSockId = target.socketId || target.id;
             if (targetSockId) {
@@ -606,7 +624,7 @@ class AIAgentClient {
                 this.lastSentTargetEventId = null;
                 this.socket.emit('player_target', { targetId: null });
             }
-        }, 100); 
+        }, 80); 
     }
 
     executeFollowMovement() {
