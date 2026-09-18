@@ -43,10 +43,7 @@
                         if ((isAlwaysLoot || itemGrade >= minGrade)) {
                             if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, it.x, it.y))) {
                                 let d = fastHypot(it.x - entity.x, it.y - entity.y);
-                                if (d < minItemDist) { 
-                                    minItemDist = d; 
-                                    closestItem = it; 
-                                }
+                                if (d < minItemDist) { minItemDist = d; closestItem = it; }
                             }
                         }
                     }
@@ -79,38 +76,51 @@
 
                 let isFocusMode = env.party && env.party.isFocusMode;
                 let leaderSocketId = env.party ? env.party.leaderId : null;
-                let amIFollower = env.party && isFocusMode && leaderSocketId !== entity.socketId && leaderSocketId !== entity.id;
+                let amIFollower = env.party && leaderSocketId !== entity.socketId && leaderSocketId !== entity.id;
                 let leaderTargetMob = null;
-                
-                if (amIFollower) {
-                    let leaderTargetId = env.party.leaderTargetId;
+                let leaderEnt = null;
 
-                    if (leaderTargetId) {
-                        leaderTargetMob = env.entities.find(e => e && e.id === leaderTargetId && (e.hp ?? e.h ?? 0) > 0 && !e.isDead && e.map === env.currentMap);
-                    }
-                    
-                    let leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
-                    let distToLeader = leaderEnt ? fastHypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y) : 0;
-                    
-                    if (!leaderTargetMob) {
-                        if (distToLeader > 450) {
-                            entity.target = null;
-                            entity.targetId = null;
-                            let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
-                            entity.moveX = leaderEnt.x - Math.cos(angle) * 150;
-                            entity.moveY = leaderEnt.y - Math.sin(angle) * 150;
-                            entity.isMoving = true;
-                            skipSearch = true;
+                if (amIFollower) {
+                    leaderEnt = env.party.leaderEnt || env.entities.find(e => e && e.isPlayer && (e.id === leaderSocketId || e.socketId === leaderSocketId));
+                    if (leaderEnt) {
+                        let distToLeader = fastHypot(leaderEnt.x - entity.x, leaderEnt.y - entity.y);
+                        let forceFollowLeader = false;
+
+                        if (isFocusMode) {
+                            let leaderTargetId = env.party.leaderTargetId;
+                            if (leaderTargetId) leaderTargetMob = env.entities.find(e => e && e.id === leaderTargetId && (e.hp ?? e.h ?? 0) > 0 && !e.isDead && e.map === env.currentMap);
+
+                            if (leaderTargetMob) {
+                                if (!entity.target || entity.target.id !== leaderTargetMob.id) {
+                                    entity.target = leaderTargetMob;
+                                    entity.targetId = leaderTargetMob.id;
+                                }
+                                skipSearch = true; 
+                            } else {
+                                if (distToLeader > 450) forceFollowLeader = true;
+                                else skipSearch = false;
+                            }
                         } else {
-                            skipSearch = false; 
+                            if (distToLeader > 700) forceFollowLeader = true;
+                            else skipSearch = false;
                         }
-                    } else {
-                        if (!entity.target || entity.target.id !== leaderTargetMob.id) {
-                            entity.target = leaderTargetMob;
-                            entity.targetId = leaderTargetMob.id;
+
+                        if (forceFollowLeader) {
+                            let hpRatio = entity.hp / (entity.maxHp || 100);
+                            let attackers = env.entities.filter(e => e && (e.hp ?? e.h ?? 0) > 0 && !e.isDead && (e.targetId === entity.id || e.targetId === entity.socketId || e.t === entity.id));
+                            let bossAttacker = attackers.find(e => e.isBoss);
+
+                            if (hpRatio < 0.4 || bossAttacker) {
+                                skipSearch = false; 
+                            } else {
+                                entity.target = null; entity.targetId = null;
+                                let angle = Math.atan2(leaderEnt.y - entity.y, leaderEnt.x - entity.x);
+                                entity.moveX = leaderEnt.x - Math.cos(angle) * 150;
+                                entity.moveY = leaderEnt.y - Math.sin(angle) * 150;
+                                entity.isMoving = true; skipSearch = true;
+                            }
                         }
-                        skipSearch = true;
-                    }
+                    } else skipSearch = false;
                 }
 
                 if (entity.target) {
@@ -121,15 +131,11 @@
                     });
 
                     if (!liveTarget || liveTarget.map !== env.currentMap || (env.isInSafeZone && env.isInSafeZone(env.currentMap, liveTarget.x, liveTarget.y))) {
-                        entity.target = null;
-                        entity.targetId = null;
-                        entity.isMoving = false;
-                        entity.moveX = undefined;
-                        entity.moveY = undefined;
+                        entity.target = null; entity.targetId = null; entity.isMoving = false;
+                        entity.moveX = undefined; entity.moveY = undefined;
                         if (typeof env.shareTarget === 'function') env.shareTarget(null);
                     } else {
-                        entity.target = liveTarget;
-                        entity.targetId = liveTarget.id;
+                        entity.target = liveTarget; entity.targetId = liveTarget.id;
                     }
                 }
 
@@ -151,13 +157,10 @@
                         return curHp > 0 && fastHypot(m.x - entity.x, m.y - entity.y) < 140;
                     });
 
-                    if (target.isBoss && nearbyDangerMob) {
-                        entity.target = nearbyDangerMob;
-                        entity.targetId = nearbyDangerMob.id;
-                    } else if (!target.isBoss) {
+                    // 💡 [핵심 교체: 타겟 핑퐁 완전 차단] 보스 타겟팅 중에는 잡몹 무시
+                    if (!target.isBoss) {
                         if (bossAttacker && fastHypot(bossAttacker.x - entity.x, bossAttacker.y - entity.y) < 350) {
-                            entity.target = bossAttacker;
-                            entity.targetId = bossAttacker.id;
+                            entity.target = bossAttacker; entity.targetId = bossAttacker.id;
                             if (typeof env.shareTarget === 'function') env.shareTarget(bossAttacker.id);
                         } 
                         else if (distToTarget > 250 && entity.isMoving) {
@@ -167,56 +170,60 @@
                                 return curHp > 0 && fastHypot(e.x - entity.x, e.y - entity.y) < distToTarget - 100;
                             });
                             if (closerMob) {
-                                entity.target = closerMob;
-                                entity.targetId = closerMob.id;
+                                entity.target = closerMob; entity.targetId = closerMob.id;
                                 if (typeof env.shareTarget === 'function') env.shareTarget(closerMob.id);
                             }
                         } 
                         else if (entity.hp < (entity.maxHp || 100) * 0.4 && attackers.length > 0) {
                             let closestAttacker = attackers.sort((a, b) => fastHypot(a.x - entity.x, a.y - entity.y) - fastHypot(b.x - entity.x, b.y - entity.y))[0];
                             if (closestAttacker && closestAttacker.id !== target.id) {
-                                entity.target = closestAttacker;
-                                entity.targetId = closestAttacker.id;
+                                entity.target = closestAttacker; entity.targetId = closestAttacker.id;
                                 if (typeof env.shareTarget === 'function') env.shareTarget(closestAttacker.id);
                             }
                         }
                     }
                 }
 
-                if (!entity.target || (entity.target.hp ?? entity.target.h ?? 0) <= 0 || entity.target.isDead) {
+                if (!skipSearch && (!entity.target || (entity.target.hp ?? entity.target.h ?? 0) <= 0 || entity.target.isDead)) {
                     let bestTarget = null;
                     let bestScore = Infinity;
-                    let fallbackTarget = null;
-                    let fallbackDist = Infinity;
                     let isIgnoredActive = now < (entity.ignoredUntil || 0);
 
-                    if (env.entities) {
-                        env.entities.forEach(e => {
-                            if (!e || typeof e.x !== 'number' || typeof e.y !== 'number' || e.map !== env.currentMap) return;
-                            if (e.isSummon || e.isPlayer || e.isOtherMerc || e.isDead) return;
+                    // 1차: 화면 내/주변 몬스터 (650px) 우선 탐색
+                    // 2차: 주변에 몹이 없으면 즉시 화면 밖(1800px)까지 반경을 넓혀 논스톱 추적
+                    if (env.entities && env.entities.length > 0) {
+                        // 유효한 사냥 대상 몬스터 필터링
+                        let validMobs = env.entities.filter(e => {
+                            if (!e || typeof e.x !== 'number' || typeof e.y !== 'number' || e.map !== env.currentMap) return false;
+                            if (e.isSummon || e.isPlayer || e.isOtherMerc || e.isDead) return false;
+                            let curHp = (e.hp !== undefined) ? e.hp : (e.h !== undefined ? e.h : (e.maxHp || 100));
+                            if (typeof curHp === 'number' && curHp <= 0) return false;
+                            if (env.isInSafeZone && env.isInSafeZone(env.currentMap, e.x, e.y)) return false;
+                            if (isIgnoredActive && e.id === entity.ignoredTargetId) return false;
 
-                            let eHp = (e.hp !== undefined) ? e.hp : (e.h !== undefined ? e.h : (e.maxHp || 100));
-                            if (typeof eHp === 'number' && eHp <= 0) return;
+                            // 파티 점사 모드 예외 처리
+                            if (amIFollower && leaderEnt && !leaderTargetMob) {
+                                let isAttackingMe = (e.targetId === entity.id || e.targetId === entity.socketId || e.t === entity.id);
+                                let distMobToLeader = fastHypot(e.x - leaderEnt.x, e.y - leaderEnt.y);
+                                if (!isAttackingMe && distMobToLeader > (isFocusMode ? 500 : 800)) return false;
+                            }
+                            return true;
+                        });
 
-                            if (env.isInSafeZone && env.isInSafeZone(env.currentMap, e.x, e.y)) return;
-                            if (isIgnoredActive && e.id === entity.ignoredTargetId) return;
+                        // 💡 [핵심] 1차 근거리 몹 우선, 없으면 2차 원거리 몹으로 즉시 자동 확장
+                        let nearMobs = validMobs.filter(e => fastHypot(e.x - entity.x, e.y - entity.y) <= 650);
+                        let candidatePool = nearMobs.length > 0 ? nearMobs : validMobs;
 
-                            let rawDist = fastHypot(e.x - entity.x, e.y - entity.y);
-                            let edgeDist = Math.max(0, rawDist - (e.size || 20));
+                        candidatePool.forEach(e => {
+                            let dist = fastHypot(e.x - entity.x, e.y - entity.y);
+                            let score = dist;
                             
-                            if (edgeDist <= 450) {
-                                let score = edgeDist;
-                                if (e.isBoss && edgeDist <= 200) score -= 50; 
-                                
-                                if (score < bestScore) {
-                                    bestScore = score;
-                                    bestTarget = e;
-                                }
-                            } else {
-                                if (edgeDist < fallbackDist) {
-                                    fallbackDist = edgeDist;
-                                    fallbackTarget = e;
-                                }
+                            // 보스 몬스터 우선 가중치 부여
+                            if (e.isBoss) score -= 300; 
+
+                            if (score < bestScore) {
+                                bestScore = score;
+                                bestTarget = e;
                             }
                         });
                     }
@@ -225,36 +232,18 @@
                         entity.target = bestTarget;
                         entity.targetId = bestTarget.id;
                         if (typeof env.shareTarget === 'function') env.shareTarget(bestTarget.id);
-                    } else if (fallbackTarget) {
-                        entity.target = fallbackTarget;
-                        entity.targetId = fallbackTarget.id;
-                        let approachAngle = Math.atan2(fallbackTarget.y - entity.y, fallbackTarget.x - entity.x);
-                        let maxMap = env.mapSize || 4000;
-                        entity.moveX = Math.max(150, Math.min(maxMap - 150, fallbackTarget.x - Math.cos(approachAngle) * 60));
-                        entity.moveY = Math.max(150, Math.min(maxMap - 150, fallbackTarget.y - Math.sin(approachAngle) * 60));
-                        entity.isMoving = true;
                     } else {
-                        if (!entity.isMoving || (entity.moveX && fastHypot(entity.moveX - entity.x, entity.moveY - entity.y) < 20)) {
+                        // 💡 맵 전체에 몬스터가 아예 0마리일 때만 부드럽게 정찰 순찰
+                        if (!entity.isMoving || (entity.moveX && fastHypot(entity.moveX - entity.x, entity.moveY - entity.y) < 30)) {
                             let maxMap = env.mapSize || 4000;
-                            let currentlyInSafeZone = env.isInSafeZone && env.isInSafeZone(env.currentMap, entity.x, entity.y);
-                            
-                            if (currentlyInSafeZone) {
-                                let escapeAngle = Math.random() * Math.PI * 2;
-                                let rx = entity.x + Math.cos(escapeAngle) * 800; 
-                                let ry = entity.y + Math.sin(escapeAngle) * 800;
-                                entity.moveX = Math.max(150, Math.min(maxMap - 150, rx));
-                                entity.moveY = Math.max(150, Math.min(maxMap - 150, ry));
+                            let walkAngle = Math.random() * Math.PI * 2;
+                            let rx = Math.max(200, Math.min(maxMap - 200, entity.x + Math.cos(walkAngle) * 300));
+                            let ry = Math.max(200, Math.min(maxMap - 200, entity.y + Math.sin(walkAngle) * 300));
+
+                            if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, rx, ry))) {
+                                entity.moveX = rx; 
+                                entity.moveY = ry; 
                                 entity.isMoving = true;
-                            } else {
-                                let rx = entity.x + (Math.random() * 1200 - 600); 
-                                let ry = entity.y + (Math.random() * 1200 - 600);
-                                if (rx > 150 && rx < maxMap - 150 && ry > 150 && ry < maxMap - 150) {
-                                    if (!(env.isInSafeZone && env.isInSafeZone(env.currentMap, rx, ry))) {
-                                        entity.moveX = rx; 
-                                        entity.moveY = ry; 
-                                        entity.isMoving = true;
-                                    }
-                                }
                             }
                         }
                     }
@@ -270,14 +259,11 @@
             let isRangedAttacker = (isBow || isWizard) && !isMeleeWeapon;
             
             let atkRange = isRangedAttacker ? 280 : ((target ? target.size || 20 : 20) + 55);
-
             let currentMp = entity.mp || 0;
-            let maxMp = entity.maxMp || 100;
             let chosenSpell = null;
 
             if (target) {
                 let dbRef = typeof magicDb !== 'undefined' ? magicDb : (typeof data !== 'undefined' ? data.magicDb : {});
-
                 if (isMerc) {
                     if (!entity.skills || entity.skills.length === 0) {
                         let lv = entity.level || 1;
@@ -291,9 +277,7 @@
                             entity.skills = ['네이쳐스 터치'];
                             if (lv >= 10) entity.skills.push('스톰 샷');
                             if (lv >= 20) entity.skills.push('트리플 애로우');
-                        } else {
-                            entity.skills = ['쇼크 스턴'];
-                        }
+                        } else { entity.skills = ['쇼크 스턴']; }
                     }
 
                     if (target.isBoss) {
@@ -319,24 +303,13 @@
             if (isWizard) {
                 let allies = [];
                 if (env.entities) {
-                    allies = env.entities.filter(e => 
-                        e && e.map === env.currentMap && (e.isPlayer || e.isSummon || e.isOtherMerc) && e.hp > 0 && !e.isDead &&
-                        (e.hp / (e.maxHp || 100)) <= 0.45
-                    );
+                    allies = env.entities.filter(e => e && e.map === env.currentMap && (e.isPlayer || e.isSummon || e.isOtherMerc) && e.hp > 0 && !e.isDead && (e.hp / (e.maxHp || 100)) <= 0.45);
                 }
-
                 if (allies.length > 0 && currentMp >= 15 && (now - (entity.lastHealTime || 0) > 3000)) {
                     if (!env.globalHealLock || now - env.globalHealLock > 2000) {
-                        env.globalHealLock = now;
-                        entity.lastHealTime = now;
-                        actionTaken = true;
-                        
+                        env.globalHealLock = now; entity.lastHealTime = now; actionTaken = true;
                         allies.sort((a, b) => (a.hp / (a.maxHp || 100)) - (b.hp / (b.maxHp || 100)));
-                        let healTarget = allies[0];
-                        
-                        if (typeof env.castAttackSpell === 'function') {
-                            env.castAttackSpell(healTarget, '힐', entity);
-                        }
+                        if (typeof env.castAttackSpell === 'function') env.castAttackSpell(allies[0], '힐', entity);
                     }
                 }
             }
@@ -349,10 +322,7 @@
                     entity.angle = rushAngle;
                     entity.x = target.x - Math.cos(rushAngle) * 30;
                     entity.y = target.y - Math.sin(rushAngle) * 30;
-                    entity.isMoving = false;
-                    entity.moveX = undefined;
-                    entity.moveY = undefined;
-
+                    entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                     if (typeof env.spawnParticle === 'function') env.spawnParticle(entity.x, entity.y, 'haste_tornado');
                     if (typeof env.playSound === 'function') env.playSound('spell');
                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast("⚡ RUSH!", target.x, target.y, target.id, 'high', entity, 16);
@@ -389,60 +359,43 @@
                         let idealRange = isWizardWithoutMp ? 300 : 230;     
 
                         if (isWizardWithoutMp && !isTargetingUs && dist > closeThreshold && dodgeX === 0 && dodgeY === 0) {
-                            entity.isMoving = false;
-                            entity.moveX = undefined;
-                            entity.moveY = undefined;
+                            entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                         }
                         else if (isWaitingCd && dist >= closeThreshold + 20 && dist <= atkRange && dodgeX === 0 && dodgeY === 0) {
-                            entity.isMoving = false;
-                            entity.moveX = undefined;
-                            entity.moveY = undefined;
+                            entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                         } 
                         else if (dist < closeThreshold || dist > atkRange - 10 || dodgeX !== 0 || dodgeY !== 0) {
                             let targetX, targetY;
-
                             if (dist < closeThreshold) { 
                                 let escapeAngle;
                                 let retreatDist = isWizardWithoutMp ? 250 : 200; 
                                 let fleeAngle = Math.atan2(entity.y - target.y, entity.x - target.x);
-                                
                                 let allySumX = 0, allySumY = 0, allyCount = 0;
                                 if (env.entities) {
                                     env.entities.forEach(e => {
                                         if (e && e.map === env.currentMap && (e.isPlayer || e.isSummon || e.isOtherMerc) && e.hp > 0 && !e.isDead && e.id !== entity.id) {
-                                            if (fastHypot(e.x - entity.x, e.y - entity.y) < 600) {
-                                                allySumX += e.x; allySumY += e.y; allyCount++;
-                                            }
+                                            if (fastHypot(e.x - entity.x, e.y - entity.y) < 600) { allySumX += e.x; allySumY += e.y; allyCount++; }
                                         }
                                     });
                                 }
 
                                 if (allyCount > 0) {
-                                    let allyCenterX = allySumX / allyCount;
-                                    let allyCenterY = allySumY / allyCount;
-                                    
+                                    let allyCenterX = allySumX / allyCount; let allyCenterY = allySumY / allyCount;
                                     let angleFromAlly = Math.atan2(entity.y - allyCenterY, entity.x - allyCenterX);
                                     let tangentAngle = angleFromAlly + 1.25; 
-
-                                    let fleeWeight = (dist < 100) ? 0.7 : 0.3;
-                                    let orbitWeight = 1.0 - fleeWeight;
-
+                                    let fleeWeight = (dist < 100) ? 0.7 : 0.3; let orbitWeight = 1.0 - fleeWeight;
                                     let cx = Math.cos(tangentAngle) * orbitWeight + Math.cos(fleeAngle) * fleeWeight;
                                     let cy = Math.sin(tangentAngle) * orbitWeight + Math.sin(fleeAngle) * fleeWeight;
                                     escapeAngle = Math.atan2(cy, cx);
-                                } else {
-                                    escapeAngle = fleeAngle;
-                                }
+                                } else { escapeAngle = fleeAngle; }
 
                                 let isNearWallX = entity.x < margin + 50 || entity.x > maxMap - margin - 50;
                                 let isNearWallY = entity.y < margin + 50 || entity.y > maxMap - margin - 50;
-                                
                                 if (isNearWallX || isNearWallY) {
                                     let centerAngle = Math.atan2(maxMap/2 - entity.y, maxMap/2 - entity.x);
                                     let cx = Math.cos(escapeAngle) * 0.3 + Math.cos(centerAngle) * 0.7;
                                     let cy = Math.sin(escapeAngle) * 0.3 + Math.sin(centerAngle) * 0.7;
-                                    escapeAngle = Math.atan2(cy, cx);
-                                    retreatDist = 250;
+                                    escapeAngle = Math.atan2(cy, cx); retreatDist = 250;
                                 }
 
                                 targetX = entity.x + Math.cos(escapeAngle) * retreatDist + dodgeX;
@@ -452,43 +405,29 @@
                                 targetX = target.x - Math.cos(approachAngle) * idealRange + dodgeX;
                                 targetY = target.y - Math.sin(approachAngle) * idealRange + dodgeY;
                             }
-
-                            let clampedX = Math.max(margin, Math.min(maxMap - margin, targetX));
-                            let clampedY = Math.max(margin, Math.min(maxMap - margin, targetY));
-                            
-                            entity.moveX = clampedX;
-                            entity.moveY = clampedY;
+                            entity.moveX = Math.max(margin, Math.min(maxMap - margin, targetX));
+                            entity.moveY = Math.max(margin, Math.min(maxMap - margin, targetY));
                             entity.isMoving = true;
                         } else {
-                            entity.isMoving = false;
-                            entity.moveX = undefined;
-                            entity.moveY = undefined;
+                            entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                         }
                     } else {
                         let closeRange = Math.max(30, atkRange - 5);
                         let stopRange = atkRange + 25;
-
                         if (dist > stopRange || dodgeX !== 0 || dodgeY !== 0) {
                             let charAngle = Math.atan2(target.y - entity.y, target.x - entity.x);
-                            entity.moveX = target.x - Math.cos(charAngle) * closeRange + dodgeX; 
-                            entity.moveY = target.y - Math.sin(charAngle) * closeRange + dodgeY; 
-                            entity.moveX = Math.max(100, Math.min(maxMap - 100, entity.moveX));
-                            entity.moveY = Math.max(100, Math.min(maxMap - 100, entity.moveY));
+                            entity.moveX = Math.max(100, Math.min(maxMap - 100, target.x - Math.cos(charAngle) * closeRange + dodgeX)); 
+                            entity.moveY = Math.max(100, Math.min(maxMap - 100, target.y - Math.sin(charAngle) * closeRange + dodgeY)); 
                             entity.isMoving = true;
                         } else {
-                            entity.isMoving = false; 
-                            entity.moveX = undefined; 
-                            entity.moveY = undefined;
+                            entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                         }
                     }
                 }
 
                 if (dist <= atkRange + 30 && !isWaitingCd && !actionTaken) {
-                    entity.isMoving = false;
-                    entity.moveX = undefined;
-                    entity.moveY = undefined;
-                    entity.lastAttack = now;
-                    entity.angle = Math.atan2(target.y - entity.y, target.x - entity.x);
+                    entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
+                    entity.lastAttack = now; entity.angle = Math.atan2(target.y - entity.y, target.x - entity.x);
                     let baseAtk = entity.atk || 20;
 
                     if (pClass === 'knight' || pClass === 'royal') {
@@ -500,11 +439,8 @@
                                 let curHp = (e.hp !== undefined) ? e.hp : (e.h !== undefined ? e.h : 0);
                                 return curHp > 0 && fastHypot(e.x - entity.x, e.y - entity.y) < 150 && (e.targetId === entity.id || e.targetId === entity.socketId || e.t === entity.id);
                             }) : [];
-                            let hpRatio = entity.hp / (entity.maxHp || 100);
-                            if (attackersNear.length >= 3 || hpRatio < 0.4) {
-                                entity.furyUntil = now + 4000;
-                                entity.furyCooldownUntil = now + 6000;
-                                entity.furyCleavedThisCycle = false;
+                            if (attackersNear.length >= 3 || (entity.hp / (entity.maxHp || 100)) < 0.4) {
+                                entity.furyUntil = now + 4000; entity.furyCooldownUntil = now + 6000; entity.furyCleavedThisCycle = false;
                                 if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", entity.x, entity.y, null, 'ultimate', entity, 20);
                             }
                         }
@@ -513,16 +449,11 @@
                     if (chosenSpell) {
                         if (typeof env.castAttackSpell === 'function') {
                             env.castAttackSpell(target, chosenSpell, entity);
-                            
                             if (chosenSpell === '트리플 애로우' && pClass === 'elf') {
-                                let isCoolingDown = now < (entity.elfFuryCooldownUntil || 0);
-                                if (!(now < (entity.elfFuryUntil || 0)) && !isCoolingDown) {
+                                if (!(now < (entity.elfFuryUntil || 0)) && !(now < (entity.elfFuryCooldownUntil || 0))) {
                                     entity.elfHitCount = (entity.elfHitCount || 0) + 3;
                                     if (entity.elfHitCount >= 5) {
-                                        entity.elfHitCount = 0;
-                                        entity.elfFuryUntil = now + 4000;
-                                        entity.elfFuryCooldownUntil = now + 6000;
-                                        entity.elfFuryTextShown = false;
+                                        entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
                                         if (typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 50, "🌪️ SYLPH TEMPEST! (실프의 폭풍)", '#34d399', 20);
                                     }
                                 }
@@ -537,9 +468,7 @@
                         if (pClass === 'knight' || pClass === 'royal') {
                             let isFury = now < (entity.furyUntil || 0);
                             let finalDamage = isFury ? Math.floor(baseAtk * 2.0) : baseAtk;
-                            
                             if (typeof env.playSound === 'function') env.playSound('swing');
-
                             if (typeof env.damageEntity === 'function') env.damageEntity(target, finalDamage, entity, 'physical');
 
                             if (isFury) {
@@ -551,41 +480,32 @@
                                 
                                 let totalCleaveDmg = 0; 
                                 splashTargets.forEach(st => {
-                                    let sDmg = Math.floor(finalDamage * 0.6);
-                                    totalCleaveDmg += sDmg;
+                                    let sDmg = Math.floor(finalDamage * 0.6); totalCleaveDmg += sDmg;
                                     if (typeof env.damageEntity === 'function') env.damageEntity(st, sDmg, entity, 'physical');
                                 });
                                 
                                 let healAmount = Math.floor((finalDamage + totalCleaveDmg) * 0.25);
                                 entity.hp = Math.min(entity.maxHp || 100, entity.hp + healAmount);
-                                
                                 if (healAmount > 0 && typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 30, `+${healAmount} 흡혈`, '#e879f9', 13);
                                 
                                 if (!entity.furyCleavedThisCycle) {
                                     entity.furyCleavedThisCycle = true;
                                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('광폭화 클리브', target.x, target.y, target.id, 'ultimate', entity);
                                 }
-                            } else {
-                                entity.furyCleavedThisCycle = false;
-                            }
+                            } else { entity.furyCleavedThisCycle = false; }
                         }
                         else if (pClass === 'elf') {
-                            let isCoolingDown = now < (entity.elfFuryCooldownUntil || 0);
-                            if (!(now < (entity.elfFuryUntil || 0)) && !isCoolingDown) {
+                            if (!(now < (entity.elfFuryUntil || 0)) && !(now < (entity.elfFuryCooldownUntil || 0))) {
                                 entity.elfHitCount = (entity.elfHitCount || 0) + 1;
                                 if (entity.elfHitCount >= 5) {
-                                    entity.elfHitCount = 0;
-                                    entity.elfFuryUntil = now + 4000;
-                                    entity.elfFuryCooldownUntil = now + 6000;
-                                    entity.elfFuryTextShown = false;
+                                    entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
                                     if (typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 50, "🌪️ SYLPH TEMPEST! (실프의 폭풍)", '#34d399', 20);
                                 }
                             }
 
-                            let isFury = now < (entity.elfFuryUntil || 0);
                             if (typeof env.playSound === 'function') env.playSound('bow');
 
-                            if (isFury) {
+                            if (now < (entity.elfFuryUntil || 0)) {
                                 let splashTargets = env.entities ? env.entities.filter(e => {
                                     if (!e || e.map !== env.currentMap || e.isPlayer || e.isSummon || e.isOtherMerc || e.isDead) return false;
                                     let curHp = (e.hp !== undefined) ? e.hp : (e.h !== undefined ? e.h : 0);
@@ -593,8 +513,7 @@
                                 }) : [];
                                 
                                 let bowEnchant = (entity.equip && entity.equip.weapon && entity.equip.weapon.enchantValue) ? entity.equip.weapon.enchantValue : 0;
-                                let furyMultiplier = 1.4 + (bowEnchant * 0.1);
-                                let furyAtk = Math.floor(baseAtk * furyMultiplier);
+                                let furyAtk = Math.floor(baseAtk * (1.4 + (bowEnchant * 0.1)));
                                 let totalFuryDamage = 0;
 
                                 splashTargets.forEach(st => {
@@ -609,15 +528,13 @@
                                 entity.mp = Math.min(entity.maxMp || 100, entity.mp + mpGain);
 
                                 if (typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 35, `+${hpHeal} HP / +${mpGain} MP`, '#6ee7b7', 13);
-
                                 if (!entity.elfFuryTextShown) {
                                     entity.elfFuryTextShown = true;
                                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('실프의 폭풍', target.x, target.y, target.id, 'ultimate', entity);
                                 }
                             } else {
                                 entity.elfFuryTextShown = false;
-                                let isEcho = Math.random() < 0.25;
-                                if (isEcho) {
+                                if (Math.random() < 0.25) {
                                     let trueDmg = Math.floor(baseAtk * 1.3);
                                     entity.mp = Math.min(entity.maxMp || 100, entity.mp + 4);
                                     if (typeof env.damageEntity === 'function') env.damageEntity(target, trueDmg, entity, 'magic', '에코 오브 실프');
