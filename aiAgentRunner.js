@@ -1,5 +1,5 @@
 // =========================================================================
-// aiAgentRunner.js (Groq LLM 연동, 자율 파티 초대, 맵 이동/점사 추적 + 🚀 네트워크 최적화)
+// aiAgentRunner.js (Groq LLM 연동, 자율 파티 억제 및 합병 방지 적용)
 // =========================================================================
 require('dotenv').config();
 const io = require('socket.io-client');
@@ -7,7 +7,6 @@ const { createClient } = require('@supabase/supabase-js');
 const Groq = require('groq-sdk');
 const SharedAI = require('./public/js/sharedAI.js'); 
 const data = require('./public/js/data.js'); 
-
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY; 
@@ -17,7 +16,7 @@ const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3000';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 const groq = new Groq({ apiKey: GROQ_API_KEY });
 
-const fastHypot = (dx, dy) => Math.sqrt(dx * dx + dy * dy); // 💡 수학 연산 최적화 함수
+const fastHypot = (dx, dy) => Math.sqrt(dx * dx + dy * dy);
 
 let currentGroqModel = 'qwen/qwen3.8-27b';
 
@@ -69,7 +68,9 @@ class AIAgentClient {
         this.charData.ignoredTargetId = null;
         this.charData.ignoredUntil = 0;
 
-        // 💡 네트워크 최적화를 위한 상태 기록 변수
+        this.charData.isPlayer = true;
+        this.charData.isAI = true;
+
         this.lastSentHp = -1;
         this.lastSentTargetId = null;
         this.lastForcedUpdate = 0;
@@ -111,6 +112,7 @@ class AIAgentClient {
         this.lastMapCheckTime = Date.now();
         this.nextMercCheckTime = Date.now() + (Math.random() * 10000);
         this.lastRegenTime = Date.now();
+        this.lastItemManageTime = Date.now();
         
         this.lastPartyInviteTime = 0;
         this.lastProactiveInviteCheck = Date.now();
@@ -155,7 +157,6 @@ class AIAgentClient {
     }
 
     connect() {
-      
         this.socket = io(SERVER_URL, { 
             transports: ['websocket'], 
             upgrade: false
@@ -197,7 +198,6 @@ class AIAgentClient {
             }, 1000);
         });
 
-        // 💡 [수정] 압축 키(h, a, m, t)와 일반 키 모두 완벽 복원하여 엔티티 동기화
         this.socket.on('sync_entities', (packet) => {
             this.worldPlayers = (packet.players || []).map(p => ({
                 ...p,
@@ -211,7 +211,6 @@ class AIAgentClient {
             }));
 
             if (packet.monsters) {
-                // 살아있는 몬스터만 필터링하여 목록 갱신
                 this.worldMonsters = packet.monsters
                     .filter(m => (m.hp > 0 || m.h > 0) && !m.isDead)
                     .map(m => ({
@@ -223,7 +222,6 @@ class AIAgentClient {
                         map: this.charData.map
                     }));
 
-                // 기존 타겟이 몬스터 목록에서 사라졌다면 즉시 해제
                 if (this.charData.target) {
                     let stillAlive = this.worldMonsters.some(m => m.id === this.charData.target.id);
                     if (!stillAlive) {
@@ -246,7 +244,6 @@ class AIAgentClient {
             }));
         });
 
-        // 💡 [추가] 맵 입장 시 초기 몬스터/아이템 동기화
         this.socket.on('sync_map_state', (packet) => {
             if (packet.monsters) {
                 this.worldMonsters = packet.monsters.map(m => ({
@@ -261,7 +258,6 @@ class AIAgentClient {
             }
         });
 
-        // 💡 [추가] 몬스터 피격 시 실시간 체력 반영
         this.socket.on('monster_hit', (data) => {
             let mob = this.worldMonsters.find(m => m.id === data.monsterId);
             if (mob && data.hpRemaining !== undefined) {
@@ -269,7 +265,6 @@ class AIAgentClient {
             }
         });
 
-        // 💡 [추가] 몬스터 사망 시 즉시 타겟 해제 및 목록에서 삭제
         this.socket.on('monster_dead', (data) => {
             this.worldMonsters = this.worldMonsters.filter(m => m.id !== data.monsterId);
             if (this.charData.target && this.charData.target.id === data.monsterId) {
@@ -290,8 +285,13 @@ class AIAgentClient {
         });
 
         this.socket.on('item_looted_success', (packet) => {
-            if (packet.item.type === 'currency') this.charData.adena += packet.item.count;
-            else this.charData.inv.push(packet.item);
+            if (packet.item.type === 'currency') {
+                this.charData.adena += packet.item.count;
+            } else {
+                this.charData.inv.push(packet.item);
+                // 루팅 성공 시 즉시 장비 비교 및 인챈트 판정 실행
+                this.manageEquipmentAndEnchant();
+            }
         });
 
         this.socket.on('player_exp_gain', (packet) => {
@@ -363,14 +363,12 @@ class AIAgentClient {
 
         this.socket.on('party_leader_request_received', (packet) => {
             if (this.partyData && this.partyData.leader === this.socket.id) {
-                // 파티장이면 쿨하게 위임
                 this.socket.emit('party_change_leader', { newLeaderSocketId: packet.requesterSocketId });
                 setTimeout(() => {
                     this.socket.emit('chat_message', { message: "네! 파티장 넘겨드릴게요. 오더 부탁드려요~", chatType: 'party' });
                 }, 300);
             }
         });
-
 
         this.socket.on('party_reject', (packet) => {
             if (packet && packet.rejectorName) {
@@ -417,7 +415,6 @@ class AIAgentClient {
         });
 
         this.socket.on('party_leader_map_move', (data) => {
-           
             if (data.autoWarp || this.warpAllowed || data.map === 'boss_raid') {
                 this.warpAllowed = false;
                 this.teleport(data.map, data.x || 2000, data.y || 2000);
@@ -481,16 +478,16 @@ class AIAgentClient {
 
     checkProactivePartyInvite() {
         let now = Date.now();
-        // 💡 1. 잦은 탐색 방지 (15초 유지)
         if (now - this.lastProactiveInviteCheck < 15000) return;
         this.lastProactiveInviteCheck = now;
 
-        // 💡 2. 에이전트 본인의 글로벌 초대 쿨타임 적용 (최근 3분 이내에 초대를 보냈다면 무조건 휴식)
         if (now - this.lastPartyInviteTime < 180000) return; 
 
         if (this.autoInviteChance <= 0) return;
+        
         let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
-        if (currentMembersCount >= 5) return;
+        if (currentMembersCount >= 3) return;
+        
         if (this.partyData && this.partyData.leader !== this.socket.id) return;
 
         let candidates = this.worldPlayers.filter(p => {
@@ -499,7 +496,6 @@ class AIAgentClient {
             if (p.partyId) return false; 
             if (this.rejectedTargets.has(p.name)) return false;
 
-            // 💡 특정 유저에 대한 개별 쿨타임 (5분)
             let lastInvited = this.invitedHistory.get(p.name) || 0;
             if (now - lastInvited < 300000) return false;
 
@@ -507,15 +503,15 @@ class AIAgentClient {
             if (lvDiff > 5) return false;
 
             let dist = fastHypot(p.x - this.charData.x, p.y - this.charData.y);
-            return dist <= 800; // 💡 3. 탐색 반경 축소 (1500 -> 800) - 화면 근처 유저에게만 초대
+            return dist <= 800; 
         });
 
         if (candidates.length === 0) return;
 
-        if (Math.random() <= this.autoInviteChance) {
+        if (Math.random() <= (this.autoInviteChance * 0.1)) {
             let target = candidates[Math.floor(Math.random() * candidates.length)];
             this.invitedHistory.set(target.name, now);
-            this.lastPartyInviteTime = now; // 💡 4. 초대 성공 시 글로벌 쿨타임 갱신
+            this.lastPartyInviteTime = now; 
 
             let targetSockId = target.socketId || target.id;
             if (targetSockId) {
@@ -527,10 +523,186 @@ class AIAgentClient {
         }
     }
 
+    // =========================================================================
+    // 💡 [신규 추가] 아이템 비교/장착, 인챈트, 용병 보급, 잡템 판매 관리 로직
+    // =========================================================================
+    calcItemScore(item, slot) {
+        if (!item) return 0;
+        let score = 0;
+        let enchant = item.enchantValue || 0;
+        if (slot === 'weapon') {
+            score = (item.atk || 0) + (enchant * 2) + ((item.grade || 0) * 5) + (item.sp ? item.sp * 3 : 0);
+        } else {
+            score = (item.def || 0) + (enchant * 1.5) + ((item.grade || 0) * 4);
+        }
+        return score;
+    }
+
+    canEquipItem(item) {
+        let cls = this.charData.charClass;
+        let name = item.name || '';
+        if (cls === 'wizard' && (name.includes('양손검') || name.includes('활') || name.includes('판금'))) return false;
+        if (cls === 'knight' && (name.includes('지팡이') || name.includes('로브') || name.includes('활'))) return false;
+        if (cls === 'elf' && (name.includes('지팡이') || name.includes('대검'))) return false;
+        return true;
+    }
+
+    manageEquipmentAndEnchant() {
+        if (!this.charData.inv || this.charData.inv.length === 0) return;
+        let inv = this.charData.inv;
+
+        // 1. 본인 장비 자동 교체 (무기/갑옷/투구)
+        const equipSlots = ['weapon', 'armor', 'helmet'];
+        equipSlots.forEach(slot => {
+            let currentEquip = this.charData.equip[slot];
+            let currentScore = this.calcItemScore(currentEquip, slot);
+
+            let bestIndex = -1;
+            let bestScore = currentScore;
+
+            inv.forEach((item, idx) => {
+                if (item.type === slot || (slot === 'weapon' && item.type === 'weapon')) {
+                    if (this.canEquipItem(item)) {
+                        let score = this.calcItemScore(item, slot);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestIndex = idx;
+                        }
+                    }
+                }
+            });
+
+            if (bestIndex > -1) {
+                let newEquip = inv.splice(bestIndex, 1)[0];
+                if (currentEquip) inv.push(currentEquip);
+                this.charData.equip[slot] = newEquip;
+                this.recalculateAgentStats();
+            }
+        });
+
+        // 2. 용병 장비 자동 교체 및 물약 자동 보급
+        if (this.charData.mercs && this.charData.mercs.length > 0) {
+            this.charData.mercs.forEach(merc => {
+                if (merc.hp <= 0) return;
+                merc.equip = merc.equip || { weapon: null, armor: null };
+
+                ['weapon', 'armor'].forEach(slot => {
+                    let mercScore = this.calcItemScore(merc.equip[slot], slot);
+                    let bestIdx = -1;
+                    let bestScore = mercScore;
+
+                    inv.forEach((item, idx) => {
+                        if (item.type === slot) {
+                            let score = this.calcItemScore(item, slot);
+                            if (score > bestScore) {
+                                bestScore = score;
+                                bestIdx = idx;
+                            }
+                        }
+                    });
+
+                    if (bestIdx > -1) {
+                        let newMercEquip = inv.splice(bestIdx, 1)[0];
+                        if (merc.equip[slot]) inv.push(merc.equip[slot]);
+                        merc.equip[slot] = newMercEquip;
+                        merc.atk = (merc.level || 1) * 3 + (merc.equip.weapon?.atk || 10);
+                        merc.def = 10 + (merc.equip.armor?.def || 5);
+                    }
+                });
+
+                // 본인 가방에 물약 여유가 있으면 용병에게 물약 보급
+                let myHpPot = inv.find(i => i.name === '주홍 물약' || i.name === '맑은 물약');
+                if (myHpPot && myHpPot.count > 100 && (merc.mercHpPotionCount || 0) < 50) {
+                    myHpPot.count -= 50;
+                    merc.mercHpPotionCount = (merc.mercHpPotionCount || 0) + 50;
+                }
+            });
+        }
+
+        // 3. 주문서 보유 시 안전 인챈트 수행
+        this.processAutoEnchant();
+    }
+
+    processAutoEnchant() {
+        let inv = this.charData.inv;
+        let eq = this.charData.equip;
+
+        // 무기 마법 주문서 (데이) 사용 -> 안전구간 +6까지 인챈트
+        let wScrollIdx = inv.findIndex(i => i.name.includes('무기 마법 주문서') || i.name.includes('데이'));
+        if (wScrollIdx > -1 && eq.weapon) {
+            let curEnchant = eq.weapon.enchantValue || 0;
+            if (curEnchant < 6) {
+                eq.weapon.enchantValue = curEnchant + 1;
+                eq.weapon.atk = (eq.weapon.atk || 10) + 2;
+                if (!eq.weapon.name.startsWith('+')) eq.weapon.name = `+${eq.weapon.enchantValue} ${eq.weapon.name}`;
+                else eq.weapon.name = eq.weapon.name.replace(/\+\d+/, `+${eq.weapon.enchantValue}`);
+                
+                inv[wScrollIdx].count = (inv[wScrollIdx].count || 1) - 1;
+                if (inv[wScrollIdx].count <= 0) inv.splice(wScrollIdx, 1);
+                this.recalculateAgentStats();
+            }
+        }
+
+        // 갑옷 마법 주문서 (젤) 사용 -> 안전구간 +4까지 인챈트
+        let aScrollIdx = inv.findIndex(i => i.name.includes('갑옷 마법 주문서') || i.name.includes('젤'));
+        if (aScrollIdx > -1) {
+            let targets = [eq.armor, eq.helmet].filter(a => a && (a.enchantValue || 0) < 4);
+            if (targets.length > 0) {
+                let target = targets[0];
+                target.enchantValue = (target.enchantValue || 0) + 1;
+                target.def = (target.def || 5) + 1;
+                if (!target.name.startsWith('+')) target.name = `+${target.enchantValue} ${target.name}`;
+                else target.name = target.name.replace(/\+\d+/, `+${target.enchantValue}`);
+
+                inv[aScrollIdx].count = (inv[aScrollIdx].count || 1) - 1;
+                if (inv[aScrollIdx].count <= 0) inv.splice(aScrollIdx, 1);
+                this.recalculateAgentStats();
+            }
+        }
+    }
+
+    sellJunkAndManageBags() {
+        let inv = this.charData.inv;
+        let equippedIds = new Set();
+        Object.values(this.charData.equip).forEach(e => { if (e && e.id) equippedIds.add(e.id); });
+
+        let keptInv = [];
+        inv.forEach(item => {
+            if (!item) return;
+            // 소모품 및 화폐 유지
+            if (['potion', 'scroll', 'book', 'currency'].includes(item.type)) {
+                keptInv.push(item);
+                return;
+            }
+
+            // 착용하지 않은 일반 등급 미강화 장비는 잡템으로 간주하여 상점 판매
+            let isJunk = (item.grade === 0 || !item.grade) && (item.enchantValue || 0) === 0;
+            if (isJunk && !equippedIds.has(item.id)) {
+                let sellPrice = Math.floor(Math.random() * 300) + 150;
+                this.charData.adena += sellPrice;
+            } else {
+                keptInv.push(item);
+            }
+        });
+
+        this.charData.inv = keptInv;
+    }
+
+    recalculateAgentStats() {
+        let baseAtk = 25 + (this.charData.level || 1) * 2;
+        let baseDef = 5 + (this.charData.level || 1);
+
+        if (this.charData.equip.weapon) baseAtk += (this.charData.equip.weapon.atk || 0);
+        if (this.charData.equip.armor) baseDef += (this.charData.equip.armor.def || 0);
+        if (this.charData.equip.helmet) baseDef += (this.charData.equip.helmet.def || 0);
+
+        this.charData.atk = baseAtk;
+        this.charData.def = baseDef;
+    }
+
     startLoop() {
         this.isLoggingOut = false; 
         
-        // 💡 200ms -> 100ms 로 줄여 플레이어(클라이언트)와 이동 동기화 매칭 (순간이동 현상 해결)
         this.loopTimer = setInterval(() => {
             if (this.isLoggingOut) return; 
 
@@ -541,7 +713,7 @@ class AIAgentClient {
                 if (Date.now() - this.stuckCheckTime > 2000) {
                     let movedDist = fastHypot(this.charData.x - this.lastX, this.charData.y - this.lastY);
                     if (movedDist < 10) {
-                        this.charData.x += (Math.random() * 400 - 200); // 안전한 곳으로 랜덤 탈출
+                        this.charData.x += (Math.random() * 400 - 200); 
                         this.charData.y += (Math.random() * 400 - 200);
                         this.charData.target = null;
                         this.charData.targetId = null;
@@ -568,6 +740,13 @@ class AIAgentClient {
                 this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 3 + Math.floor(this.charData.level / 10));
             }
 
+            // 💡 주기적 아이템 정비 및 잡템 판매 (10초 주기)
+            if (now - this.lastItemManageTime > 10000) {
+                this.lastItemManageTime = now;
+                this.manageEquipmentAndEnchant();
+                this.sellJunkAndManageBags();
+            }
+
             this.processAutoBuffs(); 
             this.checkProactivePartyInvite();
             this.checkSmartMapNavigation();
@@ -577,6 +756,28 @@ class AIAgentClient {
             }
 
             this.executeSharedAILoop();
+
+            // 💡 [다음 타겟 못 찾고 멈춤 원천 해결] 타겟이 없고 이동 중이 아닐 때 즉시 월드 전체 몬스터 중 최단거리 대상 추적
+            if (!this.charData.target && !this.followTarget && this.state === 'HUNTING') {
+                let aliveMobs = this.worldMonsters.filter(m => (m.hp > 0 || m.h > 0) && !m.isDead && !data.isInSafeZone(this.charData.map, m.x, m.y));
+                if (aliveMobs.length > 0) {
+                    aliveMobs.sort((a, b) => fastHypot(a.x - this.charData.x, a.y - this.charData.y) - fastHypot(b.x - this.charData.x, b.y - this.charData.y));
+                    let nextMob = aliveMobs[0];
+                    this.charData.target = nextMob;
+                    this.charData.targetId = nextMob.id;
+                    this.charData.moveX = nextMob.x;
+                    this.charData.moveY = nextMob.y;
+                    this.charData.isMoving = true;
+                } else if (!this.charData.isMoving) {
+                    // 주변 및 맵에 몬스터가 일시적으로 없을 때 능동 배회(Wander)
+                    let wanderAngle = Math.random() * Math.PI * 2;
+                    let wanderDist = 300 + Math.random() * 200;
+                    this.charData.moveX = Math.max(200, Math.min(3800, this.charData.x + Math.cos(wanderAngle) * wanderDist));
+                    this.charData.moveY = Math.max(200, Math.min(3800, this.charData.y + Math.sin(wanderAngle) * wanderDist));
+                    this.charData.isMoving = true;
+                }
+            }
+
             this.tryRush(this.charData, this.charData.target, now);
             this.updateMovement(100);    
              
@@ -758,13 +959,24 @@ class AIAgentClient {
             isInSafeZone: (m, x, y) => data.isInSafeZone(m, x, y),
             playSound: () => {}, 
             spawnParticle: () => {}, 
-            spawnArrow: (from, to, dmg) => {
+            spawnArrow: (from, to, dmg, color) => {
                 let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
-                let casterId = from.isSummon ? from.id : this.socket.id; // 💡 본체인지 용병인지 명확히 구분
+                let casterId = from.isSummon ? from.id : this.socket.id; 
                 if (from.isSummon) from.angle = aimAngle; else this.charData.angle = aimAngle;
                 
-                this.socket.emit('player_attack_action', { casterId: casterId, angle: aimAngle, targetId: to.id, targetX: to.x, targetY: to.y, isBow: true, actionType: 'shoot' });
-                this.socket.emit('player_attack_request', { targetId: to.id, attackerId: casterId, attackType: 'physical', calculatedDmg: dmg });
+                this.socket.emit('player_attack_action', { 
+                    casterId: casterId, angle: aimAngle, targetId: to.id, targetX: to.x, targetY: to.y, 
+                    isBow: true, actionType: 'shoot', color: color || '#ffffff' 
+                });
+                
+                let dist = fastHypot(to.x - from.x, to.y - from.y);
+                let flightTime = (dist / 1440) * 1000;
+                
+                setTimeout(() => {
+                    this.socket.emit('player_attack_request', { 
+                        targetId: to.id, attackerId: casterId, attackType: 'physical', calculatedDmg: dmg 
+                    });
+                }, flightTime);
             },
             damageEntity: (target, dmg, attacker, hitType, magicName) => {
                 let aimAngle = Math.atan2(target.y - attacker.y, target.x - attacker.x);
@@ -781,7 +993,7 @@ class AIAgentClient {
                 this.socket.emit('player_attack_request', { targetId: target.id, attackerId: casterId, attackType: hitType, calculatedDmg: dmg, magicName: magicName });
             },
             castAttackSpell: (target, spellName, caster) => {
-                let realCaster = caster || this.charData; // 💡 용병이 스킬 시전 시 용병 기준 처리
+                let realCaster = caster || this.charData; 
                 let mData = data.magicDb[spellName];
                 if (mData && realCaster.mp >= mData.mp) {
                     realCaster.spellCooldowns = realCaster.spellCooldowns || {};
@@ -940,9 +1152,10 @@ class AIAgentClient {
             let adena = this.charData.adena || 0;
             let cls = this.charData.charClass;
 
+            // 아데나 보유량에 맞춰 물약 종류와 수량 차등 구매
             let mainPotName = (lv >= 45 && adena >= 1000000) ? '맑은 물약' : '주홍 물약';
             let mainPotHeal = mainPotName === '맑은 물약' ? 120 : 60;
-            let potCount = adena >= 500000 ? 500 : 200;
+            let potCount = adena >= 500000 ? 500 : (adena >= 100000 ? 250 : 100);
             let mpPotCount = (cls === 'wizard' || cls === 'elf') ? (adena >= 300000 ? 300 : 100) : 0;
 
             let ensureItem = (name, count, healAmt = 0) => {
@@ -959,6 +1172,7 @@ class AIAgentClient {
             if (cls === 'knight') ensureItem('용기의 물약', 100);
             else if (cls === 'elf') ensureItem('엘븐 와퍼', 100);
 
+            // 용병 물약 보급
             if (this.charData.mercs && this.charData.mercs.length > 0) {
                 this.charData.mercs.forEach(m => {
                     if (m.hp > 0) {
@@ -972,6 +1186,10 @@ class AIAgentClient {
             } else {
                 this.combatMemory = `최근 마을에 들러 ${mainPotName} 등 소모품을 정비했습니다.`;
             }
+
+            // 마을 정비 중 잡템 판매 및 강화 처리
+            this.sellJunkAndManageBags();
+            this.manageEquipmentAndEnchant();
 
             this.state = 'HUNTING';
             this.isShopping = false;
@@ -1178,11 +1396,9 @@ class AIAgentClient {
         }
     }
 
-  async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
-      
+    async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
         if (Date.now() - this.lastAiCallTime < 20000) return;
         
-     
         const ignoreKeywords = ["수락했습니다", "초대", "파티 사냥", "수고하셨습니다", "죄송한데", "열렙합시다", "득템하세요"];
         if (ignoreKeywords.some(k => userMessage.includes(k))) return;
 
@@ -1275,7 +1491,6 @@ ${situationContext}
             this.executeAction(action, decision, senderName);
 
         } catch(e) {
-          
             if (Math.random() < 0.05) {
                 console.error(`[-] [${this.charData.name}] API 한도 초과 방어 발동 (Groq RPM 제한)`);
             }
@@ -1312,8 +1527,8 @@ ${situationContext}
             case 'PARTY_ACCEPT':
                 if (this.lastInviterSocketId) {
                     let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
-                    if (currentMembersCount >= 5) {
-                        this.socket.emit('chat_message', { message: "파티 정원 5명이 꽉 차서 수락할 수 없어요!", chatType: 'normal' });
+                    if (currentMembersCount >= 3) {
+                        this.socket.emit('chat_message', { message: "파티 정원이 꽉 차서 수락할 수 없어요!", chatType: 'normal' });
                         break;
                     }
                     this.socket.emit('party_accept', { inviterSocketId: this.lastInviterSocketId });
@@ -1324,7 +1539,7 @@ ${situationContext}
 
             case 'PARTY_INVITE':
                 let currentMembersCount = this.partyData && this.partyData.members ? this.partyData.members.length : 1;
-                if (currentMembersCount >= 5) break;
+                if (currentMembersCount >= 3) break;
 
                 if (targetPl) {
                     let pName = targetPl.name;
@@ -1412,7 +1627,7 @@ ${situationContext}
         if (!this.socket) return;
         this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
         this.charData.target = null; this.charData.targetId = null; this.charData.isMoving = false;
-        this.worldMonsters = []; // 💡 맵 이동 시 몬스터 목록 초기화
+        this.worldMonsters = [];
         this.worldItems = [];
         this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false });
     }

@@ -1,4 +1,4 @@
-// server.js (최종 통합 최적화 및 AI 채팅 최적화 버전)
+// server.js (최종 통합 최적화 및 파티/AI 제한 완벽 적용 버전)
 
 require('dotenv').config();
 const { exec, spawn } = require('child_process');
@@ -179,7 +179,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
     const party = parties[partyId];
     if (!party || party.leader !== leaderSocketId) return;
 
-  
     const townMaps = ['talking_island', 'silver_knight_town', 'giran', 'gludin', 'oren', 'aden'];
     
     if (townMaps.includes(targetMap)) {
@@ -187,7 +186,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
             if (member.socketId === leaderSocketId) return;
             const memberSocket = io.sockets.sockets.get(member.socketId);
             if (memberSocket) {
-                
                 memberSocket.emit('system_message', { 
                     message: `[파티] 파티장이 정비를 위해 마을로 이동했습니다. 현 위치에서 자유 사냥을 유지합니다.`, 
                     color: '#fd0' 
@@ -207,7 +205,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
         if (!memberSocket) return;
 
         if (memberSocket.isAI) {
-          
             memberSocket.emit('party_leader_map_move', {
                 map: targetMap,
                 x: targetX,
@@ -215,7 +212,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
                 autoWarp: true
             });
         } else if (isRaid) {
-        
             memberSocket.emit('raid_clear_return_town', { 
                 map: targetMap, 
                 x: targetX, 
@@ -226,7 +222,6 @@ function handlePartyMapTransition(partyId, leaderSocketId, targetMap, targetX, t
                 color: '#f55' 
             });
         } else {
-          
             memberSocket.emit('party_warp_request', {
                 leaderName: party.leaderName || (players[leaderSocketId] ? players[leaderSocketId].name : '파티장'),
                 map: targetMap,
@@ -632,7 +627,8 @@ io.on('connection', (socket) => {
                     targetX: payload.targetX,
                     targetY: payload.targetY,
                     isBow: payload.isBow,
-                    actionType: payload.actionType 
+                    actionType: payload.actionType,
+                    color: payload.color // 💡 [추가] 불화살(색상) 네트워크 브로드캐스트 동기화
                 });
             }
         });
@@ -698,26 +694,108 @@ io.on('connection', (socket) => {
         });
     });
 
+    // 💡 [수정] 서버단에서 맵별/파티별/솔로별 접속자를 이쁘게 포맷하여 전송
     socket.on('cmd_who', () => {
-        let count = 0;
-        let listText = "==== [현재 월드 접속자] ====\n";
-        for (let sid in players) {
-            let pl = players[sid];
-            let cName = pl.charClass === 'knight' ? '기사' : (pl.charClass === 'wizard' ? '마법사' : '요정');
-            let mData = data.maps[pl.map];
-            let mapName = mData ? mData.name : pl.map;
-            let isAi = (pl.name.startsWith('모험가') || pl.isAI) ? '🤖' : '👤';
+        let requester = players[socket.id];
+        if (!requester) return;
 
-            let partyStr = '';
-            if (pl.partyId && parties[pl.partyId]) {
-                partyStr = parties[pl.partyId].leader === sid ? ' [👑파티장]' : ' [👥파티원]';
+        let myPartyId = requester.partyId;
+        let myMapId = requester.map || 'talking_island'; // 💡 내 맵 정보
+        let playerList = Object.values(players);
+
+        const mapNames = {
+            'talking_island': '말하는 섬', 'silver_knight_town': '은기사 마을', 'elven_forest': '요정의 숲',
+            'ti_dungeon': '말섬 던전 1층', 'ti_dungeon2': '말섬 던전 2층', 'gludio_dungeon': '글루디오 던전(본던)',
+            'gludin': '글루딘 영지(사막 포함)', 'ant_cave': '개미굴 (사막 동굴)', 'dragon_valley': '용의 계곡',
+            'dv_dungeon': '용계 던전', 'tower_of_insolence_1': '오만의 탑 1층', 'tower_of_insolence_10': '오만의 탑 10층',
+            'tower_of_insolence_30': '오만의 탑 30층', 'tower_of_insolence_50': '오만의 탑 50층', 'tower_of_insolence_70': '오만의 탑 70층',
+            'tower_of_insolence_100': '오만의 탑 정상', 'fire_dragon_nest': '화룡의 둥지', 'oren': '오렌 영지 (설벽)',
+            'heine': '하이네 (수중)', 'aden': '아덴 영지', 'forgotten_island': '잊혀진 섬', 'lastebad': '라스타바드',
+            'tower_of_dominance': '지배의 탑 정상', 'ivory_tower': '상아탑', 'dream_island': '몽환의 섬',
+            'giran_dungeon_1': '기란 감옥 1층', 'giran_dungeon_4': '기란 감옥 4층', 'eva_kingdom': '에바 왕국 던전 (수던 4층)',
+            'dragon_valley_deep': '용의 계곡 심층', 'elven_forest_deep': '요정의 숲 깊은 곳', 'boss_raid': '🔥 [보스 레이드] 차원의 틈새'
+        };
+
+        // 1. 맵별 그룹화
+        let mapGroups = {};
+        playerList.forEach(p => {
+            let m = p.map || 'talking_island';
+            if (!mapGroups[m]) mapGroups[m] = [];
+            mapGroups[m].push(p);
+        });
+
+        let lines = [`🌐 <b style="color:#5cf;">[현재 월드 접속자: 총 ${playerList.length}명]</b>`];
+
+        // 💡 2. 내가 속한 맵을 최하단(배열의 끝)으로 내리기 위한 정렬
+        let sortedMapCodes = Object.keys(mapGroups).sort((a, b) => {
+            if (a === myMapId) return 1;  // a가 내 맵이면 뒤로 보냄
+            if (b === myMapId) return -1; // b가 내 맵이면 앞으로 당겨서 a를 뒤로 보냄
+            return 0; // 나머지는 순서 유지
+        });
+
+        for (let mapCode of sortedMapCodes) {
+            let mapDispName = mapNames[mapCode] || mapCode;
+            let usersInMap = mapGroups[mapCode];
+            
+            let isMyMap = (mapCode === myMapId);
+            let mapHeaderColor = isMyMap ? '#38bdf8' : '#fd0';
+            let mapFocusMark = isMyMap ? '📍 <span style="color:#38bdf8; font-size:11px;">[현재 맵]</span> ' : '📍 ';
+            
+            lines.push(`<br>${mapFocusMark}<span style="color:${mapHeaderColor}; font-weight:bold;">[${mapDispName}]</span> -${usersInMap.length}명`);
+            
+            let soloUsers = [];
+            let partyGroups = {};
+
+            // 파티 및 솔로 분류
+            usersInMap.forEach(p => {
+                if (p.partyId) {
+                    if (!partyGroups[p.partyId]) partyGroups[p.partyId] = [];
+                    partyGroups[p.partyId].push(p);
+                } else {
+                    soloUsers.push(p);
+                }
+            });
+
+            // 3. 파티 그룹 먼저 출력
+            let pIndex = 1;
+            for (let pid in partyGroups) {
+                let pUsers = partyGroups[pid];
+                let isMyP = (pid === myPartyId);
+                let pTitleColor = isMyP ? '#4ade80' : '#e879f9';
+                let pTitle = isMyP ? `[내 파티]` : `[파티 ${pIndex++}]`;
+                
+                // 파티장 확인
+                let leaderId = parties[pid] ? parties[pid].leader : null;
+
+                lines.push(`&nbsp;&nbsp;<span style="color:${pTitleColor}; font-weight:bold;">${pTitle}</span>`);
+                
+                pUsers.forEach(p => {
+                    let isMe = (p.socketId === socket.id);
+                    let isLeader = (p.socketId === leaderId);
+                    
+                    let prefix = '';
+                    if (isLeader) prefix += `<span style="color:#facc15;">👑</span>`;
+                    if (isMe) prefix += `<span style="color:#facc15; font-weight:bold;">[나]</span> `;
+                    
+                    let nameColor = isMyP ? '#86efac' : '#ddd';
+                    let cClass = p.class_name || p.charClass || '기사';
+                    lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;ㄴ ${prefix}<span style="color:${nameColor};">${p.name}</span> <span style="font-size:11px; color:#888;">(Lv.${p.level}${cClass})</span>`);
+                });
             }
 
-            listText += `${isAi} ${pl.name} [Lv.${pl.level || 1} ${cName}]${partyStr} - ${mapName}\n`;
-            count++;
+            // 4. 솔로 유저 출력
+            if (soloUsers.length > 0) {
+                lines.push(`&nbsp;&nbsp;<span style="color:#aaa; font-weight:bold;">[일반 (솔로)]</span>`);
+                soloUsers.forEach(p => {
+                    let isMe = (p.socketId === socket.id);
+                    let prefix = isMe ? `<span style="color:#facc15; font-weight:bold;">[나]</span> ` : ``;
+                    let cClass = p.class_name || p.charClass || '기사';
+                    lines.push(`&nbsp;&nbsp;&nbsp;&nbsp;ㄴ ${prefix}<span style="color:#ddd;">${p.name}</span> <span style="font-size:11px; color:#888;">(Lv.${p.level} ${cClass})</span>`);
+                });
+            }
         }
-        listText += `------------------------\n총 접속자 수: ${count}명`;
-        socket.emit('system_message', { message: listText, color: '#38bdf8' });
+
+        socket.emit('system_message', { message: lines.join('<br>'), color: '#fff' });
     });
 
     socket.on('cmd_whisper', (payload = {}) => {
@@ -1085,14 +1163,45 @@ io.on('connection', (socket) => {
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
 
-    socket.on('party_invite', (payload = {}) => {
-        let targetSocket = io.sockets.sockets.get(payload.targetSocketId);
-        if (targetSocket) {
-            targetSocket.emit('party_invite_received', {
-                inviterSocketId: socket.id,
-                inviterName: payload.inviterName || players[socket.id]?.name || '알 수 없음'
-            });
+    // 💡 [수정] 1. 파티 초대 발송 시 (합병 불가 및 인원 제한)
+    socket.on('party_invite', (data) => {
+        let targetSocket = io.sockets.sockets.get(data.targetSocketId);
+        if (!targetSocket) return;
+
+        let inviterPlayer = players[socket.id];
+        let targetPlayer = players[data.targetSocketId];
+        if (!inviterPlayer || !targetPlayer) return;
+
+        let myPartyId = inviterPlayer.partyId;
+        let targetPartyId = targetPlayer.partyId;
+        
+        let myParty = myPartyId ? parties[myPartyId] : null;
+        let targetParty = targetPartyId ? parties[targetPartyId] : null;
+
+        let myCount = myParty ? myParty.members.length : 1;
+        let targetCount = targetParty ? targetParty.members.length : 1;
+
+        if (myParty && targetParty && myParty.id !== targetParty.id) {
+            if (inviterPlayer.isAI) return; // AI는 합병 불가
+            if (myCount + targetCount > 10) {
+                return socket.emit('system_message', { 
+                    message: `합병 시 최대 인원(10명)을 초과할 수 없습니다. (현재: ${myCount}명 + 상대: ${targetCount}명)`, 
+                    color: '#f55' 
+                });
+            }
+        } else if (myParty && !targetParty) {
+            if (myCount >= 5) {
+                return socket.emit('system_message', { 
+                    message: `일반 파티는 최대 5명까지만 구성할 수 있습니다.`, 
+                    color: '#f55' 
+                });
+            }
         }
+
+        targetSocket.emit('party_invite_received', {
+            inviterSocketId: socket.id,
+            inviterName: data.inviterName || inviterPlayer.name || '알 수 없음'
+        });
     });
 
     socket.on('party_reject', (payload = {}) => {
@@ -1106,36 +1215,79 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('party_accept', (payload = {}) => {
-        let inviter = players[payload.inviterSocketId];
-        let accepter = players[socket.id];
-        if (!inviter || !accepter) return;
+    // 💡 [수정] 2. 파티 수락 시 (최종 병합 처리 및 검증)
+    socket.on('party_accept', (data) => {
+        let inviterId = data.inviterSocketId;
+        let inviteeId = socket.id;
 
-        let partyId = inviter.partyId || 'party_' + Date.now();
-        inviter.partyId = partyId;
-        accepter.partyId = partyId;
+        let inviterPlayer = players[inviterId];
+        let inviteePlayer = players[inviteeId];
+        if (!inviterPlayer || !inviteePlayer) return;
 
-        if (!parties[partyId]) {
-            parties[partyId] = {
-                id: partyId,
-                leader: inviter.socketId,
-                leaderName: inviter.name,
-                mode: 'normal',
-                members: [inviter, accepter]
-            };
-        } else {
-            if (!parties[partyId].members.some(m => m.socketId === accepter.socketId)) {
-                parties[partyId].members.push(accepter);
+        let partyA = inviterPlayer.partyId ? parties[inviterPlayer.partyId] : null;
+        let partyB = inviteePlayer.partyId ? parties[inviteePlayer.partyId] : null;
+
+        let sizeA = partyA ? partyA.members.length : 1;
+        let sizeB = partyB ? partyB.members.length : 1;
+
+        if (partyA && partyB && partyA.id !== partyB.id) {
+            if (sizeA + sizeB > 10) {
+                socket.emit('system_message', { message: `파티 최대 인원(10명)을 초과하여 합칠 수 없습니다.`, color: '#f55' });
+                io.to(inviterId).emit('system_message', { message: `파티 최대 인원(10명) 초과로 초대가 취소되었습니다.`, color: '#f55' });
+                return;
+            }
+        } else if (partyA && !partyB) {
+            if (sizeA >= 5) {
+                socket.emit('system_message', { message: `파티 정원(5명)이 꽉 차서 가입할 수 없습니다.`, color: '#f55' });
+                io.to(inviterId).emit('system_message', { message: `파티 정원(5명) 초과로 초대가 취소되었습니다.`, color: '#f55' });
+                return;
             }
         }
 
-        parties[partyId].members.forEach(member => {
-            io.to(member.socketId).emit('party_update', { party: parties[partyId] });
-            io.to(member.socketId).emit('system_message', { message: `[파티] ${accepter.name}님이 파티에 참가했습니다.`, color: '#5cf' });
-        });
+        if (!partyA) {
+            let newPartyId = 'party_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            partyA = { id: newPartyId, leader: inviterId, mode: 'normal', members: [inviterPlayer] };
+            parties[newPartyId] = partyA;
+            inviterPlayer.partyId = newPartyId;
+        }
+
+        if (partyB && partyB.leader === inviteeId) {
+            partyB.members.forEach(member => {
+                if (!partyA.members.some(m => m.socketId === member.socketId)) {
+                    partyA.members.push(member);
+                }
+                if (players[member.socketId]) players[member.socketId].partyId = partyA.id;
+                let memberSocket = io.sockets.sockets.get(member.socketId);
+                if (memberSocket) {
+                    memberSocket.leave(partyB.id);
+                    memberSocket.join(partyA.id);
+                }
+            });
+            delete parties[partyB.id];
+            io.to(partyA.id).emit('system_message', { message: `👥 [${inviteePlayer.name}]님의 파티와 합병되었습니다!`, color: '#5cf' });
+        } else {
+            if (partyB) {
+                partyB.members = partyB.members.filter(m => m.socketId !== inviteeId);
+                let pSock = io.sockets.sockets.get(inviteeId);
+                if(pSock) pSock.leave(partyB.id);
+                io.to(partyB.id).emit('party_update', { party: partyB });
+            }
+            partyA.members.push(inviteePlayer);
+            inviteePlayer.partyId = partyA.id;
+            io.to(inviterId).emit('system_message', { message: `👥 ${inviteePlayer.name}님이 파티에 가입했습니다.`, color: '#5cf' });
+            socket.emit('system_message', { message: `👥 ${inviterPlayer.name}님의 파티에 가입했습니다.`, color: '#5cf' });
+        }
+
+        let sSock = io.sockets.sockets.get(socket.id);
+        if(sSock) sSock.join(partyA.id);
+        let iSock = io.sockets.sockets.get(inviterId);
+        if(iSock) iSock.join(partyA.id);
+
+        io.to(partyA.id).emit('party_update', { party: partyA });
+        io.emit('sync_entities', { players: Object.values(players) }); 
     });
 
-socket.on('party_join_request', (payload = {}) => {
+    socket.on('party_join_request', (payload = {}) => {
         let targetSocket = io.sockets.sockets.get(payload.targetSocketId);
         let p = players[socket.id];
         if (targetSocket && p) {
@@ -1146,26 +1298,21 @@ socket.on('party_join_request', (payload = {}) => {
         }
     });
 
-    // 💡 [추가] 파티 가입 요청 수락 처리
     socket.on('party_join_accept', (payload = {}) => {
         let accepter = players[socket.id]; 
         let requester = players[payload.requesterSocketId]; 
         
         if (!accepter || !requester) return;
-        if (requester.partyId) return; // 요청자가 이미 다른 파티에 들어갔다면 무시
+        if (requester.partyId) return;
 
         let partyId = accepter.partyId || 'party_' + Date.now();
-        accepter.partyId = partyId;
-        requester.partyId = partyId;
-
+        
         if (!parties[partyId]) {
             parties[partyId] = {
-                id: partyId,
-                leader: accepter.socketId,
-                leaderName: accepter.name,
-                mode: 'normal',
-                members: [accepter, requester]
+                id: partyId, leader: accepter.socketId, leaderName: accepter.name, mode: 'normal', members: [accepter, requester]
             };
+            accepter.partyId = partyId;
+            requester.partyId = partyId;
         } else {
             if (parties[partyId].members.length >= 5) {
                 socket.emit('system_message', { message: "파티 정원(5명)이 꽉 차서 받을 수 없습니다.", color: '#f55' });
@@ -1173,8 +1320,14 @@ socket.on('party_join_request', (payload = {}) => {
             }
             if (!parties[partyId].members.some(m => m.socketId === requester.socketId)) {
                 parties[partyId].members.push(requester);
+                requester.partyId = partyId;
             }
         }
+
+        let rSock = io.sockets.sockets.get(requester.socketId);
+        if (rSock) rSock.join(partyId);
+        let aSock = io.sockets.sockets.get(accepter.socketId);
+        if (aSock) aSock.join(partyId);
 
         parties[partyId].members.forEach(member => {
             io.to(member.socketId).emit('party_update', { party: parties[partyId] });
@@ -1182,13 +1335,12 @@ socket.on('party_join_request', (payload = {}) => {
         });
     });
 
-    // 💡 [추가] 파티장 위임 요청을 현재 파티장에게 중계
     socket.on('party_leader_request', () => {
         let p = players[socket.id];
         if (!p || !p.partyId || !parties[p.partyId]) return;
         let party = parties[p.partyId];
         
-        if (party.leader === socket.id) return; // 자기가 파티장인데 요청하면 무시
+        if (party.leader === socket.id) return;
 
         let leaderSocket = io.sockets.sockets.get(party.leader);
         if (leaderSocket) {
@@ -1199,7 +1351,6 @@ socket.on('party_join_request', (payload = {}) => {
         }
     });
 
-    // 💡 [추가] 실제 파티장 변경 권한 이양 처리
     socket.on('party_change_leader', (payload = {}) => {
         let p = players[socket.id];
         if (!p || !p.partyId || !parties[p.partyId]) return;
@@ -1219,7 +1370,6 @@ socket.on('party_join_request', (payload = {}) => {
         }
     });
 
-    // 💡 [추가] 파티원 추방 처리
     socket.on('party_kick', (payload = {}) => {
         let p = players[socket.id];
         if (!p || !p.partyId || !parties[p.partyId]) return;
@@ -1516,8 +1666,16 @@ function processMonsterAI() {
                                 if (pDist <= cfg.radius + 45) {
                                     let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
                                     let targetReduc = currentTarget.totalDmgReduction || 0;
-                                    let magicRatio = 100 / (100 + targetMr);
                                     
+                                    // 💡 회피 판정 적용 (마법 무효화)
+                                    let targetDodge = currentTarget.dodge || 0;
+                                    if (currentTarget.charClass === 'elf') targetDodge += 5; 
+                                    if (Math.random() * 100 < targetDodge) {
+                                        io.to(ownerSocketId).emit('take_damage', { isDodge: true, targetId: currentTarget.id || currentTarget.socketId });
+                                        return;
+                                    }
+
+                                    let magicRatio = 100 / (100 + targetMr);
                                     let rawMagicDmg = Math.floor(cfg.dmg * magicRatio);
                                     let finalMagicDmg = Math.max(1, rawMagicDmg - targetReduc);
 
@@ -1540,6 +1698,14 @@ function processMonsterAI() {
                             let isMagic = isSpellMob;
                             let spellName = isMagic ? (mName.includes('카스파') || mName.includes('발터') ? '파이어볼' : '에너지 볼트') : null;
                             
+                            // 💡 회피 판정 적용
+                            let targetDodge = target.dodge || 0;
+                            if (target.charClass === 'elf') targetDodge += 5; 
+                            if (Math.random() * 100 < targetDodge) {
+                                if (ownerSocketId) io.to(ownerSocketId).emit('take_damage', { isDodge: true, targetId: target.id || target.socketId });
+                                return;
+                            }
+
                             let targetDef = target.def || 0;
                             let targetMr = target.totalMr || (target.int ? target.int * 2 : 50);
                             let targetReduc = target.totalDmgReduction || 0;
@@ -1576,9 +1742,23 @@ function processMonsterAI() {
                         } else {
                             let targetDef = target.def || 0;
                             let targetReduc = target.totalDmgReduction || 0;
+                            
+                            // 💡 회피 판정 적용 (물리 공격)
+                           let targetDodge = target.dodge || 0;
+                            if (target.charClass === 'elf') targetDodge += 5; 
+                            if (Math.random() * 100 < targetDodge) {
+                                if (ownerSocketId) io.to(ownerSocketId).emit('take_damage', { isDodge: true, targetId: target.id || target.socketId });
+                                return;
+                            }
+
                             if (target.charClass === 'knight' || target.charClass === 'royal') {
                                 targetDef += 15; 
                                 targetReduc += 5 + Math.floor((target.level || 1) / 10); 
+                                
+                                // 💡 [추가] 보스 상대로 근거리 캐릭터(기사) 대미지 감소 대폭 인센티브 부여
+                                if (mob.isBoss) {
+                                    targetReduc += 20 + Math.floor((target.level || 1) / 5);
+                                }
                             }
                             let defRatio = 100 / (100 + Math.max(0, targetDef));
                             
