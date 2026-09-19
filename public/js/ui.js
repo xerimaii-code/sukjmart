@@ -1,6 +1,7 @@
 // ==========================================
 // [1. 최상단 DOM 헬퍼 & 전역 상태 변수 및 멀티플레이 소켓 준비]
 // ==========================================
+// ==========================================
 window.getStackKey = function(it) {
     if (!it) return '';
     if (['potion', 'scroll', 'book', 'currency', 'etc'].includes(it.type)) {
@@ -21,8 +22,6 @@ window.closeAllWindows = function() {
 };
 
 
-// 서버 주도형 멀티플레이를 위한 Socket.io 객체 준비 (추후 server.js와 연동)
-// 💡 [LTE 환경 패킷 지연 차단] WebSocket 단독 연결로 통신 지연 제거
 
 window.socket = typeof io !== 'undefined' ? io({
     transports: ['websocket'],
@@ -69,12 +68,12 @@ const SUPABASE_ANON_KEY = 'sb_publishable_fo-6ibZ51qwEpX7XYsLyRw_BprsNvR5';
 let supabaseInstance = null;
 
 window.getSupabaseClient = function() {
-    if (supabaseInstance) return supabaseInstance;
-    if (window.supabase && typeof window.supabase.createClient === 'function') {
-        supabaseInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        return supabaseInstance;
-    }
-    return null;
+    if (supabaseInstance) return supabaseInstance;
+    if (window.supabase && typeof window.supabase.createClient === 'function') {
+        supabaseInstance = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        return supabaseInstance;
+    }
+    return null;
 };
 
 window.currentUser = null;
@@ -83,16 +82,16 @@ window.currentSlotIndex = 0;
 
 // [공통 헬퍼] 메시지에서 [타이틀] 문구를 자동 추출하여 윈도우 헤더 제목으로 변환
 function parseTitleAndMsg(msg, defaultTitle) {
-    let title = defaultTitle;
-    let body = msg;
-    if (msg && typeof msg === 'string' && msg.startsWith('[')) {
-        let closeIdx = msg.indexOf(']');
-        if (closeIdx > 0) {
-            title = msg.substring(1, closeIdx);
-            body = msg.substring(closeIdx + 1).trim();
-        }
-    }
-    return { title, body };
+    let title = defaultTitle;
+    let body = msg;
+    if (msg && typeof msg === 'string' && msg.startsWith('[')) {
+        let closeIdx = msg.indexOf(']');
+        if (closeIdx > 0) {
+            title = msg.substring(1, closeIdx);
+            body = msg.substring(closeIdx + 1).trim();
+        }
+    }
+    return { title, body };
 }
 
 // 1. 단순 알림창 (Window 형태)
@@ -1373,7 +1372,6 @@ function recalculateStats() {
 
     let lv = player.level || 1; 
 
-    // 레벨당 기본 성장률 (기사 30, 요정 18, 법사 12, 군주 22)
     const CLASS_GROWTH = {
         'knight': { baseHp: 150, baseMp: 10, hpPerLv: 30, mpPerLv: 5 },
         'elf':    { baseHp: 100, baseMp: 30, hpPerLv: 18, mpPerLv: 19 },
@@ -1401,6 +1399,8 @@ function recalculateStats() {
     let meleeBonus = 0, rangedBonus = 0;
     let totalDmgReduction = (player.charClass === 'knight') ? (10 + Math.floor(lv / 3)) : 0;
     let bonusSpeed = 0, totalPotionEffect = 0, totalHpBonus = 0, totalMpBonus = 0;
+    
+    let totalHpRegen = 0, totalMpRegen = 0, totalDodge = 0, totalHitBonus = 0; 
 
     for (let k in player.equip) {
         let eq = player.equip[k];
@@ -1416,21 +1416,39 @@ function recalculateStats() {
         if (eq.potionEffect) totalPotionEffect += eq.potionEffect;
         if (eq.hpBonus) totalHpBonus += eq.hpBonus;
         if (eq.mpBonus) totalMpBonus += eq.mpBonus;
+        
+        if (eq.hpRegen) totalHpRegen += eq.hpRegen; 
+        if (eq.mpRegen) totalMpRegen += eq.mpRegen; 
+        if (eq.dodge) totalDodge += eq.dodge;       
+        if (eq.hitBonus) totalHitBonus += eq.hitBonus;
 
         if (eq.magicOptions && Array.isArray(eq.magicOptions)) {
             eq.magicOptions.forEach(opt => {
                 let val = parseInt(opt.match(/\+(\d+)/)?.[1]) || 0;
-                if (opt.includes('STR')) player.str += val;
-                if (opt.includes('DEX')) player.dex += val;
-                if (opt.includes('INT')) player.int += val;
+                
+                // 💡 [수정] 아이템에 붙는 "모든" 형태의 텍스트 옵션을 게임 스탯에 완벽하게 치환
+                if (opt.includes('STR') || opt.includes('모든 스탯')) player.str += val;
+                if (opt.includes('DEX') || opt.includes('모든 스탯')) player.dex += val;
+                if (opt.includes('INT') || opt.includes('모든 스탯')) player.int += val;
+                
                 if (opt.includes('최대 HP') || opt.includes('[생명]')) totalHpBonus += val;
                 if (opt.includes('최대 MP')) totalMpBonus += val;
-                if (opt.includes('추가 대미지') || opt.includes('근거리')) meleeBonus += val;
-                if (opt.includes('원거리')) rangedBonus += val;
+                
+                if (opt.includes('대미지') && !opt.includes('감소')) {
+                    if (opt.includes('원거리')) { rangedBonus += val; } 
+                    else if (opt.includes('근거리')) { meleeBonus += val; } 
+                    else { meleeBonus += val; rangedBonus += val; }
+                }
+                
                 if (opt.includes('SP') || opt.includes('마법 공격력')) totalSp += val;
-                if (opt.includes('추가 방어력')) totalDef += val;
-                if (opt.includes('MR')) totalMr += val;
-                if (opt.includes('대미지 감소')) totalDmgReduction += val;
+                if (opt.includes('방어력')) totalDef += val;
+                if (opt.includes('MR') || opt.includes('마법 방어력')) totalMr += val;
+                if (opt.includes('대미지 감소') || opt.includes('피해 감소')) totalDmgReduction += val;
+                
+                if (opt.includes('HP 회복') || opt.includes('피 회복')) totalHpRegen += val; 
+                if (opt.includes('MP 회복') || opt.includes('마나 회복')) totalMpRegen += val; 
+                if (opt.includes('회피')) totalDodge += val;       
+                if (opt.includes('명중')) totalHitBonus += val;
             });
         }
 
@@ -1456,6 +1474,7 @@ function recalculateStats() {
         if (player.buffs['실드']) totalDef += (player.buffs['실드'].val || 2);
         if (player.buffs['어드밴스 스피릿']) { totalHpBonus += 50; totalMpBonus += 50; }
         if (player.buffs['이뮨 투 함']) totalDmgReduction += (player.buffs['이뮨 투 함'].val || 10);
+        if (player.buffs['바운스 어택']) totalHitBonus += (player.buffs['바운스 어택'].val || 6);
     }
 
     player.sp = totalSp;
@@ -1465,6 +1484,11 @@ function recalculateStats() {
     player.currentSpeed = 180 + bonusSpeed;
     player.maxHp = baseMaxHp + totalHpBonus;
     player.maxMp = baseMaxMp + totalMpBonus;
+    
+    player.totalHpRegen = totalHpRegen; 
+    player.totalMpRegen = totalMpRegen; 
+    player.dodge = totalDodge;          
+    player.hitBonus = totalHitBonus;
     
     let wp = player.equip.weapon; 
     let wpAtk = wp ? (wp.atk || 0) + (wp.enchantValue || 0) : 0;
@@ -1479,6 +1503,10 @@ function recalculateStats() {
     player.def = Math.max(0, Math.floor((player.dex - 10) / 3)) + totalDef; 
 }
 
+
+
+
+// (기존 ui.js의 나머지 하단 코드는 그대로 유지)
 // 💡 [누락 복구] 전역 체력/마나 변수
 var currentMaxHp = 150;
 var currentMaxMp = 30;
@@ -2834,13 +2862,17 @@ function getEquipSlotType(it) {
     if (t === 'weapon') return 'weapon';
     if (t === 'shield' || n.includes('방패')) return 'shield';
     if (t === 'helmet' || n.includes('투구') || n.includes('면갑') || n.includes('축복')) return 'helmet';
-    if (t === 'armor' || n.includes('갑옷') || n.includes('로브') || n.includes('옷')) return 'armor';
+    
+    // 💡 [버그 픽스] '파워 글로브'의 '로브'를 갑옷으로 오인하는 현상 방지
+    if (t === 'armor' || n.includes('갑옷') || (n.includes('로브') && !n.includes('글로브')) || n.includes('옷')) return 'armor';
+    
     if (t === 'tshirt' || n.includes('티셔츠')) return 'tshirt';
-    if (t === 'cloak' || n.includes('망토')) return 'cloak';
-    if (t === 'gloves' || n.includes('장갑')) return 'gloves';
+    if (t === 'cloak' || n.includes('망토') || n.includes('날개')) return 'cloak';
+    if (t === 'gloves' || n.includes('장갑') || n.includes('글로브')) return 'gloves';
     if (t === 'boots' || n.includes('신발') || n.includes('부츠') || n.includes('샌달')) return 'boots';
     if (t === 'belt' || n.includes('벨트')) return 'belt';
     if (t === 'ring' || t.includes('ring') || n.includes('반지')) return 'ring';
+    
     return t;
 }
 
@@ -4982,7 +5014,9 @@ function processChatCommand(cmdStr) {
             addMessage("• /서버리부팅 : 서버 및 AI 봇 동시 재부팅", '#fd0', 'system');
             addMessage("• /모험가생성 : 고유 닉네임 AI 300명 생성", '#fd0', 'system');
             addMessage("• /공지 [내용] : 전체 유저 긴급 공지 전파", '#fd0', 'system');
-            addMessage("• /소환 [몹명] [수량], /아데나 [수량], /레벨 [레벨]", '#fd0', 'system');
+            addMessage("• /소환 [몹명] [수량] : 해당 몬스터 강제 소환", '#fd0', 'system');
+            addMessage("• /아이템 [템이름] [수량] : 아이템 강제 지급", '#fd0', 'system'); // 💡 명령어 도움말 추가
+            addMessage("• /아데나 [수량], /레벨 [레벨], /청소, /이동 [맵코드]", '#fd0', 'system');
         }
     }
     else if (cmd === '/파티가입' || cmd === '/파티가입요청') {
@@ -5106,6 +5140,54 @@ function processChatCommand(cmdStr) {
         }
         else if (cmd === '/소환') {
             if (window.socket && args[1]) window.socket.emit('admin_spawn_mob', { mobName: args[1], count: parseInt(args[2]) || 1, x: player.x, y: player.y, map: currentMap });
+        }
+        // 💡 [새로 추가된 아이템 지급 치트키]
+        else if (cmd === '/아이템' || cmd === '/item') {
+            let lastArg = args[args.length - 1];
+            let count = parseInt(lastArg);
+            let itemName = "";
+
+            if (!isNaN(count) && args.length > 2) {
+                // 마지막 인자가 숫자면 띄어쓰기 포함해서 아이템명 추출
+                itemName = args.slice(1, args.length - 1).join(' ');
+            } else {
+                // 끝에 숫자가 없으면 수량을 1로 고정
+                itemName = args.slice(1).join(' ');
+                count = 1;
+            }
+
+            if (!itemName) return addMessage("사용법: /아이템 [아이템명] [수량]", '#f55', 'system');
+
+            // DB에서 이름 포함 검색
+            let baseItem = itemDb.find(it => it.name.includes(itemName));
+            if (baseItem) {
+                let newItem = JSON.parse(JSON.stringify(baseItem));
+                newItem.id = 'cheat_item_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+                
+                let isStackable = ['potion', 'scroll', 'book', 'etc', 'currency'].includes(newItem.type);
+                if (isStackable) {
+                    newItem.count = count;
+                    let existingIdx = player.inv.findIndex(it => getStackKey(it) === getStackKey(newItem) && (!it.magicOptions || it.magicOptions.length === 0));
+                    if (existingIdx > -1) {
+                        player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + count;
+                    } else {
+                        player.inv.push(newItem);
+                    }
+                } else {
+                    for(let i = 0; i < Math.min(count, 50); i++) { // 최대 50개 제한 (장비류 인벤 터짐 방지)
+                        let singleItem = JSON.parse(JSON.stringify(baseItem));
+                        singleItem.id = 'cheat_item_' + Date.now() + '_' + i;
+                        singleItem.count = 1;
+                        player.inv.push(singleItem);
+                    }
+                }
+                
+                if (typeof updateUI === 'function') updateUI();
+                if (typeof renderInventory === 'function') renderInventory();
+                addMessage(`[치트] ${baseItem.name} ${count}개 지급 완료.`, '#5f5', 'system');
+            } else {
+                addMessage(`[치트 실패] '${itemName}' 아이템을 데이터베이스에서 찾을 수 없습니다.`, '#f55', 'system');
+            }
         }
         else if (cmd === '/아데나') {
             player.adena = (player.adena || 0) + (parseInt(args[1]) || 0);

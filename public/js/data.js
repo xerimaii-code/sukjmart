@@ -16,13 +16,9 @@ const _am = (n, t, d, g, x={}) => ({ name: n, type: t, def: d, grade: g, ...x })
 const _pt = (n, h, p, x={}) => ({ name: n, type: "potion", heal: h, price: p, ...x });
 
 // ==========================================
-// [2. 맵 정보 데이터] (몬스터 젠 수 대폭 상향 패치)
+// [2. 맵 정보 데이터] 
 // ==========================================
 const maps = {
-
-
- 
-
     'talking_island': {
         ..._map('말하는 섬', 'Lv.1~15', 'grass', ['goblin', 'orc', 'orc_archer','werewolf', 'shelob', 'doberman', 'slime'], [{id:'giant_ungoliant', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
         maxMobs: 65,
@@ -79,8 +75,9 @@ const maps = {
         safeZones: [] // 안전지대 없는 완전 전투 구역
     }
 };
+
 // ==========================================
-// [3. 몬스터 & 보스 데이터 (체력 대폭 상향)]
+// [3. 몬스터 & 보스 데이터 (보스 공격력 폭발적 상향)]
 // ==========================================
 const templates = {
     mobs: {
@@ -151,38 +148,38 @@ const templates = {
         'doppelganger': _mob('도플갱어', 4800, 90, 90, 3000, [500, 1000], 20, '#94a3b8'),
         'ent': _mob('엔트', 3500, 70, 50, 1000, [100, 300], 35, '#15803d', {desc: '요정의 숲 수호자'}),
         
-        // 💡 카스파 일당을 초보~중급 보스로 승격 (잡으면 보스 전리품 및 환상 주문서 드롭)
-        'caspa': _mob('카스파', 8000, 150, 90, 5000, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 100, isGroup: 'caspa_family', desc: '본던의 지배자'}),
-        'balthazar': _mob('발터', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 90, isGroup: 'caspa_family'}),
-        'melchior': _mob('메르키오르', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 90, isGroup: 'caspa_family'}),
-        'sema': _mob('세마', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 90, isGroup: 'caspa_family'})
+        'caspa': _mob('카스파', 8000, 150, 90, 5000, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 250, isGroup: 'caspa_family', desc: '본던의 지배자'}),
+        'balthazar': _mob('발터', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
+        'melchior': _mob('메르키오르', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
+        'sema': _mob('세마', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'})
     },
 
- bosses: {
-        'black_knight_chief': _mob('흑기사 대장', 30000, 150, 100, 5000, [2000, 5000], 30, '#1a1a24', {matk: 100, isBoss: true, desc: '은기사 마을 외곽을 위협하는 초보존 이벤트 보스'}),
-        'giant_ungoliant': _mob('거대 웅골리언트', 25000, 130, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 90, isBoss: true, desc: '말하는 섬 생태계의 파괴자 (초보존 보스)'}),
-        'corrupted_ent': _mob('타락한 엔트', 35000, 160, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 120, isBoss: true, desc: '요정의 숲 오염의 근원 (초보존 보스)'}),
-        'ant_queen': _mob('여왕 개미', 45000, 200, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 150, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
+    // 💡 보스 몬스터 공격력 대폭 상향 패치 적용!
+    bosses: {
+        'black_knight_chief': _mob('흑기사 대장', 27000, 455, 100, 5000, [2000, 5000], 30, '#1a1a24', {matk: 455, isBoss: true, desc: '은기사 마을 외곽을 위협하는 초보존 이벤트 보스'}),
+        'giant_ungoliant': _mob('거대 웅골리언트', 22500, 455, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 390, isBoss: true, desc: '말하는 섬 생태계의 파괴자 (초보존 보스)'}),
+        'corrupted_ent': _mob('타락한 엔트', 31500, 520, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 585, isBoss: true, desc: '요정의 숲 오염의 근원 (초보존 보스)'}),
+        'ant_queen': _mob('여왕 개미', 40500, 650, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 585, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
 
-        'baphomet': _mob('바포메트', 140000, 320, 110, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 280, isUndead: true, isMagicBoss: true, drops: [{name: '바포메트의 지팡이', chance: 0.03}, {name: '마법서 (이럽션)', chance: 0.10}, {name: '무기 마법 주문서', chance: 0.3}, {name: '갑옷 마법 주문서', chance: 0.5}]}),
-        'deathknight': _mob('데스나이트', 140000, 320, 120, 180000, [20000, 50000], 30, '#f87171', {matk: 280, isUndead: true, drops: [{name: '데스나이트의 불검', chance: 0.02}, {name: '데스나이트의 갑옷', chance: 0.03}, {name: '기술서 (카운터 바리어)', chance: 0.05}]}),
-        'black_elder': _mob('흑장로', 130000, 300, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 300, isMagicBoss: true, drops: [{name: '흑장로의 지팡이', chance: 0.04}, {name: '흑장로의 로브', chance: 0.05}]}),
+        'baphomet': _mob('바포메트', 126000, 1040, 110, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 1170, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '바포메트의 지팡이', chance: 0.03}, {name: '마법서 (이럽션)', chance: 0.10}, {name: '무기 마법 주문서', chance: 0.3}, {name: '갑옷 마법 주문서', chance: 0.5}]}),
+        'deathknight': _mob('데스나이트', 126000, 1105, 120, 180000, [20000, 50000], 30, '#f87171', {matk: 1235, isBoss: true, isUndead: true, drops: [{name: '데스나이트의 불검', chance: 0.02}, {name: '데스나이트의 갑옷', chance: 0.03}, {name: '기술서 (카운터 바리어)', chance: 0.05}]}),
+        'black_elder': _mob('흑장로', 117000, 975, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 1300, isBoss: true, isMagicBoss: true, drops: [{name: '흑장로의 지팡이', chance: 0.04}, {name: '흑장로의 로브', chance: 0.05}]}),
 
-        'kurz': _mob('커츠', 350000, 450, 110, 700000, [80000, 250000], 30, '#1e1b4b', {drops: [{name: '커츠의 검', chance: 0.03}]}),
-        'drake': _mob('드레이크', 380000, 480, 130, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 380}),
-        'antharas': _mob('안타라스(지룡)', 420000, 460, 100, 900000, [100000, 250000], 80, '#166534', {matk: 450, drops: [{name: '안타라스의 예지', chance: 0.01}]}),
-        'valakas': _mob('발라카스(화룡)', 450000, 500, 120, 1200000, [200000, 400000], 100, '#dc2626', {matk: 480, drops: [{name: '발라카스의 완력', chance: 0.01}]}),
-        'zenith_queen': _mob('제니스 퀸', 350000, 420, 130, 900000, [100000, 250000], 40, '#701a75', {matk: 400, isMagicBoss: true}),
+        'kurz': _mob('커츠', 315000, 1560, 110, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 1560, isBoss: true, drops: [{name: '커츠의 검', chance: 0.03}]}),
+        'drake': _mob('드레이크', 342000, 1690, 130, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 1430, isBoss: true}),
+        'antharas': _mob('안타라스(지룡)', 378000, 1950, 100, 900000, [100000, 250000], 80, '#166534', {matk: 1820, isBoss: true, drops: [{name: '안타라스의 예지', chance: 0.01}]}),
+        'valakas': _mob('발라카스(화룡)', 405000, 2080, 120, 1200000, [200000, 400000], 100, '#dc2626', {matk: 2080, isBoss: true, drops: [{name: '발라카스의 완력', chance: 0.01}]}),
+        'zenith_queen': _mob('제니스 퀸', 315000, 1430, 130, 900000, [100000, 250000], 40, '#701a75', {matk: 1560, isBoss: true, isMagicBoss: true}),
 
-        'lich_boss': _mob('리치(보스)', 800000, 620, 110, 1500000, [200000, 500000], 35, '#312e81', {matk: 580, isUndead: true, isMagicBoss: true, drops: [{name: '리치의 로브', chance: 0.03}]}),
-        'grim_reaper': _mob('그림 리퍼', 850000, 650, 140, 700000, [50000, 150000], 60, '#000', {matk: 600, isMagicBoss: true, drops: [{name: '그림 리퍼의 투구', chance: 0.02}]}),
-        'great_minotaur': _mob('대미노타우르스', 800000, 600, 100, 1200000, [300000, 800000], 50, '#451a03'),
+        'lich_boss': _mob('리치(보스)', 720000, 1950, 110, 1500000, [200000, 500000], 35, '#312e81', {matk: 2340, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '리치의 로브', chance: 0.03}]}),
+        'grim_reaper': _mob('그림 리퍼', 765000, 2210, 140, 700000, [50000, 150000], 60, '#000', {matk: 2600, isBoss: true, isMagicBoss: true, drops: [{name: '그림 리퍼의 투구', chance: 0.02}]}),
+        'great_minotaur': _mob('대미노타우르스', 720000, 1820, 100, 1200000, [300000, 800000], 50, '#451a03', {matk: 1430, isBoss: true}),
 
-        'dantes': _mob('명황 단테스', 1500000, 850, 130, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 750}),
-        'awakened_reaper': _mob('각성한 사신', 1800000, 900, 150, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 800, isMagicBoss: true, drops: [{name: '사신의 검', chance: 0.01}]}),
+        'dantes': _mob('명황 단테스', 1350000, 2860, 130, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 3120, isBoss: true}),
+        'awakened_reaper': _mob('각성한 사신', 1620000, 3380, 150, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 3640, isBoss: true, isMagicBoss: true, drops: [{name: '사신의 검', chance: 0.01}]}),
         
-        'demon': _mob('데몬', 350000, 450, 120, 500000, [50000, 150000], 50, '#f22', {matk: 450, isMagicBoss: true}),
-        'great_spirit': _mob('대정령', 320000, 420, 100, 300000, [40000, 100000], 40, '#8ff', {matk: 400, isMagicBoss: true})
+        'demon': _mob('데몬', 315000, 1560, 120, 500000, [50000, 150000], 50, '#f22', {matk: 1820, isBoss: true, isMagicBoss: true}),
+        'great_spirit': _mob('대정령', 288000, 1430, 100, 300000, [40000, 100000], 40, '#8ff', {matk: 1690, isBoss: true, isMagicBoss: true})
     }
 };
 
@@ -217,14 +214,14 @@ const itemDb = [
     _wp("사이하의 활", 25, 4, {isBow: true}), 
     _wp("마나의 지팡이", 3, 2, {mpDrain: 2}), _wp("수정 지팡이", 8, 2, {mpDrain: 1}), 
     _wp("바포메트의 지팡이", 15, 4, {skill: '이럽션'}), 
-    _wp("얼음 여왕의 지팡이", 18, 4, { sp: 3, int: 2, skill: '블리자드', desc: '타격 시 확률로 블리자드 발동' }), // 중복 통합
+    _wp("얼음 여왕의 지팡이", 18, 4, { sp: 3, int: 2, skill: '블리자드', desc: '타격 시 확률로 블리자드 발동' }),
     _wp("마력의 단검", 6, 2, { sp: 1, mpDrain: 1, desc: '타격 시 MP를 흡수하고 SP를 증가시킨다.' }),
     _wp("흑왕도", 20, 4, { str: 2, desc: '다크엘프 최고위 암살자의 검' }),
     _wp("흑장로의 지팡이", 12, 3, { sp: 2, mpRegen: 5 }),
-    _wp("제로스의 지팡이", 18, 4, { sp: 5, int: 3, skill: '크리티컬 매직', desc: '궁극의 마법 지팡이' }),
-    _wp("살천의 활", 16, 3, { isBow: true, dex: 2, skill: '엘븐 애로우' }),
+    _wp("제로스의 지팡이", 18, 4, { sp: 5, int: 3, skill: '디스인티그레이트', desc: '궁극의 마법 지팡이' }),
+    _wp("살천의 활", 16, 3, { isBow: true, dex: 2, skill: '트리플 애로우' }),
     _wp("악몽의 장궁", 22, 4, { isBow: true, dex: 3, hitBonus: 5, desc: '적을 관통하는 악몽의 활' }),
-    _wp("포르세의 검", 26, 4, { str: 2, skill: '이럽션' }), // 하단 중복 제거
+    _wp("포르세의 검", 26, 4, { str: 2, skill: '이럽션' }),
     _wp("블러드서커", 18, 3, { vampiric: true, desc: '타격 시 일정 확률로 체력 흡수' }), 
     _am("가죽 갑옷", "armor", 3, 0), _am("사슬 갑옷", "armor", 5, 1), _am("요정족 판금 갑옷", "armor", 6, 1), 
     _am("강철 판금 갑옷", "armor", 8, 2), _am("흑장로의 로브", "armor", 5, 3, {mpRegen: 5}), 
@@ -239,7 +236,7 @@ const itemDb = [
     _am("가죽 부츠", "boots", 1, 0), _am("강철 부츠", "boots", 3, 2), _am("흑장로의 샌달", "boots", 2, 3, {mpBonus: 20}), 
     _am("수련자의 반지", "ring", 0, 0), _am("멸마의 반지", "ring", 2, 2, {mr: 10}), _am("순간이동 조종 반지", "ring", 0, 3), 
     _am("오우거의 반지", "ring", 1, 3, {hpBonus: 50, str: 1}), 
-    _am("오우거의 벨트", "belt", 1, 3, {hpBonus: 50, str: 1, desc: '강력한 힘이 깃든 벨트'}), // 벨트 버프 적용
+    _am("오우거의 벨트", "belt", 1, 3, {hpBonus: 50, str: 1, desc: '강력한 힘이 깃든 벨트'}),
     _am("멸마의 판금 갑옷", "armor", 9, 3, { mr: 15, desc: '강력한 마법 저항력을 지닌 판금' }),
     _am("고대의 가죽 갑옷", "armor", 8, 4, { hpRegen: 10, dex: 1, mr: 5 }),
     _am("파푸리온의 마력", "armor", 11, 4, { sp: 2, mr: 10, mpRegen: 10, desc: '수룡의 마력이 깃든 로브' }),
@@ -265,7 +262,6 @@ const itemDb = [
     _am("스냅퍼의 용사 반지", "ring", 0, 4, { str: 1, hpBonus: 30, atk: 2 }),
     _am("스냅퍼의 지혜 반지", "ring", 0, 4, { int: 1, mpBonus: 30, sp: 1 }),
     
-    // 💡 룸티스의 귀걸이 종류를 helmet -> earring으로 모두 수정
     _am("룸티스의 푸른빛 귀걸이", "earring", 0, 4, { hpBonus: 50, potionEffect: 10, desc: '물약 회복량 10% 증가 (귀걸이 슬롯 착용)' }),
     _am("룸티스의 검은빛 귀걸이", "earring", 0, 4, { def: 3, mr: 5, dmgReduct: 2 }),
     _am("룸티스의 붉은빛 귀걸이", "earring", 0, 4, { hpBonus: 100, dmgReduct: 3 }),
