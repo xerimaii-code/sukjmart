@@ -161,14 +161,25 @@ class AIAgentClient {
             transports: ['websocket'], 
             upgrade: false
         });
+
+        this.socket.on('disconnect', () => {
+            // 네트워크 끊김 시 파티 데이터 리셋 (유령 파티 방지)
+            this.partyData = null;
+            this.followTarget = null;
+        });
+
         this.socket.on('connect', () => {
             this.charData.id = this.socket.id; 
-            console.log(`[🤖 AI 접속] ${this.charData.name} (Lv.${this.charData.level} ${this.charData.charClass}) - 자율초대확률: ${this.autoInviteChance*100}%`);
+            console.log(`[🤖 AI 접속/재접속] ${this.charData.name}`);
              
-            let startMap = this.determineBestMap();
-            this.charData.map = startMap;
-            this.charData.x = 2000 + (Math.random() * 500 - 250);
-            this.charData.y = 2000 + (Math.random() * 500 - 250);
+            // 💡 [에이전트 이탈 버그 완벽 해결] 재접속 시 무작위 맵으로 초기화되지 않고 원래 있던 맵(보스방 등)을 유지합니다!
+            if (!this.hasConnectedOnce) {
+                this.hasConnectedOnce = true;
+                let startMap = this.determineBestMap();
+                this.charData.map = startMap;
+                this.charData.x = 2000 + (Math.random() * 500 - 250);
+                this.charData.y = 2000 + (Math.random() * 500 - 250);
+            }
 
             this.socket.emit('player_join', {
                 id: this.dbRow.id, 
@@ -176,14 +187,17 @@ class AIAgentClient {
                 charClass: this.charData.charClass,
                 x: this.charData.x, 
                 y: this.charData.y, 
-                map: startMap, 
+                map: this.charData.map, 
                 level: this.charData.level || 1,
                 totalMr: this.charData.totalMr || 50,
                 totalDmgReduction: this.charData.totalDmgReduction || 0,
                 isAI: true
             });
-            this.setupListeners();
-            this.startLoop();
+            
+            if (this.hasConnectedOnce && !this.loopTimer) {
+                this.setupListeners();
+                this.startLoop();
+            }
         });
     }
 
@@ -282,6 +296,13 @@ class AIAgentClient {
         this.socket.on('take_damage', (packet) => {
             this.charData.hp = Math.max(0, this.charData.hp - (packet.damage || 10));
             this.checkDrinkPotion();
+        });
+
+        // 💡 [핵심 패치 2] 파티장(유저)이 쏴주는 힐 마법을 수신하고 AI 체력 회복
+        this.socket.on('sync_player_magic', (packet) => {
+            if (packet.healAmt && packet.targetId === this.socket.id) {
+                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + packet.healAmt);
+            }
         });
 
         this.socket.on('item_looted_success', (packet) => {
@@ -1105,6 +1126,9 @@ class AIAgentClient {
 
     checkSmartMapNavigation() {
         if (this.partyData) return; 
+        
+        // 💡 [보스레이드 유기 방지] 보스방에 있을 때는 3분이 지나도 절대 다른 사냥터로 도망가지 않습니다!
+        if (this.charData.map === 'boss_raid') return;
 
         if (Date.now() - this.lastMapCheckTime > 180000) { 
             this.lastMapCheckTime = Date.now();
@@ -1120,11 +1144,19 @@ class AIAgentClient {
         if (this.charData.hp < this.charData.maxHp * 0.6) {
             if (potCount > 0) {
                 let pot = this.charData.inv.find(i => i.name === '맑은 물약' || i.name === '주홍 물약');
-                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + (pot.heal || 60));
+                let potBonus = 0;
+                if (this.charData.equip.earring && this.charData.equip.earring.potionEffect) {
+                    potBonus = this.charData.equip.earring.potionEffect;
+                }
+                let healAmt = Math.floor((pot.heal || 60) * (1 + potBonus / 100));
+                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + healAmt);
                 pot.count--;
                 this.socket.emit('player_use_potion', { potionName: pot.name });
             } else {
-                if(this.state !== 'SHOPPING') this.routineShopping();
+              
+                if(this.state !== 'SHOPPING' && !this.partyData && this.charData.map !== 'boss_raid') {
+                    this.routineShopping();
+                }
             }
         }
          
@@ -1627,9 +1659,22 @@ ${situationContext}
         if (!this.socket) return;
         this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
         this.charData.target = null; this.charData.targetId = null; this.charData.isMoving = false;
+        
+        // 💡 [에이전트 용병 텔레포트 적용] 에이전트 본체가 텔레포트할 때 용병 좌표도 강제 동기화!
+        if (this.charData.mercs && this.charData.mercs.length > 0) {
+            this.charData.mercs.forEach(m => {
+                m.map = mapCode; // <-- 이전 수정에서 이 부분이 누락되어 용병이 못 따라왔습니다!
+                m.x = x + (Math.random() * 60 - 30);
+                m.y = y + (Math.random() * 60 - 30);
+                m.target = null;
+                m.isMoving = false;
+            });
+        }
+        
         this.worldMonsters = [];
         this.worldItems = [];
-        this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false });
+        // 💡 바뀐 용병 정보(mercs)를 서버에 즉각 전송하여 맵에 동시 소환시킴
+        this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false, mercs: this.charData.mercs });
     }
 
     async gracefulLogout() {

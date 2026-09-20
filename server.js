@@ -1,6 +1,6 @@
 // server.js (최종 통합 최적화 및 파티/AI 제한 완벽 적용 버전)
 
-require('dotenv').config();
+require('dotenv').config();let targetGrade = 0;
 const { exec, spawn } = require('child_process');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -480,6 +480,21 @@ io.on('connection', (socket) => {
                 mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
             }
             if (prevMap === 'boss_raid') {
+                // 💡 [레이드 탈주자 처리] 파티원이 레이드 중에 도망가서 다른 맵으로 갔다면, 레이드 방 명단에서 즉시 삭제합니다.
+                if (p.currentRaidRoomId && raidRooms[p.currentRaidRoomId]) {
+                    let room = raidRooms[p.currentRaidRoomId];
+                    room.members = room.members.filter(sid => sid !== socket.id); // 명단에서 제거
+                    
+                    // 남은 인원의 전투력에 맞춰 보스가 약화되도록 파티 전투력 재조정
+                    let newCombatPower = 0;
+                    room.members.forEach(memberId => {
+                        let memberP = players[memberId];
+                        if (memberP) newCombatPower += (memberP.level * 300);
+                    });
+                    room.totalCombatPower = newCombatPower;
+                }
+                p.currentRaidRoomId = null;
+
                 let remainingPlayers = Object.values(players).filter(pl => pl.map === 'boss_raid' && pl.socketId !== socket.id);
                 if (remainingPlayers.length === 0) {
                     mapsState['boss_raid'] = { monsters: [], items: [], deadBosses: [] };
@@ -530,9 +545,9 @@ io.on('connection', (socket) => {
         p.totalMr = payload.totalMr !== undefined ? payload.totalMr : (p.totalMr || p.int * 2);
         p.totalDmgReduction = payload.totalDmgReduction !== undefined ? payload.totalDmgReduction : (p.totalDmgReduction || 0);
 
-        if (payload.mercs && Array.isArray(payload.mercs) && payload.mercs.length > 0) {
-            p.mercs = payload.mercs;
-        }
+        if (payload.mercs && Array.isArray(payload.mercs)) {
+    p.mercs = payload.mercs; 
+}
     });
 
     socket.on('player_summon_monster', (payload = {}) => {
@@ -590,6 +605,25 @@ io.on('connection', (socket) => {
         let p = players[socket.id];
         let mapId = (p && p.map) ? p.map : (payload.map || 'talking_island');
         
+        if (payload.healAmt && payload.targetId) {
+            let targetP = players[payload.targetId];
+            if (targetP) {
+                // 💡 [서버 힐 증발 버그 해결] maxHp가 없을 때 100으로 깎여버리는 것을 방지!
+                targetP.hp = Math.min(targetP.maxHp || Math.max(100, targetP.hp), targetP.hp + payload.healAmt);
+                
+                // 💡 힐이 들어가는 즉시 파티창 정보 갱신 신호를 보냄 (빠른 동기화)
+                if (targetP.partyId && parties[targetP.partyId]) {
+                    let pMember = parties[targetP.partyId].members.find(m => m.socketId === payload.targetId);
+                    if (pMember) {
+                        pMember.hp = targetP.hp;
+                        parties[targetP.partyId].members.forEach(m => {
+                            io.to(m.socketId).emit('party_update', { party: parties[targetP.partyId] });
+                        });
+                    }
+                }
+            }
+        }
+        
         let playersInMap = Object.values(players).filter(pl => pl.map === mapId);
         playersInMap.forEach(targetPl => {
             let casterX = payload.casterX !== undefined ? payload.casterX : (p ? p.x : 2000);
@@ -606,7 +640,8 @@ io.on('connection', (socket) => {
                     targetY: payload.targetY,
                     targetId: payload.targetId,
                     casterX: casterX,
-                    casterY: casterY
+                    casterY: casterY,
+                    healAmt: payload.healAmt
                 });
             }
         });
@@ -925,7 +960,11 @@ io.on('connection', (socket) => {
         if (!monster || monster.hp <= 0) return;
 
         let actualAttackerId = payload.attackerId || socket.id;
-
+        if (monster.isUndead && p.equip && p.equip.weapon && p.equip.weapon.isUndeadWeapon) {
+            if (typeof payload.calculatedDmg === 'number' && payload.calculatedDmg > 0) {
+                payload.calculatedDmg = Math.floor(payload.calculatedDmg * 1.5);
+            }
+        }
         io.to(p.map).emit('sync_player_action', {
             socketId: actualAttackerId, 
             angle: p.angle || 0,
@@ -1060,10 +1099,27 @@ io.on('connection', (socket) => {
                             finalDropItem = applyTranscendOptions(finalDropItem);
                         }
                     }
-                } else {
+               } else {
+                    
                     let rand = Math.random() * 100;
-                    let targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() * 0.5 ? 1 : 0)));
-                    let gradePool = data.itemDb.filter(it => (it.grade || 0) <= targetGrade);
+                 
+                    let targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() < 0.5 ? 1 : 0)));
+
+                    // 2. 몬스터의 스펙(최대 HP)에 따른 '드롭 허용 최대 등급' 설정 (안전장치)
+                    let maxAllowedGrade = 0;
+                    if (monster.maxHp >= 4000) maxAllowedGrade = 4;     
+                    else if (monster.maxHp >= 1500) maxAllowedGrade = 3; 
+                    else if (monster.maxHp >= 500) maxAllowedGrade = 2; 
+                    else maxAllowedGrade = 1;                           
+                   
+                    targetGrade = Math.min(targetGrade, maxAllowedGrade);
+
+                  
+                    let gradePool = data.itemDb.filter(it => 
+                        (it.grade || 0) === targetGrade && 
+                        !it.name.includes('[신화]') && !it.name.includes('[초월]')
+                    );
+
                     if (gradePool.length > 0) {
                         let baseChosen = gradePool[Math.floor(Math.random() * gradePool.length)];
                         finalDropItem = generateServerDropItem(baseChosen);
@@ -1099,6 +1155,12 @@ io.on('connection', (socket) => {
 
             if (monster.isBoss && p.map === 'boss_raid') {
                 let userRaidRoom = Object.values(raidRooms).find(room => room.members.includes(socket.id));
+                
+
+                if (!userRaidRoom && p.partyId && parties[p.partyId]) {
+                    let leaderId = parties[p.partyId].leader;
+                    userRaidRoom = Object.values(raidRooms).find(room => room.members.includes(leaderId));
+                }
                 
                 if (userRaidRoom && userRaidRoom.currentWave < userRaidRoom.maxWave) {
                     userRaidRoom.currentWave++;
@@ -1593,17 +1655,47 @@ function processMonsterAI() {
                 if (mob.stunnedUntil && now < mob.stunnedUntil) return;
 
                 let dist = Math.sqrt(getDistSq(target.x, target.y, mob.x, mob.y));
+                
+
+
+
                 let mName = mob.name || '';
                 let isBowMob = mName.includes('저격병') || mName.includes('궁수') || mob.isBow;
+
+                // 💡 1. 리치, 서큐버스를 마법 몬스터 판정에 추가하여 원거리 딜러로 정상 작동하게 보정
                 let isSpellMob = mName.includes('장로') || mName.includes('카스파') || mName.includes('세마') || 
                                  mName.includes('발터') || mName.includes('메르키오르') || mName.includes('네크로맨서') || 
-                                 mName.includes('마법사') || mob.isMagicMob;
+                                 mName.includes('마법사') || mName.includes('리치') || mName.includes('서큐버스') || 
+                                 mob.isMagicMob || mob.isMagicBoss; 
 
                 let stopDist = (mob.size || 20) + 40;
-                if (isBowMob) stopDist = 320;        
-                else if (isSpellMob) stopDist = 280;  
+                if (isBowMob) stopDist = 320;
+                else if (isSpellMob) stopDist = 280;
 
-                if (dist > stopDist) {
+                let atkDelay = mob.isBoss ? 800 : 1400; 
+                let canAttack = now - (mob.lastAttackTime || 0) >= atkDelay;
+
+                // 💡 2. [핵심 패치] 보스가 마법을 쏠 것인지를 이동 로직보다 '먼저' 판단합니다.
+                let willCastMagic = false;
+                let magicRange = 350; // 마법이 닿는 최대 사거리
+
+                if (canAttack && mob.isBoss && dist <= magicRange) {
+                    if (mob.isMagicBoss) {
+                        willCastMagic = Math.random() < 0.35; // 마법 보스는 거리 상관없이 35%로 대마법 시전
+                    } else {
+                        // 💡 물리 보스인데, 유저가 근접 사거리 밖으로 계속 도망간다면?
+                        if (dist > stopDist + 20) {
+                            willCastMagic = Math.random() < 0.45; // 45% 확률로 쫓아가기를 포기하고 원거리 대마법 폭격!
+                        } else {
+                            willCastMagic = Math.random() < 0.15; // 근접했을 때는 15% 확률로만 마법(평타 위주)
+                        }
+                    }
+                }
+
+                // 💡 마법을 시전하기로 결정했거나, 사거리 안이면 이동을 멈춥니다.
+                let shouldMove = (dist > stopDist) && !willCastMagic;
+
+                if (shouldMove) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                     let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
                     let mSpeed = baseMobSpeed * (80 / 1000); 
@@ -1611,17 +1703,16 @@ function processMonsterAI() {
                     mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
                     mob.y = Math.max(150, Math.min(3850, mob.y + Math.sin(angle) * mSpeed));
                     mob.angle = angle;
-                } else {
-                    let atkDelay = mob.isBoss ? 1200 : 1400;
-                    if (now - (mob.lastAttackTime || 0) >= atkDelay) {
-                        mob.lastAttackTime = now;
-                        mob.angle = Math.atan2(target.y - mob.y, target.x - mob.x);
-                        let ownerSocketId = target.socketId || target.ownerSocketId;
+                } else if (canAttack && (dist <= stopDist || willCastMagic)) {
+                    mob.lastAttackTime = now;
+                    mob.angle = Math.atan2(target.y - mob.y, target.x - mob.x);
+                    let ownerSocketId = target.socketId || target.ownerSocketId;
 
-                        let isBossMagic = mob.isBoss && (mob.isMagicBoss || Math.random() < 0.65);
-                        if (isBossMagic) {
-                            let hpPercent = mob.hp / mob.maxHp;
-                            let magicPool = ['파이어볼', '콜 라이트닝', '이럽션'];
+                    let isBossMagic = willCastMagic;
+
+                    if (isBossMagic) {
+                        let hpPercent = mob.hp / mob.maxHp;
+                        let magicPool = ['파이어볼', '콜 라이트닝', '이럽션'];
                             if (hpPercent <= 0.70) magicPool.push('라이트닝 스톰', '토네이도');
                             if (hpPercent <= 0.40) magicPool.push('블리자드', '저지먼트');
                             if (hpPercent <= 0.20) magicPool.push('미티어 스트라이크', '디스인티그레이트');
@@ -1667,7 +1758,7 @@ function processMonsterAI() {
                                     let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
                                     let targetReduc = currentTarget.totalDmgReduction || 0;
                                     
-                                    // 💡 회피 판정 적용 (마법 무효화)
+
                                     let targetDodge = currentTarget.dodge || 0;
                                     if (currentTarget.charClass === 'elf') targetDodge += 5; 
                                     if (Math.random() * 100 < targetDodge) {
@@ -1779,7 +1870,7 @@ function processMonsterAI() {
                         }
                     }
                 }
-            }
+            //}
         });
 
         let allMercsForSync = [];
