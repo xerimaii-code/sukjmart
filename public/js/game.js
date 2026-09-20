@@ -2379,7 +2379,7 @@ function draw(timestamp) {
     entities.forEach(e => {
         if (!e || typeof e.x !== 'number' || typeof e.y !== 'number') return;
         if (e === player || (window.socket && e.id === window.socket.id)) return;
-
+      
         if (e.map === currentMap && e.x > camX - 300 && e.x < camX + worldW + 300 && e.y > camY - 300 && e.y < camY + worldH + 300) {
             if(player.target === e && !e.isDead) {
                 ctx.save();
@@ -2433,7 +2433,7 @@ function draw(timestamp) {
                     let badgeHeight = isMobile ? 15 : 18; 
                     let badgeY = ry - sz - (isMobile ? 52 : 56);
 
-                    ctx.shadowBlur = 4;
+                    
                     ctx.shadowColor = '#000000';
                     ctx.fillStyle = bgColor;
                     ctx.strokeStyle = borderColor;
@@ -2444,7 +2444,7 @@ function draw(timestamp) {
                     ctx.fill();
                     ctx.stroke();
 
-                    ctx.shadowBlur = 0;
+                  
                     ctx.font = `bold ${isMobile ? 10 : 11}px "Malgun Gothic", sans-serif`;
                     ctx.lineWidth = 2;
                     ctx.strokeStyle = '#000000';
@@ -4493,8 +4493,31 @@ if (window.socket) {
         let ty = targetEnt ? targetEnt.y : (data.targetY !== undefined ? data.targetY : realCasterY);
         let aimAngle = Math.atan2(ty - realCasterY, tx - realCasterX);
 
+
+        if (data.healAmt && data.targetId) {
+            if (data.targetId === (window.socket ? window.socket.id : null)) {
+                player.hp = Math.min(window.currentMaxHp || player.maxHp, player.hp + data.healAmt);
+                if (typeof updateUI === 'function') updateUI();
+                if (typeof addMessage === 'function') addMessage(`[${mName}] 파티원에게 체력을 ${data.healAmt} 회복받았습니다!`, '#5f5');
+            } else {
+                // 💡 [핵심 패치 3] 나 자신이나 내 용병이 아니더라도, 힐을 받은 대상(AI/파티원)의 체력바를 즉각 반영시킴!
+                let healTarget = entities.find(e => e.id === data.targetId || e.socketId === data.targetId);
+                if (healTarget) {
+                    healTarget.hp = Math.min(healTarget.maxHp || Math.max(100, healTarget.hp), healTarget.hp + data.healAmt);
+                    
+              
+                    if (window.currentPartyData && window.currentPartyData.party && window.currentPartyData.party.members) {
+                        let pMember = window.currentPartyData.party.members.find(m => m.socketId === healTarget.id || m.socketId === healTarget.socketId);
+                        if (pMember) pMember.hp = healTarget.hp;
+                        window._lastPartyHudHash = null;
+                        if (typeof renderPartyHUD === 'function') renderPartyHUD();
+                    }
+                }
+            }
+        }
+
         if (caster) { 
-            caster.lastAttack = performance.now(); 
+            caster.lastAttack = performance.now();
             caster.angle = aimAngle; 
 
             if (mName.includes('광폭화') || mName.includes('BERSERK')) {
@@ -4512,12 +4535,14 @@ if (window.socket) {
         else if (mName.includes('돌진') || mName.includes('RUSH')) { customTier = 'high'; customSize = 16; }
 
         if (typeof addSkillText === 'function') {
-            // 💡 [수정] 네트워크상 타 유저/용병의 스킬도 고유 패시브일 때만 출력
             let isKeyPassive = mName.includes('광폭화') || mName.includes('BERSERK') || 
                                mName.includes('실프') || mName.includes('SYLPH') || 
                                mName.includes('돌진') || mName.includes('RUSH');
                                
-            if (isKeyPassive) {
+            // 💡 [이중 텍스트 방지] 나와 내 용병이 시전한 패시브는 로컬에서 이미 띄웠으므로 서버 메아리를 무시합니다.
+            let isMine = (caster === player || (caster && caster.isSummon && caster.owner === player));
+            
+            if (isKeyPassive && !isMine) {
                 let dispName = mName;
                 if (!mName.match(/^[\[🔥🌪️⚡✨💀]/)) {
                     dispName = `✨ ${mName}`;
@@ -4621,14 +4646,13 @@ if (window.socket) {
                     });
                 }
             });
-
-            for (let i = entities.length - 1; i >= 0; i--) {
-                let ent = entities[i];
-                if (!ent.isPlayer && !ent.isSummon && !ent.isOtherMerc && !ent.isBoss) {
-                    if (!serverMobIds.includes(ent.id)) {
-                        if (player.target && player.target.id === ent.id) player.target = null;
-                        entities.splice(i, 1);
-                    }
+for (let i = entities.length - 1; i >= 0; i--) {
+    let ent = entities[i];
+  
+    if (!ent.isPlayer && !ent.isSummon && !ent.isOtherMerc) { 
+        if (!serverMobIds.includes(ent.id)) {
+            if (player.target && player.target.id === ent.id) player.target = null;
+            entities.splice(i, 1);                    }
                 }
             }
         }
@@ -4661,6 +4685,7 @@ if (window.socket) {
                     if (sp.equip) existingPlayer.equip = sp.equip;
                     if (sp.name) existingPlayer.name = sp.name;
                     if (sp.a !== undefined) existingPlayer.angle = sp.a; // 💡 압축 키 a 사용
+                   existingPlayer.map = currentMap;
                 } else {
                     entities.push({
                         id: sp.id, socketId: sp.id, isPlayer: true, name: sp.name, charClass: sp.charClass || 'knight', // 💡 압축 키 id 사용
@@ -4707,6 +4732,7 @@ if (window.socket) {
                     if (sm.charClass) existingMerc.charClass = sm.charClass;
                     if (sm.name) existingMerc.name = sm.name;
                     if (sm.ownerName) existingMerc.ownerName = sm.ownerName;
+                    existingMerc.map = currentMap;
                 } else {
                     entities.push({
                         ...sm, 
@@ -5663,14 +5689,24 @@ window.castBuff = function(magicName, targetEntity = null) {
         player.mp -= (mData.mp || 0);
     }
     if (typeof playSound === 'function') playSound('spell');
+ let healAmtForNetwork = 0;
 
     if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
-        let healAmt = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
-        target.hp = Math.min(targetMaxHp, (target.hp || 0) + healAmt);
-        if (typeof addMessage === 'function') addMessage(`[${magicName}] ${target.name || '대상'} HP ${healAmt} 회복`, '#5f5');
+        healAmtForNetwork = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
+        target.hp = Math.min(targetMaxHp, (target.hp || 0) + healAmtForNetwork);
+        if (typeof addMessage === 'function') addMessage(`[${magicName}] ${target.name || '대상'} HP ${healAmtForNetwork} 회복`, '#5f5');
         if (typeof dmgTexts !== 'undefined') {
-            dmgTexts.push({ x: target.x, y: target.y - 30, text: `+${healAmt} 힐!`, life: 1.2, color: '#5f5' });
+            dmgTexts.push({ x: target.x, y: target.y - 30, text: `+${healAmtForNetwork} 힐!`, life: 1.2, color: '#5f5' });
         }
+        
+        // 💡 [핵심 패치 3] 힐을 주는 순간 파티창 HUD의 체력바를 즉시 강제로 채워줍니다.
+        if (window.currentPartyData && window.currentPartyData.party && window.currentPartyData.party.members) {
+            let pMember = window.currentPartyData.party.members.find(m => m.socketId === target.id || m.socketId === target.socketId);
+            if (pMember) pMember.hp = target.hp;
+           
+            if (typeof renderPartyHUD === 'function') renderPartyHUD();
+        }
+        
     } else if (magicName === '블러드 투 소울') {
         if (player.hp > 40) {
             player.hp -= 40;
@@ -5694,7 +5730,8 @@ window.castBuff = function(magicName, targetEntity = null) {
             targetId: target.id || target.socketId || window.socket.id,
             casterX: player.x, casterY: player.y,
             casterId: window.socket.id,
-            map: currentMap
+            map: currentMap,
+            healAmt: healAmtForNetwork // 💡 서버로 힐량을 전달!
         });
     }
     if (typeof updateUI === 'function') updateUI();

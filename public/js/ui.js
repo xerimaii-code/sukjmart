@@ -5705,6 +5705,17 @@ window.selectAlly = function(id, name) {
     if (typeof playSound === 'function') playSound('click');
     let targetEnt = entities.find(e => e.id === id || e.socketId === id || e.id === 'merc_' + id);
     
+    // 💡 [핵심 패치 1] 파티원이 화면 밖이라 캐릭터 객체가 없더라도, HUD의 정보를 바탕으로 가상의 타겟을 만들어 힐이 본인에게 들어가는 버그를 방지합니다.
+    if (!targetEnt && window.currentPartyData && window.currentPartyData.party) {
+        let pMember = window.currentPartyData.party.members.find(m => m.socketId === id);
+        if (pMember) {
+            targetEnt = { 
+                id: id, socketId: id, name: name, hp: pMember.hp, maxHp: pMember.maxHp, 
+                x: player.x, y: player.y // 임시 좌표
+            };
+        }
+    }
+    
     if (window.selectedAllyId === id) {
         window.selectedAllyId = null;
         player.friendlyTarget = null;
@@ -5718,7 +5729,6 @@ window.selectAlly = function(id, name) {
     if (typeof renderMercenaryHUD === 'function') renderMercenaryHUD();
     if (typeof renderPartyHUD === 'function') renderPartyHUD();
 };
-
 // ==========================================
 // 💡 공통 HUD 드래그 무빙 로직 (파티 HUD 전용)
 // ==========================================
@@ -5828,8 +5838,8 @@ window.renderPartyHUD = function() {
     let mySockId = window.socket ? window.socket.id : null;
     let amILeaderNow = (data.party.leader === mySockId);
 
-    // 💡 [핵심 수정] 해시값에 '파티장(leader)'과 '파티 모드(mode)'를 추가하여, 위임받는 즉시 화면이 갱신되도록 고침
-    let partyHash = data.party.leader + '_' + data.party.mode + '_' + data.party.members.map(m => m.socketId + '_' + m.hp + '_' + (m.maxHp||100)).join('|');
+
+    let partyHash = data.party.leader + '_' + data.party.mode + '_' + window.selectedAllyId + '_' + data.party.members.map(m => m.socketId + '_' + m.hp + '_' + (m.maxHp||100)).join('|');
     
     if (window._lastPartyHudHash === partyHash) return; // 변동 없으면 렌더링 생략
     window._lastPartyHudHash = partyHash;
@@ -5897,8 +5907,8 @@ window.renderMercenaryHUD = function() {
         return;
     }
 
-    let mercHash = activeMercs.map(m => m.id + '_' + m.hp + '_' + m.mp).join('|');
-    if (window._lastMercHudHash === mercHash) return; // 변동 없으면 렌더링 스킵
+    let mercHash = window.selectedAllyId + '_' + activeMercs.map(m => m.id + '_' + m.hp + '_' + m.mp).join('|');
+    if (window._lastMercHudHash === mercHash) return;// 변동 없으면 렌더링 스킵
     window._lastMercHudHash = mercHash;
 
 

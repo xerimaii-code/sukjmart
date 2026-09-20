@@ -156,30 +156,30 @@ const templates = {
 
     // 💡 보스 몬스터 공격력 대폭 상향 패치 적용!
     bosses: {
-        'black_knight_chief': _mob('흑기사 대장', 27000, 455, 100, 5000, [2000, 5000], 30, '#1a1a24', {matk: 455, isBoss: true, desc: '은기사 마을 외곽을 위협하는 초보존 이벤트 보스'}),
-        'giant_ungoliant': _mob('거대 웅골리언트', 22500, 455, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 390, isBoss: true, desc: '말하는 섬 생태계의 파괴자 (초보존 보스)'}),
-        'corrupted_ent': _mob('타락한 엔트', 31500, 520, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 585, isBoss: true, desc: '요정의 숲 오염의 근원 (초보존 보스)'}),
-        'ant_queen': _mob('여왕 개미', 40500, 650, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 585, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
+        'black_knight_chief': _mob('흑기사 대장', 18900, 590, 100, 5000, [2000, 5000], 30, '#1a1a24', {matk: 455, isBoss: true, desc: '은기사 마을 외곽을 위협하는 초보존 이벤트 보스'}),
+        'giant_ungoliant': _mob('거대 웅골리언트', 15750, 590, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 390, isBoss: true, desc: '말하는 섬 생태계의 파괴자 (초보존 보스)'}),
+        'corrupted_ent': _mob('타락한 엔트', 22050, 670, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 585, isBoss: true, desc: '요정의 숲 오염의 근원 (초보존 보스)'}),
+        'ant_queen': _mob('여왕 개미', 28350, 845, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 585, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
 
-        'baphomet': _mob('바포메트', 126000, 1040, 110, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 1170, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '바포메트의 지팡이', chance: 0.03}, {name: '마법서 (이럽션)', chance: 0.10}, {name: '무기 마법 주문서', chance: 0.3}, {name: '갑옷 마법 주문서', chance: 0.5}]}),
-        'deathknight': _mob('데스나이트', 126000, 1105, 120, 180000, [20000, 50000], 30, '#f87171', {matk: 1235, isBoss: true, isUndead: true, drops: [{name: '데스나이트의 불검', chance: 0.02}, {name: '데스나이트의 갑옷', chance: 0.03}, {name: '기술서 (카운터 바리어)', chance: 0.05}]}),
-        'black_elder': _mob('흑장로', 117000, 975, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 1300, isBoss: true, isMagicBoss: true, drops: [{name: '흑장로의 지팡이', chance: 0.04}, {name: '흑장로의 로브', chance: 0.05}]}),
+        'baphomet': _mob('바포메트', 88200, 1350, 110, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 1170, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '바포메트의 지팡이', chance: 0.03}, {name: '마법서 (이럽션)', chance: 0.10}, {name: '무기 마법 주문서', chance: 0.3}, {name: '갑옷 마법 주문서', chance: 0.5}]}),
+        'deathknight': _mob('데스나이트', 88200, 1430, 120, 180000, [20000, 50000], 30, '#f87171', {matk: 1235, isBoss: true, isUndead: true, drops: [{name: '데스나이트의 불검', chance: 0.02}, {name: '데스나이트의 갑옷', chance: 0.03}, {name: '기술서 (카운터 바리어)', chance: 0.05}]}),
+        'black_elder': _mob('흑장로', 81900, 1260, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 1300, isBoss: true, isMagicBoss: true, drops: [{name: '흑장로의 지팡이', chance: 0.04}, {name: '흑장로의 로브', chance: 0.05}]}),
 
-        'kurz': _mob('커츠', 315000, 1560, 110, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 1560, isBoss: true, drops: [{name: '커츠의 검', chance: 0.03}]}),
-        'drake': _mob('드레이크', 342000, 1690, 130, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 1430, isBoss: true}),
-        'antharas': _mob('안타라스(지룡)', 378000, 1950, 100, 900000, [100000, 250000], 80, '#166534', {matk: 1820, isBoss: true, drops: [{name: '안타라스의 예지', chance: 0.01}]}),
-        'valakas': _mob('발라카스(화룡)', 405000, 2080, 120, 1200000, [200000, 400000], 100, '#dc2626', {matk: 2080, isBoss: true, drops: [{name: '발라카스의 완력', chance: 0.01}]}),
-        'zenith_queen': _mob('제니스 퀸', 315000, 1430, 130, 900000, [100000, 250000], 40, '#701a75', {matk: 1560, isBoss: true, isMagicBoss: true}),
+        'kurz': _mob('커츠', 220500, 2020, 110, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 1560, isBoss: true, drops: [{name: '커츠의 검', chance: 0.03}]}),
+        'drake': _mob('드레이크', 239400, 2190, 130, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 1430, isBoss: true}),
+        'antharas': _mob('안타라스(지룡)', 264600, 2530, 100, 900000, [100000, 250000], 80, '#166534', {matk: 1820, isBoss: true, drops: [{name: '안타라스의 예지', chance: 0.01}]}),
+        'valakas': _mob('발라카스(화룡)', 283500, 2700, 120, 1200000, [200000, 400000], 100, '#dc2626', {matk: 2080, isBoss: true, drops: [{name: '발라카스의 완력', chance: 0.01}]}),
+        'zenith_queen': _mob('제니스 퀸', 220500, 1850, 130, 900000, [100000, 250000], 40, '#701a75', {matk: 1560, isBoss: true, isMagicBoss: true}),
 
-        'lich_boss': _mob('리치(보스)', 720000, 1950, 110, 1500000, [200000, 500000], 35, '#312e81', {matk: 2340, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '리치의 로브', chance: 0.03}]}),
-        'grim_reaper': _mob('그림 리퍼', 765000, 2210, 140, 700000, [50000, 150000], 60, '#000', {matk: 2600, isBoss: true, isMagicBoss: true, drops: [{name: '그림 리퍼의 투구', chance: 0.02}]}),
-        'great_minotaur': _mob('대미노타우르스', 720000, 1820, 100, 1200000, [300000, 800000], 50, '#451a03', {matk: 1430, isBoss: true}),
+        'lich_boss': _mob('리치(보스)', 504000, 2530, 110, 1500000, [200000, 500000], 35, '#312e81', {matk: 2340, isBoss: true, isUndead: true, isMagicBoss: true, drops: [{name: '리치의 로브', chance: 0.03}]}),
+        'grim_reaper': _mob('그림 리퍼', 535500, 2870, 140, 700000, [50000, 150000], 60, '#000', {matk: 2600, isBoss: true, isMagicBoss: true, drops: [{name: '그림 리퍼의 투구', chance: 0.02}]}),
+        'great_minotaur': _mob('대미노타우르스', 504000, 2360, 100, 1200000, [300000, 800000], 50, '#451a03', {matk: 1430, isBoss: true}),
 
-        'dantes': _mob('명황 단테스', 1350000, 2860, 130, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 3120, isBoss: true}),
-        'awakened_reaper': _mob('각성한 사신', 1620000, 3380, 150, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 3640, isBoss: true, isMagicBoss: true, drops: [{name: '사신의 검', chance: 0.01}]}),
+        'dantes': _mob('명황 단테스', 945000, 3710, 130, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 3120, isBoss: true}),
+        'awakened_reaper': _mob('각성한 사신', 1134000, 4390, 150, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 3640, isBoss: true, isMagicBoss: true, drops: [{name: '사신의 검', chance: 0.01}]}),
         
-        'demon': _mob('데몬', 315000, 1560, 120, 500000, [50000, 150000], 50, '#f22', {matk: 1820, isBoss: true, isMagicBoss: true}),
-        'great_spirit': _mob('대정령', 288000, 1430, 100, 300000, [40000, 100000], 40, '#8ff', {matk: 1690, isBoss: true, isMagicBoss: true})
+        'demon': _mob('데몬', 220500, 2020, 120, 500000, [50000, 150000], 50, '#f22', {matk: 1820, isBoss: true, isMagicBoss: true}),
+        'great_spirit': _mob('대정령', 201600, 1850, 100, 300000, [40000, 100000], 40, '#8ff', {matk: 1690, isBoss: true, isMagicBoss: true})
     }
 };
 

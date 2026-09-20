@@ -389,7 +389,7 @@
                     entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                     if (typeof env.spawnParticle === 'function') env.spawnParticle(entity.x, entity.y, 'haste_tornado');
                     if (typeof env.playSound === 'function') env.playSound('spell');
-                    if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast("⚡ RUSH!", finalTarget.x, finalTarget.y, finalTarget.id, 'high', entity, 16);
+                    if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('🌪️ SYLPH TEMPEST! (실프의 폭풍)', finalTarget.x, finalTarget.y, finalTarget.id, 'ultimate', entity);
                 }
             }
 
@@ -576,9 +576,8 @@
                                 if (!(now < (entity.elfFuryUntil || 0)) && !(now < (entity.elfFuryCooldownUntil || 0))) {
                                     entity.elfHitCount = (entity.elfHitCount || 0) + 3;
                                     if (entity.elfHitCount >= 5) {
-                                        entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
-                                        if (typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 50, "🌪️ SYLPH TEMPEST! (실프의 폭풍)", '#34d399', 20);
-                                    }
+                                    entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
+                                }
                                 }
                             }
                         }
@@ -624,7 +623,6 @@
                                 entity.elfHitCount = (entity.elfHitCount || 0) + 1;
                                 if (entity.elfHitCount >= 5) {
                                     entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
-                                    if (typeof env.spawnText === 'function') env.spawnText(entity.x, entity.y - 50, "🌪️ SYLPH TEMPEST! (실프의 폭풍)", '#34d399', 20);
                                 }
                             }
 
