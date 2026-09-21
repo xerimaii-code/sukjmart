@@ -4494,24 +4494,35 @@ if (window.socket) {
         let aimAngle = Math.atan2(ty - realCasterY, tx - realCasterX);
 
 
-        if (data.healAmt && data.targetId) {
-            if (data.targetId === (window.socket ? window.socket.id : null)) {
-                player.hp = Math.min(window.currentMaxHp || player.maxHp, player.hp + data.healAmt);
+        let isTargetMe = data.targetId === (window.socket ? window.socket.id : null);
+        let targetMyMerc = entities.find(e => e.isSummon && e.owner === player && e.id === data.targetId);
+
+        if (isTargetMe || targetMyMerc) {
+            let actualTarget = isTargetMe ? player : targetMyMerc;
+
+            // 1. 힐 처리
+            if (data.healAmt) {
+                actualTarget.hp = Math.min(actualTarget.maxHp || 100, actualTarget.hp + data.healAmt);
+                if (typeof dmgTexts !== 'undefined') {
+                    dmgTexts.push({ x: actualTarget.x, y: actualTarget.y - 30, text: `+${data.healAmt} 힐!`, life: 1.2, color: '#5f5' });
+                }
                 if (typeof updateUI === 'function') updateUI();
-                if (typeof addMessage === 'function') addMessage(`[${mName}] 파티원에게 체력을 ${data.healAmt} 회복받았습니다!`, '#5f5');
-            } else {
-                // 💡 [핵심 패치 3] 나 자신이나 내 용병이 아니더라도, 힐을 받은 대상(AI/파티원)의 체력바를 즉각 반영시킴!
-                let healTarget = entities.find(e => e.id === data.targetId || e.socketId === data.targetId);
-                if (healTarget) {
-                    healTarget.hp = Math.min(healTarget.maxHp || Math.max(100, healTarget.hp), healTarget.hp + data.healAmt);
-                    
-              
-                    if (window.currentPartyData && window.currentPartyData.party && window.currentPartyData.party.members) {
-                        let pMember = window.currentPartyData.party.members.find(m => m.socketId === healTarget.id || m.socketId === healTarget.socketId);
-                        if (pMember) pMember.hp = healTarget.hp;
-                        window._lastPartyHudHash = null;
-                        if (typeof renderPartyHUD === 'function') renderPartyHUD();
-                    }
+                if (targetMyMerc && typeof updatePetUI === 'function') updatePetUI(true);
+            }
+
+            // 2. 버프 처리 (헤이스트, 실드 등)
+            if (data.isBuff && data.buffName && typeof applyBuff === 'function') {
+                applyBuff(data.buffName, data.buffDuration, data.buffIcon, data.buffType, data.buffVal, actualTarget);
+            }
+        } else if (data.healAmt) {
+            // 다른 사람/타인 용병 체력바 UI 갱신
+            let healTarget = entities.find(e => e.id === data.targetId || e.socketId === data.targetId);
+            if (healTarget) {
+                healTarget.hp = Math.min(healTarget.maxHp || Math.max(100, healTarget.hp), healTarget.hp + data.healAmt);
+                if (window.currentPartyData && window.currentPartyData.party) {
+                    let pMember = window.currentPartyData.party.members.find(m => m.socketId === data.targetId);
+                    if (pMember) pMember.hp = healTarget.hp;
+                    if (typeof renderPartyHUD === 'function') renderPartyHUD();
                 }
             }
         }
@@ -4576,21 +4587,20 @@ if (window.socket) {
         }
     });
 
-    window.socket.on('sync_player_potion', (data) => {
-        let p = entities.find(e => e.isPlayer && (e.id === data.socketId || e.socketId === data.socketId));
-        if (p) {
+    window.socket.on('sync_entity_potion', (data) => {
+        let ent = entities.find(e => e.id === data.entityId || e.socketId === data.entityId);
+        if (ent) {
             let pInfo = typeof getPotionColorInfo === 'function' ? getPotionColorInfo(data.potionName) : { c: '#f80' };
             if (typeof particles !== 'undefined') {
                 for (let i = 0; i < 10; i++) {
                     particles.push({
-                        x: p.x, y: p.y, life: 0.8, maxLife: 0.8, 
+                        x: ent.x, y: ent.y, life: 0.8, maxLife: 0.8, 
                         type: 'classic_potion', color: pInfo.c, radius: Math.random() * 15 + 8, angle: Math.random() * Math.PI * 2
                     });
                 }
             }
-            // 💡 다른 모험가(AI)들이 물약 먹는 소리는 스피커로 내보내지 않음 (내 캐릭터/용병만 소리 재생)
-            let isMine = (p === player || (p.isSummon && p.owner === player));
-            if (isMine && typeof playSound === 'function') playSound('drink', p);
+            let isMine = (ent === player || (ent.isSummon && ent.owner === player));
+            if (isMine && typeof playSound === 'function') playSound('drink', ent);
         }
     });
 
@@ -5665,65 +5675,41 @@ window.castBuff = function(magicName, targetEntity = null) {
     if (!target && window.selectedAllyId) {
         target = entities.find(e => e.id === window.selectedAllyId || e.socketId === window.selectedAllyId);
     }
-    if (!target) {
-        target = player;
-    }
+    if (!target) target = player;
 
     let targetMaxHp = target.maxHp || (target === player ? (window.currentMaxHp || player.maxHp) : 100);
-
-    let isDefaultClassSpell = (player.charClass === 'wizard' && ['에너지 볼트', '힐', '실드', '가속', '그레이트 힐', '어드밴스 스피릿', '이뮨 투 함', '앱솔루트 배리어', '마제스티', '홀리 워크'].some(n => magicName.includes(n))) ||
-                              (player.charClass === 'knight' && ['쇼크 스턴', '리덕션 아머', '카운터 바리어', '바운스 어택', '솔리드 캐리지', '블로우 어택'].some(n => magicName.includes(n))) ||
-                              (player.charClass === 'elf' && ['네이쳐스 터치', '윈드 워크', '트리플 애로우', '스톰 샷', '블러드 투 소울', '어스 스킨', '파이어 웨폰', '워터 라이프', '소울 오브 프레임'].some(n => magicName.includes(n)));
-
-    let hasLearned = (player.magic && player.magic.includes(magicName)) || isDefaultClassSpell;
-    if (!hasLearned) {
-        if (typeof addMessage === 'function') addMessage(`[${magicName}] 습득하지 않은 마법입니다.`, '#f55');
-        return;
-    }
+    let hasLearned = (player.magic && player.magic.includes(magicName));
+    if (!hasLearned && player.charClass !== 'knight' && player.charClass !== 'elf' && player.charClass !== 'wizard') return;
     
-    if (magicName !== '블러드 투 소울' && player.mp < (mData.mp || 0)) {
-        if (typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55');
-        return;
-    }        
-    if (magicName !== '블러드 투 소울') {
-        player.mp -= (mData.mp || 0);
-    }
+    if (magicName !== '블러드 투 소울' && player.mp < (mData.mp || 0)) return addMessage("MP가 부족합니다.", '#f55');
+    if (magicName !== '블러드 투 소울') player.mp -= (mData.mp || 0);
     if (typeof playSound === 'function') playSound('spell');
- let healAmtForNetwork = 0;
+
+    let healAmtForNetwork = 0;
+    let isBuffApplied = false;
+    let bType = mData.buffType || 'stat';
 
     if (mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치') {
         healAmtForNetwork = Math.floor((mData.heal || 40) * (1 + ((player.int || 10) - 10) * 0.05));
-        target.hp = Math.min(targetMaxHp, (target.hp || 0) + healAmtForNetwork);
-        if (typeof addMessage === 'function') addMessage(`[${magicName}] ${target.name || '대상'} HP ${healAmtForNetwork} 회복`, '#5f5');
-        if (typeof dmgTexts !== 'undefined') {
-            dmgTexts.push({ x: target.x, y: target.y - 30, text: `+${healAmtForNetwork} 힐!`, life: 1.2, color: '#5f5' });
+        // 내가 나에게 주는 힐만 로컬에서 처리 (타인에게 주는 건 서버 패킷을 통해 처리)
+        if (target === player) {
+            target.hp = Math.min(targetMaxHp, (target.hp || 0) + healAmtForNetwork);
+            if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: target.x, y: target.y - 30, text: `+${healAmtForNetwork} 힐!`, life: 1.2, color: '#5f5' });
         }
-        
-        // 💡 [핵심 패치 3] 힐을 주는 순간 파티창 HUD의 체력바를 즉시 강제로 채워줍니다.
-        if (window.currentPartyData && window.currentPartyData.party && window.currentPartyData.party.members) {
-            let pMember = window.currentPartyData.party.members.find(m => m.socketId === target.id || m.socketId === target.socketId);
-            if (pMember) pMember.hp = target.hp;
-           
-            if (typeof renderPartyHUD === 'function') renderPartyHUD();
-        }
-        
     } else if (magicName === '블러드 투 소울') {
-        if (player.hp > 40) {
-            player.hp -= 40;
-            player.mp = Math.min(window.currentMaxMp || player.maxMp, player.mp + 15);
-            if (typeof addMessage === 'function') addMessage(`[블러드 투 소울] HP 40 소모 ➔ MP 15 회복`, '#55f');
-        }
+        if (player.hp > 40) { player.hp -= 40; player.mp = Math.min(window.currentMaxMp || player.maxMp, player.mp + 15); }
     } else {
-        let bType = mData.buffType || 'stat';
         if (magicName.includes('가속') || magicName.includes('초록') || magicName.includes('워크')) bType = 'speed';
         else if (magicName.includes('실드') || magicName.includes('아머') || magicName.includes('스킨')) bType = 'def';
         
-        if (typeof applyBuff === 'function') {
+        if (target === player && typeof applyBuff === 'function') {
             applyBuff(magicName, mData.duration || 300000, mData.icon || '✨', bType, mData.val || 0, target);
         }
+        isBuffApplied = true;
     }
 
     if (window.socket && currentUser) {
+        // 💡 [개선] 힐량뿐만 아니라 버프의 종류와 지속시간까지 패킷에 담아 전송
         window.socket.emit('player_magic_action', {
             magicName: magicName,
             targetX: target.x, targetY: target.y,
@@ -5731,7 +5717,13 @@ window.castBuff = function(magicName, targetEntity = null) {
             casterX: player.x, casterY: player.y,
             casterId: window.socket.id,
             map: currentMap,
-            healAmt: healAmtForNetwork // 💡 서버로 힐량을 전달!
+            healAmt: healAmtForNetwork,
+            isBuff: isBuffApplied,
+            buffName: magicName,
+            buffDuration: mData.duration || 300000,
+            buffIcon: mData.icon || '✨',
+            buffType: bType,
+            buffVal: mData.val || 0
         });
     }
     if (typeof updateUI === 'function') updateUI();

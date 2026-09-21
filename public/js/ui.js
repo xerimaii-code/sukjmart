@@ -3364,6 +3364,10 @@ function executeBuy(w, bundleCost, qtyPerBundle, bundleCount) { 
 window.sellItemGroup = function(stackKey, price, maxCount, itemName) { playSound('click'); if (maxCount > 1) { showPrompt(`${itemName} 몇 개를 판매하시겠습니까?\n(최대 ${maxCount}개)`, maxCount, maxCount, (qty) => { executeSell(stackKey, price, qty); }); } else { executeSell(stackKey, price, 1); } };
 function executeSell(stackKey, price, qty) { let soldCount = 0; let itemName = ""; let remainingToSell = qty; for (let i = player.inv.length - 1; i >= 0; i--) { if (getStackKey(player.inv[i]) === stackKey) { itemName = player.inv[i].name; let stackCount = player.inv[i].count || 1; if(stackCount > remainingToSell) { player.inv[i].count -= remainingToSell; soldCount += remainingToSell; remainingToSell = 0; } else { soldCount += stackCount; remainingToSell -= stackCount; player.inv.splice(i, 1); } if (remainingToSell <= 0) break; } } if (soldCount > 0) { let totalEarned = price * soldCount; player.adena += totalEarned; playSound('buy'); addMessage(`${itemName} ${soldCount}개 판매 (+${totalEarned} 아데나)`, '#fd0'); updateUI(); renderShopList(currentShopNpcId, 'sell'); } }
 
+// ==========================================
+// [용병 및 소환수 통합 관리 시스템 (전체 기능 완벽 보존)]
+// ==========================================
+
 let lastPetUiUpdateTime = 0;
 
 window.openPetUI = function(pet) { 
@@ -3385,32 +3389,51 @@ window.openPetUI = function(pet) {
 
 window.updatePetUI = function(force = false) {
     const now = performance.now();
-    // 강제 호출이 아니면 200ms 주기로만 DOM을 갱신하여 렉/다운 원천 차단
     if (!force && now - lastPetUiUpdateTime < 200) return;
     lastPetUiUpdateTime = now;
 
     const winPet = $('win-pet');
     if (!winPet || winPet.style.display === 'none' || !currentSelectedPet) return;
     
-    // 유효하지 않거나 사망한 용병이면 창 닫기
     if (currentSelectedPet.hp <= 0 || currentSelectedPet.isDead) { 
         winPet.style.display = 'none'; 
         currentSelectedPet = null; 
         return; 
     }
     
-    if (!currentSelectedPet.equip) currentSelectedPet.equip = { weapon: null, armor: null };
+    if (!currentSelectedPet.equip) currentSelectedPet.equip = { weapon: null, armor: null, helmet: null, cloak: null, gloves: null, boots: null, shield: null };
+    if (!currentSelectedPet.inv) currentSelectedPet.inv = []; 
     
-    if ($('pet-name')) $('pet-name').innerText = currentSelectedPet.name || '용병';
-    if ($('pet-lv')) $('pet-lv').innerText = currentSelectedPet.level || 1;
-    if ($('pet-hp')) $('pet-hp').innerText = `${Math.floor(currentSelectedPet.hp)} / ${currentSelectedPet.maxHp || 100}`;
+    if ($('pet-name'))$('pet-name').innerText = currentSelectedPet.name || '용병';
+    if ($('pet-lv'))$('pet-lv').innerText = currentSelectedPet.level || 1;
+    if ($('pet-hp'))$('pet-hp').innerText = `${Math.floor(currentSelectedPet.hp)} / ${currentSelectedPet.maxHp || 100}`;
     
     let reqExp = currentSelectedPet.maxExp || ((currentSelectedPet.level || 1) * 500);
-    if ($('pet-exp')) $('pet-exp').innerText = `${currentSelectedPet.exp || 0} / ${reqExp}`;
+    if ($('pet-exp'))$('pet-exp').innerText = `${currentSelectedPet.exp || 0} / ${reqExp}`;
     
-    if ($('pet-hp-pot-count')) $('pet-hp-pot-count').innerText = currentSelectedPet.mercHpPotionCount || 0;
-    if ($('pet-mp-pot-count')) $('pet-mp-pot-count').innerText = currentSelectedPet.mercMpPotionCount || 0;
+    // 💡 [기존 호환 유지] 기존 카운트 표시 엘리먼트 업데이트
+    let totalHpPots = 0, totalMpPots = 0;
+    currentSelectedPet.inv.forEach(i => {
+        if (/주홍|맑은|빨간/.test(i.name)) totalHpPots += (i.count || 0);
+        if (/파란|마나/.test(i.name)) totalMpPots += (i.count || 0);
+    });
+    if ($('pet-hp-pot-count'))$('pet-hp-pot-count').innerText = totalHpPots;
+    if ($('pet-mp-pot-count'))$('pet-mp-pot-count').innerText = totalMpPots;
 
+    // 💡 [동적 물약 목록] 소지 중인 모든 종류의 물약 리스트 표기
+    let potionListHtml = '';
+    let hasPotions = false;
+    currentSelectedPet.inv.forEach(pot => {
+        if (pot && pot.count > 0) {
+            potionListHtml += `<div style="display:inline-block; margin:2px 4px 0 0; font-size:11px; background:#222; padding:2px 6px; border-radius:3px; border:1px solid #444;">${pot.name}: <span style="color:#fd0; font-weight:bold;">${pot.count}</span></div>`;
+            hasPotions = true;
+        }
+    });
+    if (!hasPotions) potionListHtml = '<span style="color:#666; font-size:11px;">보유 중인 물약 없음</span>';
+    let potListEl = $('pet-potion-list');
+    if (potListEl) potListEl.innerHTML = potionListHtml;
+
+    // 장비 텍스트 표시
     let w = currentSelectedPet.equip.weapon;
     let wpEl = $('pet-eq-wp');
     if (wpEl) { 
@@ -3441,171 +3464,249 @@ window.updatePetUI = function(force = false) {
         }
     });
 };
+
+// 💡 [개선] 무기 외에도 투구, 갑옷, 망토, 장갑, 부츠, 방패 등 모든 방어구 선택 지원
 window.openPetEquipModal = function(type) {
-    let items = player.inv.filter(it => it.type === type);
-    if(items.length === 0) { 
-        addMessage(`가방에 장착할 ${type==='weapon'?'무기':'방어구'}가 없습니다.`, "#f55"); 
-        return; 
-    }
-    
-    let btns = items.map(it => ({ 
-        text: `${it.enchantValue?'+'+it.enchantValue+' ':''}${it.name}`, 
-        callback: () => equipPetItem(getStackKey(it), type) 
-    }));
-    
-    btns.push({ text: '❌ 닫기', color: '#555', callback: () => {} });
-    showCustomPrompt(`소환수에게 장착할 ${type==='weapon'?'무기':'방어구'}를 선택하세요.`, btns);
+    let items = player.inv.filter(it => {
+        if (type === 'weapon') return it.type === 'weapon';
+        return ['armor', 'helmet', 'cloak', 'gloves', 'boots', 'shield'].includes(it.type);
+    });
+
+    if (items.length === 0) { 
+        addMessage(`가방에 장착할 ${type === 'weapon' ? '무기' : '방어구'}가 없습니다.`, "#f55"); 
+        return; 
+    }
+    
+    let btns = items.map(it => ({ 
+        text: `${it.enchantValue ? '+' + it.enchantValue + ' ' : ''}${it.name} [${it.type}]`, 
+        callback: () => equipPetItem(getStackKey(it), it.type) 
+    }));
+    
+    btns.push({ text: '❌ 닫기', color: '#555', callback: () => {} });
+    showCustomPrompt(`소환수에게 장착할 장비를 선택하세요.`, btns);
 };
 
 function equipPetItem(stackKey, type) {
-    let idx = player.inv.findIndex(it => getStackKey(it) === stackKey);
-    if(idx > -1 && currentSelectedPet) {
-        if(!currentSelectedPet.equip) currentSelectedPet.equip = { weapon: null, armor: null };
-        if(currentSelectedPet.equip[type]) { player.inv.push(currentSelectedPet.equip[type]); }
-        let itemToGive = {...player.inv[idx]}; itemToGive.count = 1;
-        if(player.inv[idx].count > 1) player.inv[idx].count--; else player.inv.splice(idx, 1);
-        currentSelectedPet.equip[type] = itemToGive; playSound('click'); addMessage(`${currentSelectedPet.name}에게 ${itemToGive.name} 장착 완료!`, '#5f5');
-        updatePetUI(); if($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
-    }
+    let idx = player.inv.findIndex(it => getStackKey(it) === stackKey);
+    if (idx > -1 && currentSelectedPet) {
+        if (!currentSelectedPet.equip) currentSelectedPet.equip = { weapon: null, armor: null, helmet: null, cloak: null, gloves: null, boots: null, shield: null };
+        
+        let slotKey = (type === 'weapon') ? 'weapon' : 'armor';
+
+        if (currentSelectedPet.equip[slotKey]) { 
+            player.inv.push(currentSelectedPet.equip[slotKey]); 
+        }
+
+        let itemToGive = { ...player.inv[idx] }; 
+        itemToGive.count = 1;
+        
+        if (player.inv[idx].count > 1) player.inv[idx].count--; 
+        else player.inv.splice(idx, 1);
+        
+        currentSelectedPet.equip[slotKey] = itemToGive; 
+        playSound('click'); 
+        addMessage(`${currentSelectedPet.name}에게 ${itemToGive.name} 장착 완료!`, '#5f5');
+        
+        updatePetUI(); 
+        if ($('win-inv') &&$('win-inv').style.display === 'flex') renderInventory();
+    }
 }
 
 window.unequipPetItem = function(type) {
-    if(currentSelectedPet && currentSelectedPet.equip && currentSelectedPet.equip[type]) {
-        let unequipped = currentSelectedPet.equip[type];
-        showConfirm(`[${unequipped.name}] 장비를 해제하여 가방으로 가져오시겠습니까?`, () => {
-            player.inv.push(unequipped);
-            currentSelectedPet.equip[type] = null;
-            playSound('click');
-            addMessage(`${currentSelectedPet.name}의 ${unequipped.name} 장착 해제!`, '#aaa');
-            updatePetUI();
-            if($('win-inv') && $('win-inv').style.display === 'flex') renderInventory();
-        });
-    }
+    let slotKey = (type === 'weapon') ? 'weapon' : 'armor';
+    if (currentSelectedPet && currentSelectedPet.equip && currentSelectedPet.equip[slotKey]) {
+        let unequipped = currentSelectedPet.equip[slotKey];
+        showConfirm(`[${unequipped.name}] 장비를 해제하여 가방으로 가져오시겠습니까?`, () => {
+            player.inv.push(unequipped);
+            currentSelectedPet.equip[slotKey] = null;
+            playSound('click');
+            addMessage(`${currentSelectedPet.name}의 ${unequipped.name} 장착 해제!`, '#aaa');
+            updatePetUI();
+            if ($('win-inv') &&$('win-inv').style.display === 'flex') renderInventory();
+        });
+    }
 };
 
 window.setPetStance = function(stance) {
-    if(currentSelectedPet) {
-        currentSelectedPet.stance = stance; playSound('click'); updatePetUI();
-        addMessage(`[${currentSelectedPet.name}] ${stance === 'attack' ? '공격' : (stance === 'defend' ? '방어' : '휴식')} 태세 전환!`, '#5cf');
-    }
+    if (currentSelectedPet) {
+        currentSelectedPet.stance = stance; 
+        playSound('click'); 
+        updatePetUI();
+        addMessage(`[${currentSelectedPet.name}] ${stance === 'attack' ? '공격' : (stance === 'defend' ? '방어' : '휴식')} 태세 전환!`, '#5cf');
+    }
 };
 
 window.dismissPet = function() {
-    if(currentSelectedPet) {
-        showConfirm(`${currentSelectedPet.name}을(를) 자연으로 돌려보내시겠습니까?`, () => {
-            let idx = entities.indexOf(currentSelectedPet);
-            if(idx > -1) {
-                for(let i=0; i<15; i++) particles.push({x: currentSelectedPet.x, y: currentSelectedPet.y, vx: (Math.random()-0.5)*3, vy: -Math.random()*4, life: 1, color: '#aaa'});
-                if (currentSelectedPet.equip) {
-                    if (currentSelectedPet.equip.weapon) player.inv.push(currentSelectedPet.equip.weapon);
-                    if (currentSelectedPet.equip.armor) player.inv.push(currentSelectedPet.equip.armor);
-                }
-                entities.splice(idx, 1); addMessage(`${currentSelectedPet.name} 해산됨.`, '#aaa'); playSound('spell');
-            }
-            if($('win-pet')) $('win-pet').style.display = 'none'; currentSelectedPet = null; updateUI();
-        });
-    }
+    if (currentSelectedPet) {
+        showConfirm(`${currentSelectedPet.name}을(를) 자연으로 돌려보내시겠습니까?`, () => {
+            let idx = entities.indexOf(currentSelectedPet);
+            if (idx > -1) {
+                for (let i = 0; i < 15; i++) particles.push({ x: currentSelectedPet.x, y: currentSelectedPet.y, vx: (Math.random() - 0.5) * 3, vy: -Math.random() * 4, life: 1, color: '#aaa' });
+                
+                // 장비 회수
+                if (currentSelectedPet.equip) {
+                    Object.values(currentSelectedPet.equip).forEach(eq => { if (eq) player.inv.push(eq); });
+                }
+                // 소지 물약 전체 회수
+                if (currentSelectedPet.inv) {
+                    currentSelectedPet.inv.forEach(pot => { if (pot && pot.count > 0) player.inv.push(pot); });
+                }
+                
+                entities.splice(idx, 1); 
+                addMessage(`${currentSelectedPet.name} 해산됨. 장비와 물약이 가방으로 회수되었습니다.`, '#aaa'); 
+                playSound('spell');
+            }
+            if ($('win-pet'))$('win-pet').style.display = 'none'; 
+            currentSelectedPet = null; 
+            updateUI();
+        });
+    }
 };
 
+// 💡 [수량 이전 팝업창 컨트롤 - 기존 로직 유지]
 let currentTransferContext = { maxCount: 0, onConfirmCallback: null };
 
 window.openTransferWindow = function(itemName, maxCount, onConfirm) {
-    currentTransferContext = { maxCount: maxCount, onConfirmCallback: onConfirm };
-    document.getElementById('transfer-item-name').innerText = itemName;
-    document.getElementById('transfer-item-count').innerText = `(최대: ${maxCount}개)`;
-    const inputEl = document.getElementById('transfer-input');
-    inputEl.value = 1; inputEl.max = maxCount;
-    
-    let winTransfer = document.getElementById('win-transfer');
-    winTransfer.style.display = 'flex';
-    bringToFront('win-transfer');
-    setTimeout(() => autoCenterWindow('win-transfer', true), 10);
+    currentTransferContext = { maxCount: maxCount, onConfirmCallback: onConfirm };
+    if ($('transfer-item-name'))$('transfer-item-name').innerText = itemName;
+    if ($('transfer-item-count'))$('transfer-item-count').innerText = `(최대: ${maxCount}개)`;
+    const inputEl = $('transfer-input');
+    if (inputEl) {
+        inputEl.value = 1; 
+        inputEl.max = maxCount;
+    }
+    
+    let winTransfer = $('win-transfer');
+    if (winTransfer) {
+        winTransfer.style.display = 'flex';
+        bringToFront('win-transfer');
+        setTimeout(() => autoCenterWindow('win-transfer', true), 10);
+    }
 };
 
-window.closeTransferWindow = function() { document.getElementById('win-transfer').style.display = 'none'; };
+window.closeTransferWindow = function() { 
+    if ($('win-transfer'))$('win-transfer').style.display = 'none'; 
+};
 
 window.setTransferQuickQty = function(type) {
-    const inputEl = document.getElementById('transfer-input');
-    const max = currentTransferContext.maxCount;
-    if (type === 'min') inputEl.value = 1;
-    else if (type === 'half') inputEl.value = Math.max(1, Math.floor(max / 2));
-    else if (type === 'max') inputEl.value = max;
+    const inputEl = $('transfer-input');
+    if (!inputEl) return;
+    const max = currentTransferContext.maxCount;
+    if (type === 'min') inputEl.value = 1;
+    else if (type === 'half') inputEl.value = Math.max(1, Math.floor(max / 2));
+    else if (type === 'max') inputEl.value = max;
 };
 
 window.validateTransferInput = function() {
-    const inputEl = document.getElementById('transfer-input');
-    let val = parseInt(inputEl.value) || 0;
-    if (val > currentTransferContext.maxCount) inputEl.value = currentTransferContext.maxCount;
-    else if (val < 1) inputEl.value = 1;
+    const inputEl = $('transfer-input');
+    if (!inputEl) return;
+    let val = parseInt(inputEl.value) || 0;
+    if (val > currentTransferContext.maxCount) inputEl.value = currentTransferContext.maxCount;
+    else if (val < 1) inputEl.value = 1;
 };
 
 window.submitTransfer = function() {
-    const count = parseInt(document.getElementById('transfer-input').value);
-    if (!isNaN(count) && count > 0 && typeof currentTransferContext.onConfirmCallback === 'function') {
-        currentTransferContext.onConfirmCallback(count);
-    }
-    closeTransferWindow();
+    const inputEl = $('transfer-input');
+    const count = parseInt(inputEl ? inputEl.value : 1);
+    if (!isNaN(count) && count > 0 && typeof currentTransferContext.onConfirmCallback === 'function') {
+        currentTransferContext.onConfirmCallback(count);
+    }
+    closeTransferWindow();
 };
 
+// 💡 [통합 개선] 버튼에서 type('hp', 'mp')이 넘어오든, 전체 선택이든 유연하게 처리하는 물약 주기
 window.giveMercenaryPotion = function(type) {
-    if (!currentSelectedPet) return;
-    let potionName = type === 'hp' ? '주홍 물약' : '파란 물약';
-    let countKey = type === 'hp' ? 'mercHpPotionCount' : 'mercMpPotionCount';
+    if (!currentSelectedPet) return;
+    
+    let availablePotions = player.inv.filter(it => it.type === 'potion' || (it.name && (it.name.includes('물약') || it.name.includes('와퍼'))));
 
-    let potIdx = player.inv.findIndex(it => it.name === potionName && it.type === 'potion');
-    if (potIdx === -1 || !player.inv[potIdx]) {
-        return showAlert(`가방에 전달할 [${potionName}]이(가) 없습니다.`);
-    }
+    if (type === 'hp') {
+        availablePotions = availablePotions.filter(it => /주홍|맑은|빨간/.test(it.name));
+    } else if (type === 'mp') {
+        availablePotions = availablePotions.filter(it => /파란|마나/.test(it.name));
+    }
 
-    let maxCount = player.inv[potIdx].count || 1;
+    if (availablePotions.length === 0) {
+        return showAlert(`가방에 전달할 수 있는 물약이 없습니다.`);
+    }
 
-    openTransferWindow(`내 가방 ➔ ${currentSelectedPet.name} (${potionName} 주기)`, maxCount, (qty) => {
-        if (qty > 0 && qty <= maxCount) {
-            currentSelectedPet[countKey] = (currentSelectedPet[countKey] || 0) + qty;
-            if (player.inv[potIdx].count > qty) {
-                player.inv[potIdx].count -= qty;
-            } else {
-                player.inv.splice(potIdx, 1);
-            }
-            playSound('drink');
-            addMessage(`${currentSelectedPet.name}에게 ${potionName} ${qty}개를 전달했습니다.`, '#5f5');
-            updatePetUI();
-            renderInventory();
-            if (typeof renderMercenaryHUD === 'function') renderMercenaryHUD();
-        }
-    });
+    let btns = availablePotions.map(pot => ({
+        text: `${pot.name} (${pot.count}개 보유)`,
+        callback: () => {
+            openTransferWindow(
+                `내 가방 ➔ ${currentSelectedPet.name} (${pot.name} 주기)`,
+                pot.count,
+                (qty) => executeMercenaryPotionTransfer(pot.name, qty, 'give')
+            );
+        }
+    }));
+    btns.push({ text: '닫기', color: '#555', callback: () => {} });
+
+    showCustomPrompt(`[물약 보급] 전달할 물약을 선택하세요:`, btns);
 };
 
+// 💡 [통합 개선] 용병 가방의 물약을 종류별로 회수하는 함수
 window.retrieveMercenaryPotion = function(type) {
-    if (!currentSelectedPet) return;
-    let countKey = type === 'hp' ? 'mercHpPotionCount' : 'mercMpPotionCount';
-    let potionName = type === 'hp' ? '주홍 물약' : '파란 물약'; 
-    let maxCount = currentSelectedPet[countKey] || 0;
+    if (!currentSelectedPet) return;
+    currentSelectedPet.inv = currentSelectedPet.inv || [];
+    
+    let availablePotions = currentSelectedPet.inv.filter(pot => pot && pot.count > 0);
 
-    if (maxCount <= 0) {
-        return showAlert(`회수할 ${type === 'hp' ? '체력' : '마나'} 물약이 없습니다.`);
-    }
+    if (type === 'hp') {
+        availablePotions = availablePotions.filter(it => /주홍|맑은|빨간/.test(it.name));
+    } else if (type === 'mp') {
+        availablePotions = availablePotions.filter(it => /파란|마나/.test(it.name));
+    }
 
-    openTransferWindow(`${currentSelectedPet.name} ➔ 내 가방 (${potionName} 회수)`, maxCount, (qty) => {
-        if (qty > 0 && qty <= maxCount) {
-            currentSelectedPet[countKey] -= qty;
-            
-            let baseItem = itemDb.find(i => i.name === potionName) || { name: potionName, type: 'potion', price: type==='hp'?72:300, heal: type==='hp'?60:0 };
-            let existingIdx = player.inv.findIndex(it => it.name === potionName && it.type === 'potion');
-            
-            if (existingIdx > -1) {
-                player.inv[existingIdx].count = (player.inv[existingIdx].count || 1) + qty;
-            } else {
-                player.inv.push({ id: 'potion_' + Date.now(), count: qty, ...baseItem });
-            }
+    if (availablePotions.length === 0) {
+        return showAlert(`용병이 소지한 물약이 없습니다.`);
+    }
 
-            playSound('click');
-            addMessage(`${currentSelectedPet.name}에게서 ${potionName} ${qty}개를 회수했습니다.`, '#5f5');
-            updatePetUI();
-            renderInventory();
-            if (typeof renderMercenaryHUD === 'function') renderMercenaryHUD();
-        }
-    });
+    let btns = availablePotions.map(pot => ({
+        text: `${pot.name} (${pot.count}개 소지)`,
+        callback: () => {
+            openTransferWindow(
+                `${currentSelectedPet.name} ➔ 내 가방 (${pot.name} 회수)`,
+                pot.count,
+                (qty) => executeMercenaryPotionTransfer(pot.name, qty, 'retrieve')
+            );
+        }
+    }));
+    btns.push({ text: '닫기', color: '#555', callback: () => {} });
+
+    showCustomPrompt(`[물약 회수] 돌려받을 물약을 선택하세요:`, btns);
+};
+
+// 💡 [보급/회수 실행 코어 엔진]
+window.executeMercenaryPotionTransfer = function(potionName, qty, actionType) {
+    let sourceInv = actionType === 'give' ? player.inv : currentSelectedPet.inv;
+    let targetInv = actionType === 'give' ? currentSelectedPet.inv : player.inv;
+
+    let srcIdx = sourceInv.findIndex(i => i.name === potionName);
+    if (srcIdx === -1 || sourceInv[srcIdx].count < qty) return;
+
+    let potData = { ...sourceInv[srcIdx] };
+    potData.count = qty;
+    
+    if (sourceInv[srcIdx].count > qty) {
+        sourceInv[srcIdx].count -= qty;
+    } else {
+        sourceInv.splice(srcIdx, 1);
+    }
+
+    let tgtIdx = targetInv.findIndex(i => i.name === potionName);
+    if (tgtIdx > -1) {
+        targetInv[tgtIdx].count += qty;
+    } else {
+        targetInv.push(potData);
+    }
+
+    if (typeof playSound === 'function') playSound('drink');
+    addMessage(`${currentSelectedPet.name}${actionType === 'give' ? '에게' : '에게서'} ${potionName} ${qty}개를 ${actionType === 'give' ? '전달했습니다' : '회수했습니다'}.`, '#5f5');
+    
+    updatePetUI(true); 
+    renderInventory();
+    if (typeof renderMercenaryHUD === 'function') renderMercenaryHUD();
 };
 
 // ==========================================
@@ -4281,7 +4382,9 @@ window.openMercenaryUI = async function() {
 
     showCustomPrompt(msg, btns);
 };
-// 1. window 객체에 hireMercenary 함수 명시적 등록
+
+
+
 window.hireMercenary = function(mercType, cost) {
     if (player.adena < cost) {
         return showAlert("아데나가 부족합니다.");
@@ -4298,40 +4401,39 @@ window.hireMercenary = function(mercType, cost) {
     let typeTitle = mercType === 'knight' ? '기사 용병' : (mercType === 'wizard' ? '마법사 용병' : '요정 용병');
     let mercName = `${typeTitle} ${activeMercs.length + 1}호`;
     let color = mercType === 'wizard' ? '#88f' : (mercType === 'elf' ? '#8f8' : '#ccc');
-    let maxHp = player.level * 100 + 200;
-    let maxMp = player.level * 50 + 100;
+    let targetLevel = player.level || 1;
+    let maxHp = targetLevel * 100 + 200;
+    let maxMp = targetLevel * 50 + 100;
 
-    let defaultWeapon = null;
-    let defaultArmor = null;
-    let starterInventory = [];
+    let defaultWeapon, defaultArmor, starterInventory;
 
+    // 💡 [완벽 동기화] 무기와 갑옷에 인챈트 수치, 특수 스탯(sp, mpDrain 등) 완벽 부여
     if (mercType === 'knight') {
-        defaultWeapon = { id: 'w_knight_6saura', name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
-        defaultArmor = { id: 'a_knight_4plate', name: '+4 무관의 갑옷', type: 'armor', def: 8 };
+        defaultWeapon = { name: '+6 싸울아비 장검', type: 'weapon', atk: 16, enchantValue: 6 };
+        defaultArmor = { name: '+4 강철 판금 갑옷', type: 'armor', def: 8, enchantValue: 4 };
         starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' },
-            { name: '용기의 물약', count: 10, type: 'potion' }
+            { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+            { name: '초록 물약', type: 'potion', count: 20 },
+            { name: '용기의 물약', type: 'potion', count: 10 }
         ];
     } else if (mercType === 'elf') {
-        defaultWeapon = { id: 'w_elf_6bow', name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
-        defaultArmor = { id: 'a_elf_4plate', name: '+4 요정족 판금 갑옷', type: 'armor', def: 6 };
+        defaultWeapon = { name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true, enchantValue: 6 };
+        defaultArmor = { name: '+4 요정족 판금 갑옷', type: 'armor', def: 6, enchantValue: 4 };
         starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' },
-            { name: '엘븐 와퍼', count: 10, type: 'potion' }
+            { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+            { name: '초록 물약', type: 'potion', count: 20 },
+            { name: '엘븐 와퍼', type: 'potion', count: 10 }
         ];
     } else if (mercType === 'wizard') {
-        defaultWeapon = { id: 'w_wiz_6staff', name: '+6 마나의 지팡이', type: 'weapon', atk: 10 };
-        defaultArmor = { id: 'a_wiz_4robe', name: '+4 신관의 로브', type: 'armor', def: 5 };
+        defaultWeapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2, mpDrain: 2, enchantValue: 6 };
+        defaultArmor = { name: '+4 신관의 로브', type: 'armor', def: 6, mpRegen: 5, enchantValue: 4 };
         starterInventory = [
-            { name: '주홍 물약', count: 100, type: 'potion' },
-            { name: '파란 물약', count: 50, type: 'potion' },
-            { name: '초록 물약', count: 20, type: 'potion' }
+            { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+            { name: '파란 물약', type: 'potion', count: 50 },
+            { name: '초록 물약', type: 'potion', count: 20 }
         ];
     }
 
-    let targetLevel = player.level;
     let correctMaxExp = typeof getExpRequiredForLevel === 'function' ? getExpRequiredForLevel(targetLevel) : 100;
 
     let newMerc = {
@@ -4357,10 +4459,11 @@ window.hireMercenary = function(mercType, cost) {
         owner: player,
         isMercenary: true,
         stance: 'attack',
-        equip: { weapon: defaultWeapon, armor: defaultArmor },
-        mercHpPotionCount: 100,
-        mercMpPotionCount: mercType === 'wizard' ? 50 : 10,
-        inventory: starterInventory,
+        // 💡 [슬롯 규격화] 모든 장비 슬롯을 명시적으로 생성
+        equip: { weapon: defaultWeapon, armor: defaultArmor, helmet: null, cloak: null, gloves: null, boots: null, shield: null },
+        mercHpPotionCount: 0, // 레거시 속성 무력화 (inv 배열 사용)
+        mercMpPotionCount: 0,
+        inv: starterInventory,
         skills: typeof getSkillsForMercenary === 'function' ? getSkillsForMercenary(mercType, targetLevel) : [],
         activeBuffs: []
     };
@@ -4369,7 +4472,7 @@ window.hireMercenary = function(mercType, cost) {
     addMessage(`[용병 영입] ${mercName}을(를) 고용했습니다!`, '#5f5');
     
     if (typeof updateUI === 'function') updateUI();
-    if ($('win-mercenary')) $('win-mercenary').style.display = 'none';
+    if ($('win-mercenary'))$('win-mercenary').style.display = 'none';
 };
 
 

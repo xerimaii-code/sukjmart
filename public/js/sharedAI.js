@@ -9,9 +9,57 @@
             if (!env.now) env.now = performance.now();
             let now = env.now;
 
+            // 💡 [수정됨] 변수 선언을 맨 위로 끌어올려서 ReferenceError 방지!
+            let pClass = entity.charClass || entity.mercType || 'knight';
+            let isMerc = Boolean(entity.isMercenary || entity.isOtherMerc || entity.isSummon);
+            let myLeader = isMerc ? (env.entities.find(e => e && (e.id === entity.ownerId || e.socketId === entity.ownerId || e.socketId === entity.ownerSocketId))) : null;
+            let isAgent = Boolean(entity.isAI || (entity.isPlayer && env.entities.find(e => e.id === entity.id && e.socketId !== undefined)));
+
             // 💡 [콘솔 에러 방어] _ignoredItems가 Set이 아닐 경우 강제 재할당하여 .has() 에러 차단
             if (!entity._ignoredItems || typeof entity._ignoredItems.has !== 'function') {
                 entity._ignoredItems = new Set();
+            }
+
+            // 💡 [용병 자율 물약 사용 및 신호 발송 로직]
+            if (isMerc && entity.inv) {
+                let isLowHp = (entity.hp / (entity.maxHp || 100)) <= 0.5;
+                if (isLowHp && (now - (entity.lastHpPotTime || 0) > 1000)) {
+                    let hpPot = entity.inv.find(i => i.name.includes('맑은') || i.name.includes('주홍') || i.name.includes('빨간'));
+                    if (hpPot && hpPot.count > 0) {
+                        hpPot.count--;
+                        if (hpPot.count <= 0) entity.inv = entity.inv.filter(i => i.count > 0);
+                        let healAmt = hpPot.name.includes('맑은') ? 120 : (hpPot.name.includes('주홍') ? 60 : 30);
+                        entity.hp = Math.min(entity.maxHp, entity.hp + healAmt);
+                        entity.lastHpPotTime = now;
+                        
+                        // 서버로 마시는 이펙트 전송
+                        if (typeof env.useEntityPotion === 'function') env.useEntityPotion(entity.id, hpPot.name);
+                        
+                        entity.requirePotion = false;
+                        entity.waitingForAdena = false;
+                    } else {
+                        // 물약이 떨어지면 에이전트/주인에게 요청
+                        entity.requirePotion = true;
+                        entity.requirePotionName = (entity.level >= 45) ? '맑은 물약' : '주홍 물약';
+                    }
+                }
+
+                // 가속 물약 로직
+                let needHaste = !(entity.buffs && entity.buffs['haste'] && entity.buffs['haste'] > now);
+                if (needHaste && entity.target && !entity.requireBuffPotion) {
+                    let hName = (entity.mercType === 'knight') ? '용기의 물약' : (entity.mercType === 'elf' ? '엘븐 와퍼' : '초록 물약');
+                    let hPot = entity.inv.find(i => i.name === hName || i.name === '초록 물약');
+                    if (hPot && hPot.count > 0) {
+                        hPot.count--;
+                        if (hPot.count <= 0) entity.inv = entity.inv.filter(i => i.count > 0);
+                        entity.buffs = entity.buffs || {};
+                        entity.buffs['haste'] = now + 300000;
+                        if (typeof env.useEntityPotion === 'function') env.useEntityPotion(entity.id, hPot.name);
+                    } else {
+                        entity.requireBuffPotion = true;
+                        entity.requireBuffName = hName;
+                    }
+                }
             }
 
             // 💡 [에이전트 무한 정지 방어 코어] 지형 끼임 1.5초 감지 시 즉시 타겟 리셋 및 텔레포트 탈출
@@ -53,12 +101,6 @@
 
             let isManualMoving = now < (entity.manualOverrideUntil || 0);
             let skipSearch = false;
-            let pClass = entity.charClass || entity.mercType || 'knight';
-            
-            let isMerc = Boolean(entity.isMercenary || entity.isOtherMerc || entity.isSummon);
-            let myLeader = isMerc ? (env.entities.find(e => e && (e.id === entity.ownerId || e.socketId === entity.ownerId || e.socketId === entity.ownerSocketId))) : null;
-
-            let isAgent = Boolean(entity.isAI || (entity.isPlayer && env.entities.find(e => e.id === entity.id && e.socketId !== undefined)));
 
             if (isMerc && myLeader) {
                 let distToLeader = fastHypot(myLeader.x - entity.x, myLeader.y - entity.y);
@@ -74,7 +116,7 @@
                 }
             }
 
-            // 💡 [아이템 루팅 로직 - has is not a function 원천 방어]
+            // 💡 [아이템 루팅 로직]
             if (!isMerc && !entity.target && !isManualMoving && env.items && env.items.length > 0) {
                 let closestItem = null;
                 let minItemDist = Infinity;
