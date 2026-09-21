@@ -1,5 +1,5 @@
 // =========================================================================
-// aiAgentRunner.js (Groq LLM 연동, 자율 파티 억제 및 합병 방지 적용)
+// aiAgentRunner.js (Groq LLM 연동, 자율 파티 억제 및 본인/용병 자율 관리 적용)
 // =========================================================================
 require('dotenv').config();
 const io = require('socket.io-client');
@@ -81,7 +81,6 @@ class AIAgentClient {
             this.charData.charClass = nameLower.includes('wiz') ? 'wizard' : (nameLower.includes('elf') ? 'elf' : 'knight');
         }
 
-        this.charData.mercs = this.charData.mercs || []; 
         let lv = this.charData.level || 1;
         this.charData.exp = this.charData.exp || 0;
         this.charData.adena = Math.max(this.charData.adena || 0, 500000 + (lv * 25000));
@@ -94,11 +93,37 @@ class AIAgentClient {
         this.charData.buffs = this.charData.buffs || {};
         this.charData.magic = this.charData.magic || [];
 
-        this.charData.equip = this.charData.equip || { weapon: null, armor: null, helmet: null };
-        this.charData.inv = this.charData.inv || [];
-         
-        let pot = this.charData.inv.find(i => i.name === '주홍 물약');
-        if (pot) pot.count = 500; else this.charData.inv.push({ name: '주홍 물약', type: 'potion', count: 500, heal: 60 });
+        // 💡 [에이전트 초기 장비 및 물약] 플레이어와 동일하게 세팅
+        if (!this.charData.equip || !this.charData.equip.weapon) {
+            this.charData.equip = { weapon: null, armor: null, helmet: null, cloak: null, gloves: null, boots: null, ring1: null, belt: null };
+            this.charData.inv = [];
+            
+            if (this.charData.charClass === 'knight') {
+                this.charData.equip.weapon = { name: '+6 싸울아비 장검', type: 'weapon', atk: 16, enchantValue: 6 };
+                this.charData.equip.armor = { name: '+4 강철 판금 갑옷', type: 'armor', def: 8, enchantValue: 4 };
+                this.charData.equip.helmet = { name: '+4 기사의 면갑', type: 'helmet', def: 3, enchantValue: 4 };
+                this.charData.inv.push({ name: '주홍 물약', type: 'potion', count: 500, heal: 60 });
+                this.charData.inv.push({ name: '초록 물약', type: 'potion', count: 300 });
+                this.charData.inv.push({ name: '용기의 물약', type: 'potion', count: 200 });
+            } else if (this.charData.charClass === 'elf') {
+                this.charData.equip.weapon = { name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true, enchantValue: 6 };
+                this.charData.equip.armor = { name: '+4 요정족 판금 갑옷', type: 'armor', def: 6, enchantValue: 4 };
+                this.charData.equip.helmet = { name: '+4 엘름의 축복', type: 'helmet', def: 3, dex: 1, enchantValue: 4 };
+                this.charData.inv.push({ name: '주홍 물약', type: 'potion', count: 500, heal: 60 });
+                this.charData.inv.push({ name: '초록 물약', type: 'potion', count: 300 });
+                this.charData.inv.push({ name: '엘븐 와퍼', type: 'potion', count: 200 });
+            } else {
+                this.charData.equip.weapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2, mpDrain: 2, enchantValue: 6 };
+                this.charData.equip.armor = { name: '+4 신관의 로브', type: 'armor', def: 6, mpRegen: 5, enchantValue: 4 };
+                this.charData.inv.push({ name: '주홍 물약', type: 'potion', count: 500, heal: 60 });
+                this.charData.inv.push({ name: '파란 물약', type: 'potion', count: 300 });
+                this.charData.inv.push({ name: '초록 물약', type: 'potion', count: 200 });
+            }
+            this.charData.inv.push({ name: '귀환 주문서', type: 'scroll', count: 50 });
+        }
+
+        this.charData.mercs = this.charData.mercs || []; 
+        this.recalculateAgentStats();
 
         this.socket = null;
         this.state = 'HUNTING'; 
@@ -113,6 +138,7 @@ class AIAgentClient {
         this.nextMercCheckTime = Date.now() + (Math.random() * 10000);
         this.lastRegenTime = Date.now();
         this.lastItemManageTime = Date.now();
+        this.lastMercNeedsCheckTime = Date.now();
         
         this.lastPartyInviteTime = 0;
         this.lastProactiveInviteCheck = Date.now();
@@ -163,7 +189,6 @@ class AIAgentClient {
         });
 
         this.socket.on('disconnect', () => {
-            // 네트워크 끊김 시 파티 데이터 리셋 (유령 파티 방지)
             this.partyData = null;
             this.followTarget = null;
         });
@@ -172,7 +197,6 @@ class AIAgentClient {
             this.charData.id = this.socket.id; 
             console.log(`[🤖 AI 접속/재접속] ${this.charData.name}`);
              
-            // 💡 [에이전트 이탈 버그 완벽 해결] 재접속 시 무작위 맵으로 초기화되지 않고 원래 있던 맵(보스방 등)을 유지합니다!
             if (!this.hasConnectedOnce) {
                 this.hasConnectedOnce = true;
                 let startMap = this.determineBestMap();
@@ -298,20 +322,39 @@ class AIAgentClient {
             this.checkDrinkPotion();
         });
 
-        // 💡 [핵심 패치 2] 파티장(유저)이 쏴주는 힐 마법을 수신하고 AI 체력 회복
+        // 💡 [동기화] 외부에서 들어온 힐 마법 및 버프 수신
         this.socket.on('sync_player_magic', (packet) => {
-            if (packet.healAmt && packet.targetId === this.socket.id) {
-                this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + packet.healAmt);
+            let isMe = packet.targetId === this.socket.id;
+            let myMerc = this.charData.mercs ? this.charData.mercs.find(m => m.id === packet.targetId) : null;
+
+            if (isMe || myMerc) {
+                let target = isMe ? this.charData : myMerc;
+
+                if (packet.healAmt) {
+                    target.hp = Math.min(target.maxHp || 100, target.hp + packet.healAmt);
+                }
+
+                if (packet.isBuff && packet.buffName) {
+                    target.buffs = target.buffs || {};
+                    let keyName = packet.buffName;
+                    if (keyName.includes('가속') || keyName.includes('초록') || keyName.includes('윈드') || keyName.includes('홀리')) keyName = 'haste';
+                    else if (keyName.includes('용기')) keyName = 'brave';
+                    else if (keyName.includes('와퍼') || keyName.includes('엘븐')) keyName = 'wafer';
+
+                    target.buffs[keyName] = Date.now() + (packet.buffDuration || 300000);
+                }
             }
         });
 
+        // 💡 [실시간 루팅] 아데나 수급 및 장비 즉시 비교/인챈트/판매
         this.socket.on('item_looted_success', (packet) => {
             if (packet.item.type === 'currency') {
                 this.charData.adena += packet.item.count;
+                this.checkMercenaryNeeds(); 
             } else {
                 this.charData.inv.push(packet.item);
-                // 루팅 성공 시 즉시 장비 비교 및 인챈트 판정 실행
                 this.manageEquipmentAndEnchant();
+                this.sellJunkAndManageBags();
             }
         });
 
@@ -443,6 +486,7 @@ class AIAgentClient {
         });
     }
 
+    // 💡 [무료 스킬 자동 습득] 레벨업 시 아데나 차감 없이 즉시 학습
     checkLevelUp() {
         let lv = this.charData.level || 1;
         let baseExp = 100;
@@ -544,9 +588,6 @@ class AIAgentClient {
         }
     }
 
-    // =========================================================================
-    // 💡 [신규 추가] 아이템 비교/장착, 인챈트, 용병 보급, 잡템 판매 관리 로직
-    // =========================================================================
     calcItemScore(item, slot) {
         if (!item) return 0;
         let score = 0;
@@ -572,7 +613,7 @@ class AIAgentClient {
         if (!this.charData.inv || this.charData.inv.length === 0) return;
         let inv = this.charData.inv;
 
-        // 1. 본인 장비 자동 교체 (무기/갑옷/투구)
+        // 1. 에이전트 본인 장비 자동 교체 (무기/갑옷/투구)
         const equipSlots = ['weapon', 'armor', 'helmet'];
         equipSlots.forEach(slot => {
             let currentEquip = this.charData.equip[slot];
@@ -601,7 +642,7 @@ class AIAgentClient {
             }
         });
 
-        // 2. 용병 장비 자동 교체 및 물약 자동 보급
+        // 2. 용병 장비 자동 교체 (무기/갑옷)
         if (this.charData.mercs && this.charData.mercs.length > 0) {
             this.charData.mercs.forEach(merc => {
                 if (merc.hp <= 0) return;
@@ -630,46 +671,60 @@ class AIAgentClient {
                         merc.def = 10 + (merc.equip.armor?.def || 5);
                     }
                 });
-
-                // 본인 가방에 물약 여유가 있으면 용병에게 물약 보급
-                let myHpPot = inv.find(i => i.name === '주홍 물약' || i.name === '맑은 물약');
-                if (myHpPot && myHpPot.count > 100 && (merc.mercHpPotionCount || 0) < 50) {
-                    myHpPot.count -= 50;
-                    merc.mercHpPotionCount = (merc.mercHpPotionCount || 0) + 50;
-                }
             });
         }
 
-        // 3. 주문서 보유 시 안전 인챈트 수행
+        // 3. 자율 인챈트 수행
         this.processAutoEnchant();
     }
 
+    // 💡 [자율 인챈트] 본인 및 용병 장비를 안전 인챈트 수치까지 자동 강화
     processAutoEnchant() {
         let inv = this.charData.inv;
-        let eq = this.charData.equip;
 
         // 무기 마법 주문서 (데이) 사용 -> 안전구간 +6까지 인챈트
         let wScrollIdx = inv.findIndex(i => i.name.includes('무기 마법 주문서') || i.name.includes('데이'));
-        if (wScrollIdx > -1 && eq.weapon) {
-            let curEnchant = eq.weapon.enchantValue || 0;
-            if (curEnchant < 6) {
-                eq.weapon.enchantValue = curEnchant + 1;
-                eq.weapon.atk = (eq.weapon.atk || 10) + 2;
-                if (!eq.weapon.name.startsWith('+')) eq.weapon.name = `+${eq.weapon.enchantValue} ${eq.weapon.name}`;
-                else eq.weapon.name = eq.weapon.name.replace(/\+\d+/, `+${eq.weapon.enchantValue}`);
+        if (wScrollIdx > -1) {
+            let myWp = this.charData.equip.weapon;
+            if (myWp && (myWp.enchantValue || 0) < 6) {
+                myWp.enchantValue = (myWp.enchantValue || 0) + 1;
+                myWp.atk = (myWp.atk || 10) + 2;
+                if (!myWp.name.startsWith('+')) myWp.name = `+${myWp.enchantValue} ${myWp.name}`;
+                else myWp.name = myWp.name.replace(/\+\d+/, `+${myWp.enchantValue}`);
                 
                 inv[wScrollIdx].count = (inv[wScrollIdx].count || 1) - 1;
                 if (inv[wScrollIdx].count <= 0) inv.splice(wScrollIdx, 1);
                 this.recalculateAgentStats();
+                return;
+            }
+            if (this.charData.mercs) {
+                for (let m of this.charData.mercs) {
+                    let mWp = m.equip && m.equip.weapon;
+                    if (mWp && (mWp.enchantValue || 0) < 6) {
+                        mWp.enchantValue = (mWp.enchantValue || 0) + 1;
+                        mWp.atk = (mWp.atk || 10) + 2;
+                        if (!mWp.name.startsWith('+')) mWp.name = `+${mWp.enchantValue} ${mWp.name}`;
+                        else mWp.name = mWp.name.replace(/\+\d+/, `+${mWp.enchantValue}`);
+                        
+                        inv[wScrollIdx].count = (inv[wScrollIdx].count || 1) - 1;
+                        if (inv[wScrollIdx].count <= 0) inv.splice(wScrollIdx, 1);
+                        m.atk = (m.level || 1) * 3 + mWp.atk;
+                        return;
+                    }
+                }
             }
         }
 
         // 갑옷 마법 주문서 (젤) 사용 -> 안전구간 +4까지 인챈트
         let aScrollIdx = inv.findIndex(i => i.name.includes('갑옷 마법 주문서') || i.name.includes('젤'));
         if (aScrollIdx > -1) {
-            let targets = [eq.armor, eq.helmet].filter(a => a && (a.enchantValue || 0) < 4);
-            if (targets.length > 0) {
-                let target = targets[0];
+            let armors = [this.charData.equip.armor, this.charData.equip.helmet];
+            if (this.charData.mercs) {
+                this.charData.mercs.forEach(m => { if (m.equip && m.equip.armor) armors.push(m.equip.armor); });
+            }
+
+            let target = armors.find(a => a && (a.enchantValue || 0) < 4);
+            if (target) {
                 target.enchantValue = (target.enchantValue || 0) + 1;
                 target.def = (target.def || 5) + 1;
                 if (!target.name.startsWith('+')) target.name = `+${target.enchantValue} ${target.name}`;
@@ -690,13 +745,11 @@ class AIAgentClient {
         let keptInv = [];
         inv.forEach(item => {
             if (!item) return;
-            // 소모품 및 화폐 유지
             if (['potion', 'scroll', 'book', 'currency'].includes(item.type)) {
                 keptInv.push(item);
                 return;
             }
 
-            // 착용하지 않은 일반 등급 미강화 장비는 잡템으로 간주하여 상점 판매
             let isJunk = (item.grade === 0 || !item.grade) && (item.enchantValue || 0) === 0;
             if (isJunk && !equippedIds.has(item.id)) {
                 let sellPrice = Math.floor(Math.random() * 300) + 150;
@@ -721,13 +774,52 @@ class AIAgentClient {
         this.charData.def = baseDef;
     }
 
+    // 💡 [상호작용 코어] 용병의 물약 부족 신호 감지 및 잔고에 따른 판단
+    checkMercenaryNeeds() {
+        if (!this.charData.mercs || this.charData.mercs.length === 0) return;
+        if (this.charData.map === 'boss_raid') return; // 💡 보스 레이드 중에는 보급 전면 보류!
+
+        let needToShop = false;
+
+        this.charData.mercs.forEach(m => {
+            if (m.requirePotion || m.requireBuffPotion) {
+                let pName = m.requirePotionName || m.requireBuffName || '주홍 물약';
+                
+                let myPot = this.charData.inv.find(i => i.name === pName);
+                if (myPot && myPot.count > 50) {
+                    myPot.count -= 50;
+                    m.inv = m.inv || [];
+                    let mPot = m.inv.find(i => i.name === pName);
+                    if (mPot) mPot.count += 50; 
+                    else m.inv.push({ name: pName, type: 'potion', count: 50 });
+                    
+                    m.requirePotion = false; 
+                    m.requireBuffPotion = false; 
+                    m.waitingForAdena = false;
+                    this.combatMemory = `용병 ${m.name}에게 ${pName}을 나눠주었습니다.`;
+                } else {
+                    let potCost = (pName.includes('맑은')) ? 20000 : 7200; 
+                    if (this.charData.adena >= potCost) {
+                        needToShop = true; 
+                    } else {
+                        m.waitingForAdena = true;
+                        this.combatMemory = `용병 ${m.name}이 물약을 요청했으나 자금이 부족해 사냥 후 사주기로 했습니다.`;
+                    }
+                }
+            }
+        });
+
+        if (needToShop && this.state !== 'SHOPPING' && !this.partyData) {
+            this.routineShopping();
+        }
+    }
+
     startLoop() {
         this.isLoggingOut = false; 
         
         this.loopTimer = setInterval(() => {
             if (this.isLoggingOut) return; 
 
-            // 💡 [멍때림 방지] 에이전트 지형 끼임 탈출 로직
             if (this.charData.isMoving) {
                 if (!this.stuckCheckTime) this.stuckCheckTime = Date.now();
                 if (!this.lastX) { this.lastX = this.charData.x; this.lastY = this.charData.y; }
@@ -761,11 +853,15 @@ class AIAgentClient {
                 this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 3 + Math.floor(this.charData.level / 10));
             }
 
-            // 💡 주기적 아이템 정비 및 잡템 판매 (10초 주기)
             if (now - this.lastItemManageTime > 10000) {
                 this.lastItemManageTime = now;
                 this.manageEquipmentAndEnchant();
                 this.sellJunkAndManageBags();
+            }
+
+            if (now - this.lastMercNeedsCheckTime > 2000) {
+                this.lastMercNeedsCheckTime = now;
+                this.checkMercenaryNeeds();
             }
 
             this.processAutoBuffs(); 
@@ -778,7 +874,6 @@ class AIAgentClient {
 
             this.executeSharedAILoop();
 
-            // 💡 [다음 타겟 못 찾고 멈춤 원천 해결] 타겟이 없고 이동 중이 아닐 때 즉시 월드 전체 몬스터 중 최단거리 대상 추적
             if (!this.charData.target && !this.followTarget && this.state === 'HUNTING') {
                 let aliveMobs = this.worldMonsters.filter(m => (m.hp > 0 || m.h > 0) && !m.isDead && !data.isInSafeZone(this.charData.map, m.x, m.y));
                 if (aliveMobs.length > 0) {
@@ -790,7 +885,6 @@ class AIAgentClient {
                     this.charData.moveY = nextMob.y;
                     this.charData.isMoving = true;
                 } else if (!this.charData.isMoving) {
-                    // 주변 및 맵에 몬스터가 일시적으로 없을 때 능동 배회(Wander)
                     let wanderAngle = Math.random() * Math.PI * 2;
                     let wanderDist = 300 + Math.random() * 200;
                     this.charData.moveX = Math.max(200, Math.min(3800, this.charData.x + Math.cos(wanderAngle) * wanderDist));
@@ -897,7 +991,7 @@ class AIAgentClient {
                 if (pot && pot.count > 0) {
                     pot.count--;
                     this.charData.buffs[buffName] = now + 300000;
-                    this.socket.emit('player_use_potion', { potionName: potName });
+                    this.socket.emit('entity_use_potion', { entityId: this.socket.id, potionName: potName });
                 }
             }
         };
@@ -980,6 +1074,9 @@ class AIAgentClient {
             isInSafeZone: (m, x, y) => data.isInSafeZone(m, x, y),
             playSound: () => {}, 
             spawnParticle: () => {}, 
+            useEntityPotion: (entId, pName) => {
+                this.socket.emit('entity_use_potion', { entityId: entId, potionName: pName });
+            },
             spawnArrow: (from, to, dmg, color) => {
                 let aimAngle = Math.atan2(to.y - from.y, to.x - from.x);
                 let casterId = from.isSummon ? from.id : this.socket.id; 
@@ -1126,8 +1223,6 @@ class AIAgentClient {
 
     checkSmartMapNavigation() {
         if (this.partyData) return; 
-        
-        // 💡 [보스레이드 유기 방지] 보스방에 있을 때는 3분이 지나도 절대 다른 사냥터로 도망가지 않습니다!
         if (this.charData.map === 'boss_raid') return;
 
         if (Date.now() - this.lastMapCheckTime > 180000) { 
@@ -1151,9 +1246,9 @@ class AIAgentClient {
                 let healAmt = Math.floor((pot.heal || 60) * (1 + potBonus / 100));
                 this.charData.hp = Math.min(this.charData.maxHp, this.charData.hp + healAmt);
                 pot.count--;
-                this.socket.emit('player_use_potion', { potionName: pot.name });
+                // 💡 [그래픽 동기화] 통합 물약 사용 신호
+                this.socket.emit('entity_use_potion', { entityId: this.socket.id, potionName: pot.name });
             } else {
-              
                 if(this.state !== 'SHOPPING' && !this.partyData && this.charData.map !== 'boss_raid') {
                     this.routineShopping();
                 }
@@ -1165,7 +1260,7 @@ class AIAgentClient {
             if (mpPotCount > 0) {
                 this.charData.mp = Math.min(this.charData.maxMp, this.charData.mp + 50);
                 this.charData.inv.find(i => i.name === '파란 물약').count--;
-                this.socket.emit('player_use_potion', { potionName: '파란 물약' });
+                this.socket.emit('entity_use_potion', { entityId: this.socket.id, potionName: '파란 물약' });
             }
         }
     }
@@ -1184,7 +1279,6 @@ class AIAgentClient {
             let adena = this.charData.adena || 0;
             let cls = this.charData.charClass;
 
-            // 아데나 보유량에 맞춰 물약 종류와 수량 차등 구매
             let mainPotName = (lv >= 45 && adena >= 1000000) ? '맑은 물약' : '주홍 물약';
             let mainPotHeal = mainPotName === '맑은 물약' ? 120 : 60;
             let potCount = adena >= 500000 ? 500 : (adena >= 100000 ? 250 : 100);
@@ -1204,14 +1298,25 @@ class AIAgentClient {
             if (cls === 'knight') ensureItem('용기의 물약', 100);
             else if (cls === 'elf') ensureItem('엘븐 와퍼', 100);
 
-            // 용병 물약 보급
+            // 💡 [용병 물약 가방 보급 및 요청 초기화]
             if (this.charData.mercs && this.charData.mercs.length > 0) {
                 this.charData.mercs.forEach(m => {
                     if (m.hp > 0) {
-                        m.mercHpPotionCount = (m.mercHpPotionCount || 0) + 150;
-                        if (m.mercType === 'wizard' || m.charClass === 'wizard') {
-                            m.mercMpPotionCount = (m.mercMpPotionCount || 0) + 100;
-                        }
+                        m.inv = m.inv || [];
+                        let ensureMercPot = (pName, pCount, hAmt = 0) => {
+                            let item = m.inv.find(i => i.name === pName);
+                            if (item) item.count = pCount;
+                            else m.inv.push({ name: pName, type: 'potion', count: pCount, heal: hAmt });
+                        };
+                        ensureMercPot(mainPotName, 150, mainPotHeal);
+                        ensureMercPot('초록 물약', 30);
+                        if (m.mercType === 'knight') ensureMercPot('용기의 물약', 20);
+                        if (m.mercType === 'elf') ensureMercPot('엘븐 와퍼', 20);
+                        if (m.mercType === 'wizard') ensureMercPot('파란 물약', 80);
+
+                        m.requirePotion = false;
+                        m.requireBuffPotion = false;
+                        m.waitingForAdena = false;
                     }
                 });
                 this.combatMemory = `최근 마을에 들러 ${mainPotName}을 사고, 용병들에게도 물약을 든든히 보급했습니다.`;
@@ -1219,7 +1324,6 @@ class AIAgentClient {
                 this.combatMemory = `최근 마을에 들러 ${mainPotName} 등 소모품을 정비했습니다.`;
             }
 
-            // 마을 정비 중 잡템 판매 및 강화 처리
             this.sellJunkAndManageBags();
             this.manageEquipmentAndEnchant();
 
@@ -1229,6 +1333,7 @@ class AIAgentClient {
         }, 4000);
     }
 
+    // 💡 [용병 초기 세팅] 플레이어가 고용할 때와 완벽히 동일한 장비 및 가방 지급
     checkMercenaryHire() {
         if (Date.now() > this.nextMercCheckTime) {
             this.nextMercCheckTime = Date.now() + 30000 + (Math.random() * 10000); 
@@ -1239,16 +1344,31 @@ class AIAgentClient {
                 this.charData.adena -= cost;
                 let bestType = this.charData.charClass === 'wizard' ? 'knight' : 'wizard';
                  
-                let defaultWeapon, defaultArmor;
+                let defaultWeapon, defaultArmor, starterInventory;
                 if (bestType === 'knight') {
-                    defaultWeapon = { name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
-                    defaultArmor = { name: '+4 갑옷', def: 6, type: 'armor' };
+                    defaultWeapon = { id: 'w_saura_6', name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
+                    defaultArmor = { id: 'a_muquan_4', name: '+4 무관의 갑옷', def: 8, type: 'armor' };
+                    starterInventory = [
+                        { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+                        { name: '초록 물약', type: 'potion', count: 20 },
+                        { name: '용기의 물약', type: 'potion', count: 10 }
+                    ];
                 } else if (bestType === 'elf') {
-                    defaultWeapon = { name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
-                    defaultArmor = { name: '+4 요정족 판금 갑옷', def: 6, type: 'armor' };
+                    defaultWeapon = { id: 'w_bow_6', name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
+                    defaultArmor = { id: 'a_elf_4', name: '+4 요정족 판금 갑옷', def: 6, type: 'armor' };
+                    starterInventory = [
+                        { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+                        { name: '초록 물약', type: 'potion', count: 20 },
+                        { name: '엘븐 와퍼', type: 'potion', count: 10 }
+                    ];
                 } else {
-                    defaultWeapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2 };
-                    defaultArmor = { name: '+4 신관의 로브', def: 5, type: 'armor' };
+                    defaultWeapon = { id: 'w_mana_6', name: '+6 마나의 지팡이', type: 'weapon', atk: 10, sp: 2 };
+                    defaultArmor = { id: 'a_robe_4', name: '+4 신관의 로브', def: 5, type: 'armor' };
+                    starterInventory = [
+                        { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
+                        { name: '파란 물약', type: 'potion', count: 50 },
+                        { name: '초록 물약', type: 'potion', count: 20 }
+                    ];
                 }
 
                 this.charData.mercs.push({
@@ -1259,6 +1379,8 @@ class AIAgentClient {
                     atk: (this.charData.level || 1) * 3 + 10, def: 10, level: this.charData.level || 1,
                     isSummon: true, isMercenary: true, ownerId: this.socket.id,
                     equip: { weapon: defaultWeapon, armor: defaultArmor },
+                    inv: starterInventory,
+                    requirePotion: false, requireBuffPotion: false, waitingForAdena: false,
                     isMoving: false, angle: 0, buffs: {}
                 });
             }
@@ -1286,17 +1408,46 @@ class AIAgentClient {
                 }
             }
 
+            m.inv = m.inv || [];
             m.buffs = m.buffs || {};
-            let useMercPot = (pName, bKey) => {
+
+            // 💡 [용병 물약 가방 자율 소비 및 신호 발생]
+            let useMercPotFromInv = (pName, bKey) => {
                 if (!m.buffs[bKey] || m.buffs[bKey] < now) {
-                    m.buffs[bKey] = now + 300000;
-                    this.socket.emit('player_use_potion', { potionName: pName });
+                    let pot = m.inv.find(it => it.name === pName);
+                    if (pot && pot.count > 0) {
+                        pot.count--;
+                        if (pot.count <= 0) m.inv = m.inv.filter(it => it.count > 0);
+                        m.buffs[bKey] = now + 300000;
+                        this.socket.emit('entity_use_potion', { entityId: m.id, potionName: pName });
+                        m.requireBuffPotion = false;
+                    } else {
+                        m.requireBuffPotion = true;
+                        m.requireBuffName = pName;
+                    }
                 }
             };
              
-            useMercPot('초록 물약', 'haste');
-            if (m.mercType === 'knight') useMercPot('용기의 물약', 'brave');
-            if (m.mercType === 'elf') useMercPot('엘븐 와퍼', 'wafer');
+            useMercPotFromInv('초록 물약', 'haste');
+            if (m.mercType === 'knight') useMercPotFromInv('용기의 물약', 'brave');
+            if (m.mercType === 'elf') useMercPotFromInv('엘븐 와퍼', 'wafer');
+
+            // HP 물약 자율 소비
+            if (m.hp < m.maxHp * 0.5) {
+                let hpPot = m.inv.find(it => it.name.includes('맑은') || it.name.includes('주홍') || it.name.includes('빨간'));
+                if (hpPot && hpPot.count > 0) {
+                    hpPot.count--;
+                    if (hpPot.count <= 0) m.inv = m.inv.filter(it => it.count > 0);
+                    let healAmt = hpPot.name.includes('맑은') ? 120 : (hpPot.name.includes('주홍') ? 60 : 30);
+                    m.hp = Math.min(m.maxHp, m.hp + healAmt);
+                    this.socket.emit('entity_use_potion', { entityId: m.id, potionName: hpPot.name });
+                    m.requirePotion = false;
+                    m.waitingForAdena = false;
+                } else {
+                    m.requirePotion = true;
+                    m.requirePotionName = (m.level >= 45) ? '맑은 물약' : '주홍 물약';
+                }
+            }
 
             let speed = (baseSpeed + (m.buffs.haste > now ? 40 : 0)) * (dtMs / 1000);
             let mercAtkDelay = (m.mercType === 'wizard' || m.mercType === 'elf') ? 700 : 450;
@@ -1629,7 +1780,8 @@ ${situationContext}
                         this.charData.mp -= (data.magicDb[healSpell]?.mp || 5);
                         this.socket.emit('player_magic_action', {
                             magicName: healSpell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
-                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id,
+                            healAmt: healSpell === '그레이트 힐' ? 150 : 40
                         });
                     }
                 }
@@ -1639,9 +1791,12 @@ ${situationContext}
                     const sCost = data.magicDb[decision.spell]?.mp || 10;
                     if (this.charData.mp >= sCost) {
                         this.charData.mp -= sCost;
+                        let bType = data.magicDb[decision.spell]?.buffType || 'stat';
                         this.socket.emit('player_magic_action', {
                             magicName: decision.spell, targetX: targetPl.x, targetY: targetPl.y, targetId: targetPl.socketId || targetPl.id,
-                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id
+                            casterX: this.charData.x, casterY: this.charData.y, casterId: this.socket.id,
+                            isBuff: true, buffName: decision.spell, buffDuration: data.magicDb[decision.spell]?.duration || 300000,
+                            buffType: bType, buffVal: data.magicDb[decision.spell]?.val || 0
                         });
                     }
                 }
@@ -1660,10 +1815,9 @@ ${situationContext}
         this.charData.map = mapCode; this.charData.x = x; this.charData.y = y;
         this.charData.target = null; this.charData.targetId = null; this.charData.isMoving = false;
         
-        // 💡 [에이전트 용병 텔레포트 적용] 에이전트 본체가 텔레포트할 때 용병 좌표도 강제 동기화!
         if (this.charData.mercs && this.charData.mercs.length > 0) {
             this.charData.mercs.forEach(m => {
-                m.map = mapCode; // <-- 이전 수정에서 이 부분이 누락되어 용병이 못 따라왔습니다!
+                m.map = mapCode; 
                 m.x = x + (Math.random() * 60 - 30);
                 m.y = y + (Math.random() * 60 - 30);
                 m.target = null;
@@ -1673,7 +1827,6 @@ ${situationContext}
         
         this.worldMonsters = [];
         this.worldItems = [];
-        // 💡 바뀐 용병 정보(mercs)를 서버에 즉각 전송하여 맵에 동시 소환시킴
         this.socket.emit('player_update', { map: mapCode, x: x, y: y, isMoving: false, mercs: this.charData.mercs });
     }
 

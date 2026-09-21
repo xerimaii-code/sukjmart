@@ -480,12 +480,10 @@ io.on('connection', (socket) => {
                 mapsState[p.map] = { monsters: [], items: [], deadBosses: [] };
             }
             if (prevMap === 'boss_raid') {
-                // 💡 [레이드 탈주자 처리] 파티원이 레이드 중에 도망가서 다른 맵으로 갔다면, 레이드 방 명단에서 즉시 삭제합니다.
                 if (p.currentRaidRoomId && raidRooms[p.currentRaidRoomId]) {
                     let room = raidRooms[p.currentRaidRoomId];
-                    room.members = room.members.filter(sid => sid !== socket.id); // 명단에서 제거
+                    room.members = room.members.filter(sid => sid !== socket.id);
                     
-                    // 남은 인원의 전투력에 맞춰 보스가 약화되도록 파티 전투력 재조정
                     let newCombatPower = 0;
                     room.members.forEach(memberId => {
                         let memberP = players[memberId];
@@ -546,8 +544,8 @@ io.on('connection', (socket) => {
         p.totalDmgReduction = payload.totalDmgReduction !== undefined ? payload.totalDmgReduction : (p.totalDmgReduction || 0);
 
         if (payload.mercs && Array.isArray(payload.mercs)) {
-    p.mercs = payload.mercs; 
-}
+            p.mercs = payload.mercs; 
+        }
     });
 
     socket.on('player_summon_monster', (payload = {}) => {
@@ -608,10 +606,8 @@ io.on('connection', (socket) => {
         if (payload.healAmt && payload.targetId) {
             let targetP = players[payload.targetId];
             if (targetP) {
-                // 💡 [서버 힐 증발 버그 해결] maxHp가 없을 때 100으로 깎여버리는 것을 방지!
                 targetP.hp = Math.min(targetP.maxHp || Math.max(100, targetP.hp), targetP.hp + payload.healAmt);
                 
-                // 💡 힐이 들어가는 즉시 파티창 정보 갱신 신호를 보냄 (빠른 동기화)
                 if (targetP.partyId && parties[targetP.partyId]) {
                     let pMember = parties[targetP.partyId].members.find(m => m.socketId === payload.targetId);
                     if (pMember) {
@@ -641,7 +637,14 @@ io.on('connection', (socket) => {
                     targetId: payload.targetId,
                     casterX: casterX,
                     casterY: casterY,
-                    healAmt: payload.healAmt
+                    healAmt: payload.healAmt,
+                    // 💡 [핵심] 버프를 완벽히 동기화하기 위한 페이로드 전달
+                    isBuff: payload.isBuff,
+                    buffName: payload.buffName,
+                    buffDuration: payload.buffDuration,
+                    buffIcon: payload.buffIcon,
+                    buffType: payload.buffType,
+                    buffVal: payload.buffVal
                 });
             }
         });
@@ -663,7 +666,7 @@ io.on('connection', (socket) => {
                     targetY: payload.targetY,
                     isBow: payload.isBow,
                     actionType: payload.actionType,
-                    color: payload.color // 💡 [추가] 불화살(색상) 네트워크 브로드캐스트 동기화
+                    color: payload.color
                 });
             }
         });
@@ -688,17 +691,27 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('player_use_potion', (payload = {}) => {
+   socket.on('entity_use_potion', (payload = {}) => {
         let p = players[socket.id];
         if (p) {
-            socket.emit('sync_player_potion', {
-                socketId: socket.id,
+            io.to(p.map).emit('sync_entity_potion', {
+                entityId: payload.entityId || socket.id,
                 potionName: payload.potionName
             });
         }
     });
 
-    // 💡 [채팅 라우팅 - isAI 플래그 포함 브로드캐스트]
+
+    socket.on('player_use_potion', (payload = {}) => {
+        let p = players[socket.id];
+        if (p) {
+            io.to(p.map).emit('sync_entity_potion', {
+                entityId: socket.id,
+                potionName: payload.potionName
+            });
+        }
+    });
+
     socket.on('chat_message', (payload = {}) => {
         let p = players[socket.id];
         let name = p ? p.name : (payload.name || '모험가');
@@ -729,13 +742,12 @@ io.on('connection', (socket) => {
         });
     });
 
-    // 💡 [수정] 서버단에서 맵별/파티별/솔로별 접속자를 이쁘게 포맷하여 전송
     socket.on('cmd_who', () => {
         let requester = players[socket.id];
         if (!requester) return;
 
         let myPartyId = requester.partyId;
-        let myMapId = requester.map || 'talking_island'; // 💡 내 맵 정보
+        let myMapId = requester.map || 'talking_island'; 
         let playerList = Object.values(players);
 
         const mapNames = {
@@ -751,7 +763,6 @@ io.on('connection', (socket) => {
             'dragon_valley_deep': '용의 계곡 심층', 'elven_forest_deep': '요정의 숲 깊은 곳', 'boss_raid': '🔥 [보스 레이드] 차원의 틈새'
         };
 
-        // 1. 맵별 그룹화
         let mapGroups = {};
         playerList.forEach(p => {
             let m = p.map || 'talking_island';
@@ -761,11 +772,10 @@ io.on('connection', (socket) => {
 
         let lines = [`🌐 <b style="color:#5cf;">[현재 월드 접속자: 총 ${playerList.length}명]</b>`];
 
-        // 💡 2. 내가 속한 맵을 최하단(배열의 끝)으로 내리기 위한 정렬
         let sortedMapCodes = Object.keys(mapGroups).sort((a, b) => {
-            if (a === myMapId) return 1;  // a가 내 맵이면 뒤로 보냄
-            if (b === myMapId) return -1; // b가 내 맵이면 앞으로 당겨서 a를 뒤로 보냄
-            return 0; // 나머지는 순서 유지
+            if (a === myMapId) return 1;  
+            if (b === myMapId) return -1; 
+            return 0; 
         });
 
         for (let mapCode of sortedMapCodes) {
@@ -781,7 +791,6 @@ io.on('connection', (socket) => {
             let soloUsers = [];
             let partyGroups = {};
 
-            // 파티 및 솔로 분류
             usersInMap.forEach(p => {
                 if (p.partyId) {
                     if (!partyGroups[p.partyId]) partyGroups[p.partyId] = [];
@@ -791,7 +800,6 @@ io.on('connection', (socket) => {
                 }
             });
 
-            // 3. 파티 그룹 먼저 출력
             let pIndex = 1;
             for (let pid in partyGroups) {
                 let pUsers = partyGroups[pid];
@@ -799,7 +807,6 @@ io.on('connection', (socket) => {
                 let pTitleColor = isMyP ? '#4ade80' : '#e879f9';
                 let pTitle = isMyP ? `[내 파티]` : `[파티 ${pIndex++}]`;
                 
-                // 파티장 확인
                 let leaderId = parties[pid] ? parties[pid].leader : null;
 
                 lines.push(`&nbsp;&nbsp;<span style="color:${pTitleColor}; font-weight:bold;">${pTitle}</span>`);
@@ -818,7 +825,6 @@ io.on('connection', (socket) => {
                 });
             }
 
-            // 4. 솔로 유저 출력
             if (soloUsers.length > 0) {
                 lines.push(`&nbsp;&nbsp;<span style="color:#aaa; font-weight:bold;">[일반 (솔로)]</span>`);
                 soloUsers.forEach(p => {
@@ -1105,7 +1111,6 @@ io.on('connection', (socket) => {
                  
                     let targetGrade = rand < 0.1 ? 4 : (rand < 2.0 ? 3 : (rand < 12.0 ? 2 : (Math.random() < 0.5 ? 1 : 0)));
 
-                    // 2. 몬스터의 스펙(최대 HP)에 따른 '드롭 허용 최대 등급' 설정 (안전장치)
                     let maxAllowedGrade = 0;
                     if (monster.maxHp >= 4000) maxAllowedGrade = 4;     
                     else if (monster.maxHp >= 1500) maxAllowedGrade = 3; 
@@ -1114,7 +1119,6 @@ io.on('connection', (socket) => {
                    
                     targetGrade = Math.min(targetGrade, maxAllowedGrade);
 
-                  
                     let gradePool = data.itemDb.filter(it => 
                         (it.grade || 0) === targetGrade && 
                         !it.name.includes('[신화]') && !it.name.includes('[초월]')
@@ -1225,7 +1229,6 @@ io.on('connection', (socket) => {
     socket.on('attack_monster', handlePlayerAttack);
     socket.on('player_attack_request', handlePlayerAttack);
 
-    // 💡 [수정] 1. 파티 초대 발송 시 (합병 불가 및 인원 제한)
     socket.on('party_invite', (data) => {
         let targetSocket = io.sockets.sockets.get(data.targetSocketId);
         if (!targetSocket) return;
@@ -1244,7 +1247,7 @@ io.on('connection', (socket) => {
         let targetCount = targetParty ? targetParty.members.length : 1;
 
         if (myParty && targetParty && myParty.id !== targetParty.id) {
-            if (inviterPlayer.isAI) return; // AI는 합병 불가
+            if (inviterPlayer.isAI) return;
             if (myCount + targetCount > 10) {
                 return socket.emit('system_message', { 
                     message: `합병 시 최대 인원(10명)을 초과할 수 없습니다. (현재: ${myCount}명 + 상대: ${targetCount}명)`, 
@@ -1277,7 +1280,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 💡 [수정] 2. 파티 수락 시 (최종 병합 처리 및 검증)
     socket.on('party_accept', (data) => {
         let inviterId = data.inviterSocketId;
         let inviteeId = socket.id;
