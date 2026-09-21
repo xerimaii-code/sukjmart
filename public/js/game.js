@@ -2843,19 +2843,69 @@ function draw(timestamp) {
                     ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.35, 0, 0, Math.PI*2); ctx.stroke();
                 }
             }
-            else if (p.type === 'tornado') {
+          else if (p.type === 'tornado') {
                 let r = p.size || 240; 
-                ctx.shadowBlur = 25; ctx.shadowColor = '#222222';
-                let dustR = (r * 0.8) * easeOut;
-                ctx.strokeStyle = 'rgba(100, 100, 100, ' + (1 - progress) + ')'; ctx.lineWidth = 3;
-                ctx.beginPath(); ctx.ellipse(0, 0, dustR, dustR * 0.3, 0, 0, Math.PI * 2); ctx.stroke();
-                for (let j = 0; j < 10; j++) {
-                    ctx.strokeStyle = j % 2 === 0 ? '#dddddd' : '#444444'; 
-                    ctx.lineWidth = 4 + (j * 0.6);
-                    let tr = r * (0.15 + j * 0.1) * easeOut; 
-                    let ty = -progress * 300 + (j * 25);
-                    ctx.beginPath(); ctx.ellipse(0, ty, tr, tr * 0.3, progress * (25 + j * 2), 0, Math.PI * 2); ctx.stroke();
+                ctx.save();
+                
+                // 💡 [최적화 1] 렉의 주범인 shadowBlur 제거 (대신 색상과 투명도로 입체감 구현)
+                ctx.lineCap = 'round';
+                
+                let h = 450; 
+                let currentH = h * Math.pow(progress, 0.6); 
+                
+                // 💡 [최적화 2] 레이어 개수를 18개 -> 9개로 반토막 내고 두께를 키움
+                let layerCount = 9; 
+                
+                for (let i = 0; i < layerCount; i++) {
+                    let layerP = i / layerCount;
+                    if (layerP > progress) continue; 
+                    
+                    let layerY = -currentH * layerP;
+                    let bulge = Math.sin(layerP * Math.PI); 
+                    let layerR = r * 0.75 * (1 + bulge * 0.4); 
+                    let angOffset = (progress * 25) + (layerP * 12);
+                    
+                    ctx.save();
+                    ctx.translate(0, layerY);
+                    ctx.scale(1, 0.4); 
+                    ctx.rotate(angOffset);
+                    
+                    // 레이어 수가 줄어든 대신 선 두께(lineWidth)를 대폭 키워 빈틈을 메꿈
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${0.9 * (1 - progress)})`;
+                    ctx.lineWidth = 35 + (bulge * 15); 
+                    
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, layerR, layerR * 0.8, 0, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // 💡 내부 fill 연산 최소화 (단색으로 가볍게 처리)
+                    ctx.fillStyle = `rgba(235, 245, 255, ${0.3 * (1 - progress)})`;
+                    ctx.fill();
+                    
+                    ctx.restore();
                 }
+
+                // 💡 [최적화 3] 바깥쪽 칼바람 궤적을 6가닥 -> 3가닥으로 줄이고 점(segment) 개수도 축소
+                let strandCount = 3;
+                for (let s = 0; s < strandCount; s++) {
+                    ctx.strokeStyle = s % 2 === 0 ? `rgba(255, 255, 255, ${1 - progress})` : `rgba(200, 220, 235, ${0.8 - progress})`;
+                    ctx.lineWidth = 8 + (s % 3);
+                    
+                    ctx.beginPath();
+                    for(let k = 0; k < 20; k++) { // 30단계 연산을 20단계로 축소
+                        let a = (progress * 35) + (k * 0.5) + (s * Math.PI * 2 / strandCount); 
+                        
+                        let currentR = r * 0.85 * (1 + Math.sin((k/20) * Math.PI) * 0.3); 
+                        let rx = Math.cos(a) * currentR;
+                        let ry = -currentH * (k / 20) + Math.sin(a) * (currentR * 0.3);
+
+                        if(k === 0) ctx.moveTo(rx, ry); 
+                        else ctx.lineTo(rx, ry);
+                    }
+                    ctx.stroke();
+                }
+
+                ctx.restore();
             }
             else if (p.type === 'explosion') { 
                 let r = (p.size || 120) * Math.pow(easeOut, 0.4);

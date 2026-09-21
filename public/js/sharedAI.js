@@ -328,7 +328,7 @@
                     } else {
                         entity.target = null;
                         if (amIFollower && leaderEnt) {
-                            let orbitAngle = (now / 1000) + (entity.id.length || 0); 
+                            let orbitAngle = (now / 1000) + (entity.id ? entity.id.length : 0); 
                             entity.moveX = leaderEnt.x + Math.cos(orbitAngle) * 200;
                             entity.moveY = leaderEnt.y + Math.sin(orbitAngle) * 200;
                             entity.isMoving = true;
