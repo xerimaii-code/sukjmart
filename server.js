@@ -1703,7 +1703,7 @@ function processMonsterAI() {
                 if (shouldMove) {
                     let angle = Math.atan2(target.y - mob.y, target.x - mob.x);
                     let baseMobSpeed = mob.isBoss ? 85 : Math.min(65, mob.speed || 55);
-                    let mSpeed = baseMobSpeed * (80 / 1000); 
+                    let mSpeed = baseMobSpeed * (200 / 1000); 
                     
                     mob.x = Math.max(150, Math.min(3850, mob.x + Math.cos(angle) * mSpeed));
                     mob.y = Math.max(150, Math.min(3850, mob.y + Math.sin(angle) * mSpeed));

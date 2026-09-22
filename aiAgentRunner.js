@@ -894,10 +894,10 @@ class AIAgentClient {
             }
 
             this.tryRush(this.charData, this.charData.target, now);
-            this.updateMovement(100);    
+            this.updateMovement(300);    
              
             this.checkMercenaryHire(); 
-            this.manageMercenaries(100); 
+            this.manageMercenaries(300); 
         
             let hasChanged = this.charData.isMoving || 
                              this.charData.hp !== this.lastSentHp || 
