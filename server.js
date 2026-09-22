@@ -1,4 +1,4 @@
-// server.js (최종 통합 최적화 및 파티/AI 제한 완벽 적용 버전)
+// server.js
 
 require('dotenv').config();let targetGrade = 0;
 const { exec, spawn } = require('child_process');
