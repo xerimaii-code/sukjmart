@@ -1580,11 +1580,16 @@ class AIAgentClient {
     }
 
     async handleChatMessage(senderName, userMessage, chatType = 'normal', isWhisper = false) {
-        if (Date.now() - this.lastAiCallTime < 20000) return;
+        if (Date.now() - this.lastAiCallTime < 40000) return;
         
         const ignoreKeywords = ["수락했습니다", "초대", "파티 사냥", "수고하셨습니다", "죄송한데", "열렙합시다", "득템하세요"];
         if (ignoreKeywords.some(k => userMessage.includes(k))) return;
-
+       
+        if (!isWhisper && chatType !== 'party') {
+        if (!userMessage.includes(this.charData.name) && (!baseName || !userMessage.includes(baseName))) {
+            return; // 내 이름이 안 불렸으면 쿨하게 무시 (API 호출 안 함)
+         }
+       }
         this.lastAiCallTime = Date.now();
 
         const mapNames = Object.keys(data.maps).map(k => `${data.maps[k].name}(${k})`).join(', ');

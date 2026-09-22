@@ -358,8 +358,8 @@ io.on('connection', (socket) => {
         let partyCombatPower = userRaidRoom ? userRaidRoom.totalCombatPower : (payload.combatPower || 15000);
         let playerCount = userRaidRoom ? Math.max(1, userRaidRoom.members.length) : 1;
 
-        let baseBossHp = Math.floor(partyCombatPower * 10); 
-        let baseBossDef = Math.floor(30 + (partyCombatPower / 300));
+        let baseBossHp = Math.floor(partyCombatPower * 1.5) + (playerCount * 10000);
+        let baseBossDef = Math.min(50, Math.floor(30 + (partyCombatPower / 500)));
         let baseBossAtk = Math.floor(50 + (partyCombatPower / 200));
 
         let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
@@ -652,6 +652,7 @@ io.on('connection', (socket) => {
 
     socket.on('player_attack_action', (payload = {}) => {
         let p = players[socket.id];
+        if (!p) return;
         let mapId = (p && p.map) ? p.map : 'talking_island';
         
         let playersInMap = Object.values(players).filter(pl => pl.map === mapId);
