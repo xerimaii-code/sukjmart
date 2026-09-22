@@ -1879,43 +1879,53 @@ function processMonsterAI() {
         });
 
        let allMercsForSync = [];
-        playersInMap.forEach(p => {
-            if (p.mercs && Array.isArray(p.mercs)) {
-                allMercsForSync.push(...p.mercs);
-            }
-        });
+        playersInMap.forEach(p => { if (p.mercs && Array.isArray(p.mercs)) allMercsForSync.push(...p.mercs); });
+        let aliveMonsters = state.monsters.filter(m => m.hp > 0 || (m.deadTime && now - m.deadTime < 1500));
 
-     
-        const minifyEquip = (eq) => {
-            if (!eq) return {};
-            return {
-                weapon: eq.weapon ? { name: eq.weapon.name, grade: eq.weapon.grade, isBow: eq.weapon.isBow, enchantValue: eq.weapon.enchantValue, sp: eq.weapon.sp } : null,
-                armor: eq.armor ? { name: eq.armor.name, grade: eq.armor.grade, enchantValue: eq.armor.enchantValue } : null,
-                helmet: eq.helmet ? { name: eq.helmet.name, grade: eq.helmet.grade } : null,
-                cloak: eq.cloak ? { name: eq.cloak.name, grade: eq.cloak.grade } : null
-                
-            };
-        };
+        // 1. 무거운 반올림(Math.round)과 전체 데이터 조립을 루프 '밖에서 딱 1번만' 미리 해둡니다.
+        const prePlayers = playersInMap.map(p => ({
+            id: p.socketId, socketId: p.socketId, name: p.name, level: p.level || 1, charClass: p.charClass || 'knight',
+            x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), h: Math.round(p.hp), maxHp: p.maxHp, 
+            angle: Number((p.angle || 0).toFixed(2)), a: Number((p.angle || 0).toFixed(2)), isMoving: Boolean(p.isMoving), m: p.isMoving ? 1 : 0, 
+            equip: minifyEquip(p.equip), partyId: p.partyId, targetId: p.targetId, t: p.targetId, isPlayer: true
+        }));
 
-        io.to(mapId).emit('sync_entities', {
-            players: playersInMap.map(p => ({ 
-                id: p.socketId, socketId: p.socketId, name: p.name, level: p.level || 1, charClass: p.charClass || 'knight',
-                x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), h: Math.round(p.hp), maxHp: p.maxHp, 
-                angle: Number((p.angle || 0).toFixed(2)), a: Number((p.angle || 0).toFixed(2)), isMoving: Boolean(p.isMoving), m: p.isMoving ? 1 : 0, 
-                equip: minifyEquip(p.equip), partyId: p.partyId, targetId: p.targetId, t: p.targetId, isPlayer: true
-            })),
-            mercs: allMercsForSync.map(m => ({ 
-                id: m.id, name: m.name, mercType: m.mercType, charClass: m.charClass, ownerId: m.ownerId, ownerName: m.ownerName, 
-                x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), h: Math.round(m.hp), maxHp: m.maxHp, 
-                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), isMoving: Boolean(m.isMoving), m: m.isMoving ? 1 : 0,
-                equip: minifyEquip(m.equip), isSummon: true, isOtherMerc: true
-            })),
-            monsters: state.monsters.filter(m => m.hp > 0 || (m.deadTime && now - m.deadTime < 1500)).map(m => ({ 
-                id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), size: m.size || 20,
-                hp: Math.max(0, Math.round(m.hp)), h: Math.max(0, Math.round(m.hp)), maxHp: m.maxHp, 
-                isBoss: Boolean(m.isBoss), isDead: Boolean(m.isDead || m.hp <= 0),
-                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), color: m.color, targetId: m.targetId, t: m.targetId 
-            }))
+        const preMercs = allMercsForSync.map(m => ({
+            id: m.id, name: m.name, mercType: m.mercType, charClass: m.charClass, ownerId: m.ownerId, ownerName: m.ownerName, 
+            x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), h: Math.round(m.hp), maxHp: m.maxHp, 
+            angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), isMoving: Boolean(m.isMoving), m: m.isMoving ? 1 : 0,
+            equip: minifyEquip(m.equip), isSummon: true, isOtherMerc: true
+        }));
+
+        const preMonsters = aliveMonsters.map(m => ({
+            id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), size: m.size || 20, color: m.color,
+            hp: Math.max(0, Math.round(m.hp)), h: Math.max(0, Math.round(m.hp)), maxHp: m.maxHp, 
+            isBoss: Boolean(m.isBoss), isDead: Boolean(m.isDead || m.hp <= 0),
+            angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), targetId: m.targetId, t: m.targetId
+        }));
+
+        const VIEW_RADIUS_SQ = 1440000; // 1200 * 1200
+
+        playersInMap.forEach(receiver => {
+            let rx = receiver.x, ry = receiver.y, rId = receiver.socketId;
+
+            // 2. 안쪽 루프에서는 거리만 비교한 뒤, 미리 만들어둔 객체를 그대로 가져옵니다. (연산 비용 0에 수렴)
+            let syncPlayers = prePlayers.map(p => {
+                if (p.socketId === rId || ((p.x - rx) ** 2 + (p.y - ry) ** 2) <= VIEW_RADIUS_SQ) return p;
+                return { id: p.id, socketId: p.id, name: p.name, x: p.x, y: p.y, hp: p.hp, h: p.h, maxHp: p.maxHp, isPlayer: true, m: 0 };
+            });
+
+            let syncMercs = preMercs.map(m => {
+                if (m.ownerId === rId || ((m.x - rx) ** 2 + (m.y - ry) ** 2) <= VIEW_RADIUS_SQ) return m;
+                return { id: m.id, ownerId: m.ownerId, x: m.x, y: m.y, hp: m.hp, h: m.h, isSummon: true, isOtherMerc: true, m: 0 };
+            });
+
+            let syncMonsters = preMonsters.map(m => {
+                if (m.isBoss || ((m.x - rx) ** 2 + (m.y - ry) ** 2) <= VIEW_RADIUS_SQ) return m;
+                return { id: m.id, name: m.name, x: m.x, y: m.y, size: m.size, color: m.color, hp: m.hp, h: m.h, isBoss: m.isBoss };
+            });
+
+            io.to(rId).emit('sync_entities', { players: syncPlayers, mercs: syncMercs, monsters: syncMonsters });
         });
     }
 }
