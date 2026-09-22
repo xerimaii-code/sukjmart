@@ -14,8 +14,12 @@ const data = require('./public/js/data.js');
 
 const app = express();
 const server = http.createServer(app);
+
 const io = new Server(server, {
-    cors: { origin: "*", methods: ["GET", "POST"] }
+    cors: { origin: "*", methods: ["GET", "POST"] },
+    perMessageDeflate: {
+        threshold: 1024
+    }
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1876,29 +1880,42 @@ function processMonsterAI() {
             //}
         });
 
-        let allMercsForSync = [];
+       let allMercsForSync = [];
         playersInMap.forEach(p => {
             if (p.mercs && Array.isArray(p.mercs)) {
                 allMercsForSync.push(...p.mercs);
             }
         });
 
+     
+        const minifyEquip = (eq) => {
+            if (!eq) return {};
+            return {
+                weapon: eq.weapon ? { name: eq.weapon.name, grade: eq.weapon.grade, isBow: eq.weapon.isBow, enchantValue: eq.weapon.enchantValue, sp: eq.weapon.sp } : null,
+                armor: eq.armor ? { name: eq.armor.name, grade: eq.armor.grade, enchantValue: eq.armor.enchantValue } : null,
+                helmet: eq.helmet ? { name: eq.helmet.name, grade: eq.helmet.grade } : null,
+                cloak: eq.cloak ? { name: eq.cloak.name, grade: eq.cloak.grade } : null
+                
+            };
+        };
+
         io.to(mapId).emit('sync_entities', {
             players: playersInMap.map(p => ({ 
                 id: p.socketId, socketId: p.socketId, name: p.name, level: p.level || 1, charClass: p.charClass || 'knight',
                 x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), h: Math.round(p.hp), maxHp: p.maxHp, 
                 angle: Number((p.angle || 0).toFixed(2)), a: Number((p.angle || 0).toFixed(2)), isMoving: Boolean(p.isMoving), m: p.isMoving ? 1 : 0, 
-                equip: p.equip, partyId: p.partyId, targetId: p.targetId, t: p.targetId 
+                equip: minifyEquip(p.equip), partyId: p.partyId, targetId: p.targetId, t: p.targetId, isPlayer: true
             })),
             mercs: allMercsForSync.map(m => ({ 
                 id: m.id, name: m.name, mercType: m.mercType, charClass: m.charClass, ownerId: m.ownerId, ownerName: m.ownerName, 
-                x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), h: Math.round(m.hp), maxHp: m.maxHp, equip: m.equip, 
-                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), isMoving: Boolean(m.isMoving), m: m.isMoving ? 1 : 0 
+                x: Math.round(m.x), y: Math.round(m.y), hp: Math.round(m.hp), h: Math.round(m.hp), maxHp: m.maxHp, 
+                angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), isMoving: Boolean(m.isMoving), m: m.isMoving ? 1 : 0,
+                equip: minifyEquip(m.equip), isSummon: true, isOtherMerc: true
             })),
             monsters: state.monsters.filter(m => m.hp > 0 || (m.deadTime && now - m.deadTime < 1500)).map(m => ({ 
-                id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), 
+                id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), size: m.size || 20,
                 hp: Math.max(0, Math.round(m.hp)), h: Math.max(0, Math.round(m.hp)), maxHp: m.maxHp, 
-                isBoss: m.isBoss, isDead: Boolean(m.isDead || m.hp <= 0),
+                isBoss: Boolean(m.isBoss), isDead: Boolean(m.isDead || m.hp <= 0),
                 angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), color: m.color, targetId: m.targetId, t: m.targetId 
             }))
         });
