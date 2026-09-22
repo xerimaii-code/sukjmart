@@ -17,9 +17,7 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
     cors: { origin: "*", methods: ["GET", "POST"] },
-    perMessageDeflate: {
-        threshold: 1024
-    }
+    perMessageDeflate: false
 });
 
 app.use(express.static(path.join(__dirname, 'public')));
