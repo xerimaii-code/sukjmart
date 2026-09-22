@@ -1879,10 +1879,24 @@ function processMonsterAI() {
         });
 
        let allMercsForSync = [];
-        playersInMap.forEach(p => { if (p.mercs && Array.isArray(p.mercs)) allMercsForSync.push(...p.mercs); });
+        playersInMap.forEach(p => {
+            if (p.mercs && Array.isArray(p.mercs)) allMercsForSync.push(...p.mercs);
+        });
+
         let aliveMonsters = state.monsters.filter(m => m.hp > 0 || (m.deadTime && now - m.deadTime < 1500));
 
-        // 1. 무거운 반올림(Math.round)과 전체 데이터 조립을 루프 '밖에서 딱 1번만' 미리 해둡니다.
+     
+        const minifyEquip = (eq) => {
+            if (!eq) return {};
+            return {
+                weapon: eq.weapon ? { name: eq.weapon.name, grade: eq.weapon.grade, isBow: eq.weapon.isBow, enchantValue: eq.weapon.enchantValue, sp: eq.weapon.sp } : null,
+                armor: eq.armor ? { name: eq.armor.name, grade: eq.armor.grade, enchantValue: eq.armor.enchantValue } : null,
+                helmet: eq.helmet ? { name: eq.helmet.name, grade: eq.helmet.grade } : null,
+                cloak: eq.cloak ? { name: eq.cloak.name, grade: eq.cloak.grade } : null
+            };
+        };
+      
+
         const prePlayers = playersInMap.map(p => ({
             id: p.socketId, socketId: p.socketId, name: p.name, level: p.level || 1, charClass: p.charClass || 'knight',
             x: Math.round(p.x), y: Math.round(p.y), hp: Math.round(p.hp), h: Math.round(p.hp), maxHp: p.maxHp, 
