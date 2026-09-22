@@ -940,7 +940,7 @@ class AIAgentClient {
                 this.lastSentTargetEventId = null;
                 this.socket.emit('player_target', { targetId: null });
             }
-        }, 80); 
+        }, 300); 
     }
 
     executeFollowMovement() {

@@ -1987,7 +1987,7 @@ setInterval(() => {
 }, 10000); 
 
 setInterval(processMonsterSpawning, 1000);
-setInterval(processMonsterAI, 80);
+setInterval(processMonsterAI, 200);
 
 function startRaidCountdown(roomId) {
     let room = raidRooms[roomId];
