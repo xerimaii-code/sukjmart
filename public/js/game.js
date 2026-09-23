@@ -444,16 +444,13 @@ function drawNameTag(ctx, text, x, y, isBoss, isNPC, customFontSize = null, cust
 
     ctx.font = `bold ${fSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
     
-    // 💡 [핵심 패치] 좌표를 정수로 반올림하여 글씨가 흐려지거나 떨리는 안티앨리어싱 버그 완벽 제거
-    let drawX = Math.round(x);
-    let drawY = Math.round(y);
-
+    // 💡 [원상 복구] 부드러운 움직임을 위해 그대로 소수점(x, y) 좌표 사용
     ctx.lineWidth = 3; 
     ctx.strokeStyle = '#000000'; 
-    ctx.strokeText(text, drawX, drawY); 
+    ctx.strokeText(text, x, y); 
     
     ctx.fillStyle = customColor || (isBoss ? '#fbbf24' : (isNPC ? '#fed7aa' : '#ffffff')); 
-    ctx.fillText(text, drawX, drawY); 
+    ctx.fillText(text, x, y); 
     ctx.restore();
 }
 
@@ -2311,8 +2308,8 @@ function draw(timestamp) {
  
     let pX = player.x; 
     let pY = player.y;
-    let camX = Math.round(Math.max(0, Math.min(pX - worldW / 2, mapSize - worldW)));
-    let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - visibleWorldH)));
+    let camX = Math.max(0, Math.min(pX - worldW / 2, mapSize - worldW));
+    let camY = Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - visibleWorldH));
 
     ctx.save(); 
     ctx.scale(ZOOM, ZOOM); 
@@ -2525,9 +2522,9 @@ function draw(timestamp) {
             let sz = e.size || 20;
             let isMobile = window.innerWidth < 768; 
             
-            // 💡 [좌표 정수화] 이름표, 체력바, 파티 뱃지의 좌표를 강제로 정수 변환하여 선명도 극대화
-            let rx = Math.round(e.x); 
-            let ry = Math.round(e.y);
+            // 💡 [원상 복구] 좌표 정수화를 풀고 본래의 소수점(실수) 좌표 사용
+            let rx = e.x; 
+            let ry = e.y;
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;
 
            if (isMercOrSummon) {
@@ -2572,8 +2569,8 @@ function draw(timestamp) {
                     
                     let badgeWidth = isMobile ? (isMyParty ? 60 : 54) : (isMyParty ? 70 : 64);
                     let badgeHeight = isMobile ? 15 : 18; 
-                    let badgeY = Math.round(ry - sz - (isMobile ? 52 : 56) - (badgeLevel > 0 ? 15 : 0));
-                    let badgeX = Math.round(rx - badgeWidth / 2);
+                    let badgeY = ry - sz - (isMobile ? 52 : 56) - (badgeLevel > 0 ? 15 : 0);
+                    let badgeX = rx - badgeWidth / 2;
 
                     ctx.shadowColor = '#000000';
                     ctx.fillStyle = bgColor;
@@ -2581,7 +2578,7 @@ function draw(timestamp) {
                     ctx.lineWidth = 1.5;
 
                     ctx.beginPath();
-                    ctx.roundRect(badgeX, badgeY - Math.round(badgeHeight / 2), badgeWidth, badgeHeight, 4);
+                    ctx.roundRect(badgeX, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
                     ctx.fill();
                     ctx.stroke();
 
@@ -2603,18 +2600,17 @@ function draw(timestamp) {
                 }
             }
 
-            // 💡 [체력바 선명도 패치]
             if (!e.isDead && !isMercOrSummon) {
                 let safeMaxHp = e.maxHp || e.hp || 1; 
                 let hpRatio = Math.max(0, Math.min(1, e.hp / safeMaxHp));
                 let barW = e.isBoss ? 50 : (e.isPlayer ? 45 : 30);
                 let barColor = e.isPlayer ? '#0ea5e9' : '#ef4444';
 
-                let barX = Math.round(rx - barW/2);
-                let barY = Math.round(ry - sz - 20);
+                let barX = rx - barW/2;
+                let barY = ry - sz - 20;
 
                 ctx.fillStyle = '#000'; ctx.fillRect(barX, barY, barW, 5);
-                ctx.fillStyle = barColor; ctx.fillRect(barX, barY, Math.round(barW * hpRatio), 5);
+                ctx.fillStyle = barColor; ctx.fillRect(barX, barY, barW * hpRatio, 5);
                 ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(barX, barY, barW, 5);
 
                 if (e.isBoss) {
@@ -2639,9 +2635,9 @@ function draw(timestamp) {
         ctx.lineWidth = 4; 
         ctx.strokeStyle = '#000000';
         
-        // 💡 [좌표 정수화] 플레이어 본인의 이름표 선명도 완벽 보정
-        let rx = Math.round(player.x);
-        let ry = Math.round(player.y - player.size - 33);
+        // 💡 [원상 복구] 플레이어 좌표도 부드러운 소수점 사용
+        let rx = player.x;
+        let ry = player.y - player.size - 33;
 
         ctx.strokeText(pName, rx, ry); 
         ctx.fillStyle = player.alignment > 10000 ? '#38bdf8' : (player.alignment < -10000 ? '#f87171' : '#ffffff');
@@ -2653,7 +2649,7 @@ function draw(timestamp) {
             let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
             ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
             ctx.font = isMobile ? '17px Arial' : '15px Arial';
-            ctx.fillText(badgeIcon, rx, Math.round(player.y - player.size - 55)); 
+            ctx.fillText(badgeIcon, rx, player.y - player.size - 55); 
         }        
         ctx.restore();
     }
@@ -2661,11 +2657,11 @@ function draw(timestamp) {
     if (!player.isDead) {
         let hpRatio = Math.max(0, player.hp / currentMaxHp);
         let barW = 70; 
-        let px = Math.round(player.x);
-        let py = Math.round(player.y - player.size - 25);
+        let px = player.x;
+        let py = player.y - player.size - 25;
         ctx.fillStyle = '#000'; ctx.fillRect(px - barW/2, py, barW, 6);
         ctx.fillStyle = '#5f5'; 
-        ctx.fillRect(px - barW/2, py, Math.round(barW * hpRatio), 6);
+        ctx.fillRect(px - barW/2, py, barW * hpRatio, 6);
         ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px - barW/2, py, barW, 6);
     }
 
