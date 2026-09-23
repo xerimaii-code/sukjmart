@@ -5652,18 +5652,25 @@ window.teleportPrompt = function() {
     
     let mapKeys = Object.keys(maps);
     mapKeys.sort((a, b) => {
+        // 1. 보스 레이드는 항상 맨 끝에 고정
         if (a === 'boss_raid') return 1;
         if (b === 'boss_raid') return -1;
+
+        // 💡 2. 지배의 탑 정상(무한 사냥터)은 보스 레이드 바로 앞(맨 끝에서 두 번째)에 고정
+        if (a === 'tower_of_dominance') return 1;
+        if (b === 'tower_of_dominance') return -1;
 
         let m1 = maps[a]; let m2 = maps[b];
         let isSafeA = m1.safeZones && m1.safeZones.length > 0;
         let isSafeB = m2.safeZones && m2.safeZones.length > 0;
+        
+        // 3. 안전지대(마을)는 맨 위로 올림
         if (isSafeA && !isSafeB) return -1;
         if (!isSafeA && isSafeB) return 1;
 
+        // 4. 나머지 사냥터들은 레벨 순으로 오름차순 정렬
         let getMinLevel = (str) => {
             if (!str) return 999;
-            if (str.includes('100+') || str.includes('105+')) return 100;
             let match = str.match(/\d+/);
             return match ? parseInt(match[0]) : 999;
         };
@@ -5671,6 +5678,7 @@ window.teleportPrompt = function() {
     });
 
     let html = '';
+
     mapKeys.forEach(key => {
         let m = maps[key];
         let isRaid = key === 'boss_raid';

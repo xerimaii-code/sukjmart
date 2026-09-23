@@ -125,13 +125,24 @@ function resize() {
     width = window.innerWidth; 
     height = window.innerHeight;
     
-    // 💡 [아이폰 미니/저사양폰 최적화] DPR을 최대 1.5로 제한하여 GPU 과부하 원천 차단
+    // 💡 [PC/모바일 통합 렉 방지 패치] 
+    // PC 모니터에서 창을 작게 줄였을 때 픽셀이 압축 연산되면서 발생하는 GPU 과부하를 원천 차단
     let rawDpr = window.devicePixelRatio || 1;
-    let isMobile = width < 768 || ('ontouchstart' in window);
-    let dpr = isMobile ? Math.min(rawDpr, 1.5) : rawDpr;
+    let dpr = 1;
+
+    if (width < 768) { 
+        // 창 크기가 좁은 모바일 형태일 때는 픽셀 배율을 최대 1.25로 억제하여 렉/발열 완벽 제거
+        dpr = Math.min(rawDpr, 1.25);
+        ZOOM = Math.max(0.65, Math.min(0.85, width / 480));
+    } else { 
+        // 넓은 PC 화면일 때도 최대 1.5 배율로 제한하여 쾌적한 프레임 유지
+        dpr = Math.min(rawDpr, 1.5);
+        ZOOM = 0.72; 
+    }
     
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    // 💡 소수점 픽셀 렌더링 방지를 위해 무조건 반올림(Math.round) 처리
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
     
     canvas.style.width = width + 'px';
     canvas.style.height = height + 'px';
@@ -140,12 +151,6 @@ function resize() {
     ctx.scale(dpr, dpr);
     
     ctx.imageSmoothingEnabled = false;
-    
-    if (width < 768) { 
-        ZOOM = Math.max(0.65, Math.min(0.85, width / 480));
-    } else { 
-        ZOOM = 0.72; 
-    }
 }
 
 
@@ -327,62 +332,70 @@ function generateRealisticMap(mapId, bgType) {
     }
     // ❄️ [신규 추가] 오렌 영지 전용 눈/얼음 지형 생성 로직
     else if (bgType === 'snow') {
-        // 기본 바닥 (차갑고 푸른빛이 도는 눈밭)
-        cx.fillStyle = '#eaf2f8'; cx.fillRect(0, 0, w, h);
+        // 눈부심을 줄인 차분하고 어두운 톤의 눈밭 배경
+        cx.fillStyle = '#b0c4de'; cx.fillRect(0, 0, w, h); 
         
-        // 눈 입자 노이즈 질감
-        for(let i=0; i<150000; i++) {
-            cx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#d4e6f1';
+        // 눈 입자 노이즈 질감 (명도 낮춤)
+        for(let i=0; i<100000; i++) {
+            cx.fillStyle = Math.random() > 0.5 ? '#a2b8d4' : '#cddae8';
             cx.fillRect(Math.random()*w, Math.random()*h, 3, 3);
         }
         
-        // 얼음 덩어리 및 눈 쌓인 바위 배치
-        for(let i=0; i<2500; i++) {
-            let tx = Math.random()*w; let ty = Math.random()*h;
-            let size = 15 + Math.random()*20;
-            
-            // 그림자
-            cx.fillStyle = 'rgba(100,120,140,0.3)'; 
-            cx.beginPath(); cx.ellipse(tx+5, ty+5, size*1.2, size*0.8, 0, 0, Math.PI*2); cx.fill();
-            
-            // 바위/얼음 본체
-            let isIce = Math.random() < 0.3;
-            if (isIce) {
-                // 반투명한 푸른 얼음
-                cx.fillStyle = '#a9cce3'; 
-                cx.beginPath(); cx.moveTo(tx, ty-size); cx.lineTo(tx-size*0.8, ty+size*0.5); cx.lineTo(tx+size*0.8, ty+size*0.5); cx.fill();
-                cx.fillStyle = 'rgba(255,255,255,0.6)'; // 얼음 반사광
-                cx.beginPath(); cx.moveTo(tx, ty-size); cx.lineTo(tx, ty+size*0.5); cx.lineTo(tx+size*0.4, ty+size*0.2); cx.fill();
-            } else {
-                // 눈 덮인 바위
-                cx.fillStyle = '#7f8c8d'; 
-                cx.beginPath(); cx.arc(tx, ty, size, 0, Math.PI*2); cx.fill();
-                cx.fillStyle = '#ffffff'; // 윗부분 눈
-                cx.beginPath(); cx.arc(tx, ty-size*0.3, size*0.8, 0, Math.PI); cx.fill();
-            }
-        }
-        
-        // 눈 덮인 고목/침엽수 배치
-        for(let i=0; i<800; i++) {
+        // 바위 및 얼음 생성 로직 완전히 삭제됨
+
+        // 눈 덮인 고목/침엽수 배치 (개수를 800 -> 120으로 대폭 줄여 띄엄띄엄 배치)
+        for(let i=0; i<120; i++) {
             let tx = Math.random()*w; let ty = Math.random()*h;
             let size = 25 + Math.random()*15;
             
             // 그림자
-            cx.fillStyle = 'rgba(0,0,0,0.2)'; 
+            cx.fillStyle = 'rgba(0,0,0,0.15)'; 
             cx.beginPath(); cx.ellipse(tx, ty+size/2, size, size/3, 0, 0, Math.PI*2); cx.fill();
             
             // 나무 기둥
-            cx.fillStyle = '#4a3219'; 
+            cx.fillStyle = '#3a2311'; 
             cx.fillRect(tx-3, ty-size, 6, size);
             
-            // 눈 덮인 솔잎 (삼각형 층층이)
-            cx.fillStyle = '#ffffff'; // 눈 덮인 잎사귀
-            cx.strokeStyle = '#2d4522'; cx.lineWidth = 1.5;
+            // 눈 덮인 솔잎 (명도 조절)
+            cx.fillStyle = '#e2e8f0'; 
+            cx.strokeStyle = '#1e293b'; cx.lineWidth = 1.5;
             for(let j=3; j>=1; j--) {
                 let hOff = ty - size*1.2 + (j*size*0.3);
                 let wOff = size * 0.4 * j;
                 cx.beginPath(); cx.moveTo(tx, hOff - size*0.5); cx.lineTo(tx - wOff, hOff); cx.lineTo(tx + wOff, hOff); cx.fill(); cx.stroke();
             }
+        }
+    }
+else if (bgType === 'cursed') {
+      
+        cx.fillStyle = '#2a1515'; cx.fillRect(0, 0, w, h);
+        
+        let brickW = 80, brickH = 40; 
+        cx.strokeStyle = '#110505'; cx.lineWidth = 2;
+        for (let y = 0; y < h; y += brickH) {
+            let rowIdx = Math.floor(y / brickH);
+            let offsetX = (rowIdx % 2 === 0) ? 0 : (brickW / 2); 
+            for (let x = -brickW; x < w + brickW; x += brickW) {
+                let bx = x + offsetX;
+                // 핏빛 그라데이션 벽돌
+                let tg = cx.createLinearGradient(bx, y, bx, y + brickH);
+                tg.addColorStop(0, '#3f1a1a'); 
+                tg.addColorStop(1, '#230d0d');
+                cx.fillStyle = tg;
+                cx.fillRect(bx, y, brickW - 2, brickH - 2);
+                cx.strokeRect(bx, y, brickW, brickH);
+            }
+        }
+        
+    
+        for(let i=0; i<150; i++) {
+            let tx = Math.random()*w; let ty = Math.random()*h;
+            let size = Math.random() * 80 + 20;
+            let grad = cx.createRadialGradient(tx, ty, 0, tx, ty, size);
+            grad.addColorStop(0, 'rgba(150, 0, 0, 0.4)'); 
+            grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+            cx.fillStyle = grad;
+            cx.beginPath(); cx.arc(tx, ty, size, 0, Math.PI*2); cx.fill();
         }
     }
     else if (bgType === 'tower') {
@@ -431,13 +444,16 @@ function drawNameTag(ctx, text, x, y, isBoss, isNPC, customFontSize = null, cust
 
     ctx.font = `bold ${fSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
     
-    // 💡 [프레임 최적화] 무거운 그림자 연산 제거 (글씨 외곽선 strokeText로 충분함)
+    // 💡 [핵심 패치] 좌표를 정수로 반올림하여 글씨가 흐려지거나 떨리는 안티앨리어싱 버그 완벽 제거
+    let drawX = Math.round(x);
+    let drawY = Math.round(y);
+
     ctx.lineWidth = 3; 
     ctx.strokeStyle = '#000000'; 
-    ctx.strokeText(text, x, y); 
+    ctx.strokeText(text, drawX, drawY); 
     
     ctx.fillStyle = customColor || (isBoss ? '#fbbf24' : (isNPC ? '#fed7aa' : '#ffffff')); 
-    ctx.fillText(text, x, y); 
+    ctx.fillText(text, drawX, drawY); 
     ctx.restore();
 }
 
@@ -2292,15 +2308,15 @@ function draw(timestamp) {
     let worldH = height / ZOOM; 
     let visibleWorldH = (height - uiHeight) / ZOOM; 
 
-    // 💡 [이중 잔상/떨림 완벽 해결] 카메라 렌더링을 완전히 부드러운 소수점(Float) 기반으로 변경
+ 
     let pX = player.x; 
     let pY = player.y;
-    let camX = Math.max(0, Math.min(pX - worldW / 2, mapSize - worldW));
-    let camY = Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - visibleWorldH));
+    let camX = Math.round(Math.max(0, Math.min(pX - worldW / 2, mapSize - worldW)));
+    let camY = Math.round(Math.max(0, Math.min(pY - visibleWorldH / 2, mapSize - visibleWorldH)));
 
     ctx.save(); 
     ctx.scale(ZOOM, ZOOM); 
-    ctx.translate(-camX, -camY); 
+    ctx.translate(-camX, -camY);
 
     ctx.fillStyle = mData.bg === 'dungeon' ? '#2c2d38' : (mData.bg === 'stone' ? '#55555c' : '#4a6b35');
     ctx.fillRect(0, 0, mapSize, mapSize);
@@ -2509,9 +2525,9 @@ function draw(timestamp) {
             let sz = e.size || 20;
             let isMobile = window.innerWidth < 768; 
             
-            // 💡 이름표 좌표도 소수점 허용 (떨림 방지)
-            let rx = e.x; 
-            let ry = e.y;
+            // 💡 [좌표 정수화] 이름표, 체력바, 파티 뱃지의 좌표를 강제로 정수 변환하여 선명도 극대화
+            let rx = Math.round(e.x); 
+            let ry = Math.round(e.y);
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;
 
            if (isMercOrSummon) {
@@ -2520,10 +2536,23 @@ function draw(timestamp) {
                 let mercFontSize = isMobile ? 12 : 15; 
                 drawNameTag(ctx, e.name || '용병', rx, ry - sz - 15, false, false, mercFontSize, mercColor);
             }
-            else if (e.isPlayer) {
+           else if (e.isPlayer) {
                 let displayName = e.alignment > 10000 ? `[정의] ${e.name}` : (e.alignment < -10000 ? `[악인] ${e.name}` : e.name);
                 let tagColor = e.alignment > 10000 ? '#38bdf8' : (e.alignment < -10000 ? '#f87171' : '#ffffff');
                 drawNameTag(ctx, displayName, rx, ry - sz - 33, false, false, null, tagColor);
+                
+                let badgeLevel = Math.floor((e.level || 1) / 30);
+                if (badgeLevel > 0) {
+                    ctx.save();
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    let badgeColors = ['#fff', '#5f5', '#5cf', '#f55', '#fd0', '#f0f'];
+                    let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
+                    ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
+                    ctx.font = isMobile ? '17px Arial' : '15px Arial';
+                    ctx.fillText(badgeIcon, rx, ry - sz - 55); 
+                    ctx.restore();
+                }
                 
                 if (e.partyId) {
                     ctx.save();
@@ -2533,31 +2562,29 @@ function draw(timestamp) {
                     let isMyParty = player.partyId && player.partyId === e.partyId;
                     let badgeText = isMyParty ? '👑 내 파티' : '👑 파티';
                     
-                    // 💡 파티 고유 아이디 문자열을 해시하여 고유 색상 배정
                     let hash = 0;
                     for (let i = 0; i < String(e.partyId).length; i++) hash = String(e.partyId).charCodeAt(i) + ((hash << 5) - hash);
                     const partyColors = ['#e879f9', '#facc15', '#34d399', '#60a5fa', '#f87171', '#a78bfa'];
                     let pColor = partyColors[Math.abs(hash) % partyColors.length];
                     
                     let bgColor = isMyParty ? 'rgba(20, 50, 20, 0.95)' : 'rgba(16, 16, 24, 0.95)';
-                    let borderColor = isMyParty ? '#4ade80' : pColor; // 내 파티는 무조건 초록색
+                    let borderColor = isMyParty ? '#4ade80' : pColor; 
                     
                     let badgeWidth = isMobile ? (isMyParty ? 60 : 54) : (isMyParty ? 70 : 64);
                     let badgeHeight = isMobile ? 15 : 18; 
-                    let badgeY = ry - sz - (isMobile ? 52 : 56);
+                    let badgeY = Math.round(ry - sz - (isMobile ? 52 : 56) - (badgeLevel > 0 ? 15 : 0));
+                    let badgeX = Math.round(rx - badgeWidth / 2);
 
-                    
                     ctx.shadowColor = '#000000';
                     ctx.fillStyle = bgColor;
                     ctx.strokeStyle = borderColor;
                     ctx.lineWidth = 1.5;
 
                     ctx.beginPath();
-                    ctx.roundRect(rx - badgeWidth / 2, badgeY - badgeHeight / 2, badgeWidth, badgeHeight, 4);
+                    ctx.roundRect(badgeX, badgeY - Math.round(badgeHeight / 2), badgeWidth, badgeHeight, 4);
                     ctx.fill();
                     ctx.stroke();
 
-                  
                     ctx.font = `bold ${isMobile ? 10 : 11}px "Malgun Gothic", sans-serif`;
                     ctx.lineWidth = 2;
                     ctx.strokeStyle = '#000000';
@@ -2566,7 +2593,7 @@ function draw(timestamp) {
                     ctx.fillText(badgeText, rx, badgeY + 1);
                     ctx.restore();
                 }
-            } 
+            }
             else if (e.isBoss) {
                 drawNameTag(ctx, e.name, rx, ry - sz - 30, true, false);
             } 
@@ -2576,19 +2603,23 @@ function draw(timestamp) {
                 }
             }
 
+            // 💡 [체력바 선명도 패치]
             if (!e.isDead && !isMercOrSummon) {
                 let safeMaxHp = e.maxHp || e.hp || 1; 
                 let hpRatio = Math.max(0, Math.min(1, e.hp / safeMaxHp));
                 let barW = e.isBoss ? 50 : (e.isPlayer ? 45 : 30);
                 let barColor = e.isPlayer ? '#0ea5e9' : '#ef4444';
 
-                ctx.fillStyle = '#000'; ctx.fillRect(rx - barW/2, ry - sz - 20, barW, 5);
-                ctx.fillStyle = barColor; ctx.fillRect(rx - barW/2, ry - sz - 20, barW * hpRatio, 5);
-                ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(rx - barW/2, ry - sz - 20, barW, 5);
+                let barX = Math.round(rx - barW/2);
+                let barY = Math.round(ry - sz - 20);
+
+                ctx.fillStyle = '#000'; ctx.fillRect(barX, barY, barW, 5);
+                ctx.fillStyle = barColor; ctx.fillRect(barX, barY, Math.round(barW * hpRatio), 5);
+                ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(barX, barY, barW, 5);
 
                 if (e.isBoss) {
                     ctx.fillStyle = '#fff'; ctx.font = '10px Gulim'; ctx.textAlign = 'center';
-                    ctx.fillText(`${Math.floor(hpRatio * 100)}%`, rx, ry - sz - 22);
+                    ctx.fillText(`${Math.floor(hpRatio * 100)}%`, rx, barY - 2);
                 }
             }
         }
@@ -2608,8 +2639,9 @@ function draw(timestamp) {
         ctx.lineWidth = 4; 
         ctx.strokeStyle = '#000000';
         
-        let rx = player.x;
-        let ry = player.y - player.size - 33;
+        // 💡 [좌표 정수화] 플레이어 본인의 이름표 선명도 완벽 보정
+        let rx = Math.round(player.x);
+        let ry = Math.round(player.y - player.size - 33);
 
         ctx.strokeText(pName, rx, ry); 
         ctx.fillStyle = player.alignment > 10000 ? '#38bdf8' : (player.alignment < -10000 ? '#f87171' : '#ffffff');
@@ -2621,7 +2653,7 @@ function draw(timestamp) {
             let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
             ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
             ctx.font = isMobile ? '17px Arial' : '15px Arial';
-            ctx.fillText(badgeIcon, rx, player.y - player.size - 55); 
+            ctx.fillText(badgeIcon, rx, Math.round(player.y - player.size - 55)); 
         }        
         ctx.restore();
     }
@@ -2629,10 +2661,12 @@ function draw(timestamp) {
     if (!player.isDead) {
         let hpRatio = Math.max(0, player.hp / currentMaxHp);
         let barW = 70; 
-        ctx.fillStyle = '#000'; ctx.fillRect(player.x - barW/2, player.y - player.size - 25, barW, 6);
+        let px = Math.round(player.x);
+        let py = Math.round(player.y - player.size - 25);
+        ctx.fillStyle = '#000'; ctx.fillRect(px - barW/2, py, barW, 6);
         ctx.fillStyle = '#5f5'; 
-        ctx.fillRect(player.x - barW/2, player.y - player.size - 25, barW * hpRatio, 6);
-        ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(player.x - barW/2, player.y - player.size - 25, barW, 6);
+        ctx.fillRect(px - barW/2, py, Math.round(barW * hpRatio), 6);
+        ctx.strokeStyle = '#222'; ctx.lineWidth = 1; ctx.strokeRect(px - barW/2, py, barW, 6);
     }
 
     particles.forEach(p => { 

@@ -60,7 +60,7 @@ const maps = {
     'aden': { ..._map('아덴 영지', 'Lv.75~90', 'grass', ['lizardman', 'gargoyle'], [], [], []), maxMobs: 65 },
     'forgotten_island': { ..._map('잊혀진 섬', 'Lv.85~99', 'dirt', ['minotaur', 'harpy', 'cockatrice'], [{id:'great_minotaur', x:3500, y:3500}], [], []), maxMobs: 80 },
     'lastebad': { ..._map('라스타바드', 'Lv.100~110', 'dungeon', ['dark_elf_guard', 'beast_master', 'dark_elf'], [{id:'dantes', x:3500, y:3500}], [], []), maxMobs: 85 },
-    'tower_of_dominance': { ..._map('지배의 탑 정상', 'Lv.105+', 'tower', ['lesser_demon', 'lich', 'balrog'], [{id:'awakened_reaper', x:3500, y:3500}], [], []), maxMobs: 85 },
+    'tower_of_dominance': { ..._map('지배의 탑 정상', 'Lv.110 (자동 스케일링)', 'tower', ['lesser_demon', 'lich', 'balrog'], [{id:'awakened_reaper', x:3500, y:3500}], [], []), maxMobs: 85 },
     'ivory_tower': { ..._map('상아탑', 'Lv.50~65', 'tower', ['paper_man', 'living_armor'], [{id:'demon', x:3500, y:3500}], [], []), maxMobs: 75 },
     'dream_island': { ..._map('몽환의 섬', 'Lv.60~75', 'grass', ['fire_egg', 'unicorn', 'succubus'], [{id:'great_spirit', x:3500, y:3500}], [], []), maxMobs: 60 },
     'giran_dungeon_1': { ..._map('기란 감옥 1층', 'Lv.45~60', 'dungeon', ['ghoul', 'bugbear', 'giran_guard', 'giran_prisoner'], [{id:'faust', x:3500, y:3500}], [], []), maxMobs: 90 },
@@ -73,7 +73,10 @@ const maps = {
         bg: "dungeon", // 진입 시마다 랜덤으로 덮어씌워짐
         recLv: "자동 스케일링",
         safeZones: [] // 안전지대 없는 완전 전투 구역
-    }
+    },
+    'rune_territory': { 
+    ..._map('루운 영지 (저주받은 성)', 'Lv.110~120', 'cursed', ['rune_knight', 'rune_mage', 'lesser_demon', 'bone_dragon'], [{id:'rune_lord_taros', x:3500, y:3500}], [], []), maxMobs: 95 
+}
 };
 
 // ==========================================
@@ -147,42 +150,46 @@ const templates = {
         'mambo_rabbit': _mob('맘보토끼', 2500, 20, 150, 5000, [1000, 5000], 15, '#fbcfe8', {isFleeing: true}),
         'doppelganger': _mob('도플갱어', 4800, 90, 90, 3000, [500, 1000], 20, '#94a3b8'),
         'ent': _mob('엔트', 3500, 70, 50, 1000, [100, 300], 35, '#15803d', {desc: '요정의 숲 수호자'}),
-        
+        'rune_knight': _mob('루운 저주받은 기사', 32000, 410, 105, 45000, [5000, 12000], 22, '#475569', {isUndead: true}),
+        'rune_mage': _mob('루운 흑마법사', 28000, 460, 95, 42000, [4500, 10000], 20, '#312e81', {isUndead: true}), // 💡 꼬였던 괄호 1차 수정
+       
         'caspa': _mob('카스파', 8000, 150, 90, 5000, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 250, isGroup: 'caspa_family', desc: '본던의 지배자'}),
         'balthazar': _mob('발터', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
         'melchior': _mob('메르키오르', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
         'sema': _mob('세마', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'})
-    },
+    }, // 💡 꼬였던 괄호 2차 수정 (정상적으로 mobs 닫힘)
 
     // 💡 보스 몬스터 공격력 대폭 상향 패치 적용!
     bosses: {
-    // 초중반 구간: HP 소폭 상향, 공격력 밸런스화
-    'black_knight_chief': _mob('흑기사 대장', 28000, 280, 95, 5000, [2000, 5000], 30, '#1a1a24', {matk: 220, isBoss: true}),
-    'giant_ungoliant': _mob('거대 웅골리언트', 25000, 260, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 200, isBoss: true}),
-    'corrupted_ent': _mob('타락한 엔트', 32000, 310, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 260, isBoss: true}),
-    'ant_queen': _mob('여왕 개미', 65000, 420, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 350, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
+        // 초중반 구간: HP 소폭 상향, 공격력 밸런스화
+        'black_knight_chief': _mob('흑기사 대장', 28000, 280, 95, 5000, [2000, 5000], 30, '#1a1a24', {matk: 220, isBoss: true}),
+        'giant_ungoliant': _mob('거대 웅골리언트', 25000, 260, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 200, isBoss: true}),
+        'corrupted_ent': _mob('타락한 엔트', 32000, 310, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 260, isBoss: true}),
+        'ant_queen': _mob('여왕 개미', 65000, 420, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 350, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
 
-    // 중반 4인 파티 긴장감 구간 (물약 소모 시작)
-    'baphomet': _mob('바포메트', 140000, 550, 105, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 520, isBoss: true, isUndead: true, isMagicBoss: true}),
-    'deathknight': _mob('데스나이트', 160000, 620, 115, 180000, [20000, 50000], 30, '#f87171', {matk: 580, isBoss: true, isUndead: true}),
-    'black_elder': _mob('흑장로', 130000, 520, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 600, isBoss: true, isMagicBoss: true}),
+        // 중반 4인 파티 긴장감 구간 (물약 소모 시작)
+        'baphomet': _mob('바포메트', 140000, 550, 105, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 520, isBoss: true, isUndead: true, isMagicBoss: true}),
+        'deathknight': _mob('데스나이트', 160000, 620, 115, 180000, [20000, 50000], 30, '#f87171', {matk: 580, isBoss: true, isUndead: true}),
+        'black_elder': _mob('흑장로', 130000, 520, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 600, isBoss: true, isMagicBoss: true}),
 
-    // 상위 보스 (기사 탱킹 및 컨트롤 필요)
-    'kurz': _mob('커츠', 320000, 850, 105, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 780, isBoss: true}),
-    'drake': _mob('드레이크', 350000, 920, 120, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 720, isBoss: true}),
-    'zenith_queen': _mob('제니스 퀸', 300000, 800, 125, 900000, [100000, 250000], 40, '#701a75', {matk: 750, isBoss: true, isMagicBoss: true}),
-    'antharas': _mob('안타라스(지룡)', 550000, 1150, 100, 900000, [100000, 250000], 80, '#166534', {matk: 950, isBoss: true}),
-    'valakas': _mob('발라카스(화룡)', 600000, 1250, 115, 1200000, [200000, 400000], 100, '#dc2626', {matk: 1050, isBoss: true}),
+        // 상위 보스 (기사 탱킹 및 컨트롤 필요)
+        'kurz': _mob('커츠', 320000, 850, 105, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 780, isBoss: true}),
+        'drake': _mob('드레이크', 350000, 920, 120, 600000, [80000, 200000], 45, '#1d4ed8', {matk: 720, isBoss: true}),
+        'zenith_queen': _mob('제니스 퀸', 300000, 800, 125, 900000, [100000, 250000], 40, '#701a75', {matk: 750, isBoss: true, isMagicBoss: true}),
+        'antharas': _mob('안타라스(지룡)', 550000, 1150, 100, 900000, [100000, 250000], 80, '#166534', {matk: 950, isBoss: true}),
+        'valakas': _mob('발라카스(화룡)', 600000, 1250, 115, 1200000, [200000, 400000], 100, '#dc2626', {matk: 1050, isBoss: true}),
 
-    // 엔드 보스 (기존 3000~4000대 폭발 대미지 -> 1350~1600선으로 억제)
-    'lich_boss': _mob('리치(보스)', 850000, 1350, 105, 1500000, [200000, 500000], 35, '#312e81', {matk: 1250, isBoss: true, isUndead: true, isMagicBoss: true}),
-    'grim_reaper': _mob('그림 리퍼', 950000, 1450, 130, 700000, [50000, 150000], 60, '#000', {matk: 1350, isBoss: true, isMagicBoss: true}),
-    'great_minotaur': _mob('대미노타우르스', 850000, 1300, 100, 1200000, [300000, 800000], 50, '#451a03', {matk: 900, isBoss: true}),
-    'dantes': _mob('명황 단테스', 1400000, 1650, 125, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 1500, isBoss: true}),
-    'awakened_reaper': _mob('각성한 사신', 1650000, 1750, 140, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 1600, isBoss: true, isMagicBoss: true})
-}
+        // 엔드 보스 (기존 3000~4000대 폭발 대미지 -> 1350~1600선으로 억제)
+        'lich_boss': _mob('리치(보스)', 850000, 1350, 105, 1500000, [200000, 500000], 35, '#312e81', {matk: 1250, isBoss: true, isUndead: true, isMagicBoss: true}),
+        'grim_reaper': _mob('그림 리퍼', 950000, 1450, 130, 700000, [50000, 150000], 60, '#000', {matk: 1350, isBoss: true, isMagicBoss: true}),
+        'great_minotaur': _mob('대미노타우르스', 850000, 1300, 100, 1200000, [300000, 800000], 50, '#451a03', {matk: 900, isBoss: true}),
+        'dantes': _mob('명황 단테스', 1400000, 1650, 125, 5000000, [1000000, 2500000], 35, '#0f172a', {matk: 1500, isBoss: true}),
+        'awakened_reaper': _mob('각성한 사신', 1650000, 1750, 140, 15000000, [3000000, 8000000], 70, '#581c87', {matk: 1600, isBoss: true, isMagicBoss: true}),
+        
+        // 💡 루운 영지 보스 추가
+        'rune_lord_taros': _mob('루운 영주 타로스', 2100000, 1950, 150, 25000000, [5000000, 12000000], 45, '#1e1b4b', {matk: 1850, isBoss: true})
+    }
 };
-
 // ==========================================
 // [4. 원본 그대로 유지 (NPC, Item, Magic, Shop, Util)]
 // ==========================================
@@ -324,7 +331,8 @@ const itemDb = [
     _am("에바의 축복 투구", "helmet", 8, 5, { hpBonus: 100, mpBonus: 60, def: 8, mr: 10, desc: '물의 여신 에바의 기운이 깃든 투구' }),
     _am("신화 지배자의 벨트", "belt", 3, 5, { hpBonus: 150, mpBonus: 100, hpRegen: 5, mpRegen: 5, desc: '생명력과 마력을 동시에 대폭 증폭시키는 벨트' }),
     _am("태고의 전설 반지", "ring", 2, 5, { str: 2, dex: 2, int: 2, atk: 5, sp: 3, desc: '모든 잠재력을 일깨우는 태고의 반지' }),
-
+  
+   
 
     // =========================================================================
     // 🔥 [전설 II (Grade 6)] - 이계의 지배자 & 드래곤 장비
@@ -333,13 +341,15 @@ const itemDb = [
     _wp("기르타스의 진홍빛 검", 62, 6, { str: 5, isUndeadWeapon: true, skill: '블로우 어택', desc: '이계의 지배자 기르타스의 피가 흐르는 파괴의 검 (타격 시 블로우 어택 발동)' }),
     _wp("실프의 심판 활", 58, 6, { isBow: true, dex: 5, hitBonus: 8, skill: '스톰 샷', desc: '바람의 정령왕 실프의 칼바람을 쏘아보내는 활 (타격 시 스톰 샷 발동)' }),
     _wp("발록의 파멸 지팡이", 36, 6, { sp: 12, int: 6, mpRegen: 12, skill: '미티어 스트라이크', desc: '화염과 암흑 마력이 휘몰아치는 보주 지팡이 (타격 시 미티어 스트라이크 발동)' }),
+  
+    
 
-    // [방어구 & 장신구]
+     // [방어구 & 장신구]
     _am("기르타스의 흉갑", "armor", 22, 6, { hpBonus: 350, def: 22, mr: 25, dmgReduct: 8, desc: '적의 어떤 공격도 무력화시키는 이계의 흉갑' }),
     _am("영원의 불사 망토", "cloak", 12, 6, { hpRegen: 20, mpRegen: 12, atk: 8, def: 12, desc: '착용자의 생명력을 끊임없이 회복시키는 신비의 망토' }),
     _am("드래곤 슬레이어 장갑", "gloves", 9, 6, { str: 3, dex: 3, atk: 6, def: 9, desc: '용을 베어넘긴 영웅의 힘이 담긴 장갑' }),
     _am("발라카스의 심장 반지", "ring", 3, 6, { str: 4, hpBonus: 200, atk: 8, desc: '화룡 발라카스의 뜨거운 심장이 박힌 반지' }),
-
+    
 
     // =========================================================================
     // 👑 [전설 III (Grade 7)] - 창세와 절대신의 궁극 신화 장비
@@ -355,6 +365,10 @@ const itemDb = [
     _am("[신화] 불멸의 지배자 방패", "shield", 20, 7, { hpBonus: 300, def: 20, dmgReduct: 10, desc: '모든 재앙을 막아내는 절대적인 불멸의 방패' }),
     _am("[신화] 영겁의 시공 부츠", "boots", 12, 7, { speed: 30, def: 12, dodge: 15, desc: '시간과 공간을 가르는 궁극의 이동 속도와 회피율을 부여하는 신화 부츠' }),
     _am("[신화] 전지전능의 고대 반지", "ring", 6, 7, { str: 6, dex: 6, int: 6, sp: 8, atk: 12, hpBonus: 300, mpBonus: 200, desc: '신에 필적하는 힘을 부여하는 궁극의 반지' }),
+
+
+     _wp("루운의 파멸 대검", 58, 6, { str: 4, isUndeadWeapon: true, skill: '쇼크 스턴', desc: '루운 영주의 원혼이 담긴 핏빛 대검' }),
+     _am("루운의 저주받은 망토", "cloak", 11, 6, { hpRegen: 15, dmgReduct: 5, mr: 18, desc: '루운의 저주로 물리 피해를 크게 감소시킨다.' }),
 
    _pt("고기", 10, 50, {isMeat: true}),
     { name: "무기 마법 주문서", type: "scroll", grade: 2, price: 12600, enchantType: "무기" }, 
