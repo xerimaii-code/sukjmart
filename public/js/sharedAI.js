@@ -9,18 +9,15 @@
             if (!env.now) env.now = performance.now();
             let now = env.now;
 
-            // 💡 [수정됨] 변수 선언을 맨 위로 끌어올려서 ReferenceError 방지!
             let pClass = entity.charClass || entity.mercType || 'knight';
             let isMerc = Boolean(entity.isMercenary || entity.isOtherMerc || entity.isSummon);
             let myLeader = isMerc ? (env.entities.find(e => e && (e.id === entity.ownerId || e.socketId === entity.ownerId || e.socketId === entity.ownerSocketId))) : null;
             let isAgent = Boolean(entity.isAI || (entity.isPlayer && env.entities.find(e => e.id === entity.id && e.socketId !== undefined)));
 
-            // 💡 [콘솔 에러 방어] _ignoredItems가 Set이 아닐 경우 강제 재할당하여 .has() 에러 차단
             if (!entity._ignoredItems || typeof entity._ignoredItems.has !== 'function') {
                 entity._ignoredItems = new Set();
             }
 
-            // 💡 [용병 자율 물약 사용 및 신호 발송 로직]
             if (isMerc && entity.inv) {
                 let isLowHp = (entity.hp / (entity.maxHp || 100)) <= 0.5;
                 if (isLowHp && (now - (entity.lastHpPotTime || 0) > 1000)) {
@@ -31,20 +28,15 @@
                         let healAmt = hpPot.name.includes('맑은') ? 120 : (hpPot.name.includes('주홍') ? 60 : 30);
                         entity.hp = Math.min(entity.maxHp, entity.hp + healAmt);
                         entity.lastHpPotTime = now;
-                        
-                        // 서버로 마시는 이펙트 전송
                         if (typeof env.useEntityPotion === 'function') env.useEntityPotion(entity.id, hpPot.name);
-                        
                         entity.requirePotion = false;
                         entity.waitingForAdena = false;
                     } else {
-                        // 물약이 떨어지면 에이전트/주인에게 요청
                         entity.requirePotion = true;
                         entity.requirePotionName = (entity.level >= 45) ? '맑은 물약' : '주홍 물약';
                     }
                 }
 
-                // 가속 물약 로직
                 let needHaste = !(entity.buffs && entity.buffs['haste'] && entity.buffs['haste'] > now);
                 if (needHaste && entity.target && !entity.requireBuffPotion) {
                     let hName = (entity.mercType === 'knight') ? '용기의 물약' : (entity.mercType === 'elf' ? '엘븐 와퍼' : '초록 물약');
@@ -62,29 +54,20 @@
                 }
             }
 
-            // 💡 [에이전트 무한 정지 방어 코어] 지형 끼임 1.5초 감지 시 즉시 타겟 리셋 및 텔레포트 탈출
             if (entity.isMoving) {
                 if (!entity._stuckTimer) entity._stuckTimer = now;
                 if (!entity._lastX) { entity._lastX = entity.x; entity._lastY = entity.y; }
 
                 if (now - entity._stuckTimer > 1500) {
                     let movedDist = fastHypot(entity.x - entity._lastX, entity.y - entity._lastY);
-                    if (movedDist < 15) { // 1.5초 동안 15px도 못 움직였다면 굳은 상태
+                    if (movedDist < 15) { 
                         entity.isMoving = false;
-                        
-                        // 끼임의 원인이 된 아이템은 블랙리스트에 등록
                         if (entity.targetItem && entity.targetItem.id) {
                             entity._ignoredItems.add(entity.targetItem.id);
                         }
-
-                        entity.target = null;
-                        entity.targetId = null;
-                        entity.targetItem = null;
-                        entity.moveX = undefined;
-                        entity.moveY = undefined;
-                        entity.lastWander = 0; // 즉시 배회 발동
+                        entity.target = null; entity.targetId = null; entity.targetItem = null;
+                        entity.moveX = undefined; entity.moveY = undefined; entity.lastWander = 0; 
                         
-                        // 랜덤하게 튕겨내어 탈출 유도
                         let maxMap = env.mapSize || 4000;
                         entity.x = Math.max(150, Math.min(maxMap - 150, entity.x + (Math.random() * 200 - 100)));
                         entity.y = Math.max(150, Math.min(maxMap - 150, entity.y + (Math.random() * 200 - 100)));
@@ -110,13 +93,10 @@
                     entity.y = myLeader.y + Math.sin(angle) * 40;
                     entity.target = myLeader.target ? env.entities.find(e => e && e.id === myLeader.target.id) : null;
                     entity.targetId = entity.target ? entity.target.id : null;
-                    entity.isMoving = false;
-                    entity.moveX = undefined;
-                    entity.moveY = undefined;
+                    entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
                 }
             }
 
-            // 💡 [아이템 루팅 로직]
             if (!isMerc && !entity.target && !isManualMoving && env.items && env.items.length > 0) {
                 let closestItem = null;
                 let minItemDist = Infinity;
@@ -128,7 +108,6 @@
                         let minGrade = env.minLootGrade || 0;
                         
                         if ((isAlwaysLoot || itemGrade >= minGrade)) {
-                            // 안전하게 has 호출
                             if (entity._ignoredItems && typeof entity._ignoredItems.has === 'function') {
                                 if (entity._ignoredItems.has(it.id)) return;
                             }
@@ -148,7 +127,6 @@
                     entity.isMoving = true;
                     if (minItemDist <= 35 && typeof env.lootItem === 'function') {
                         env.lootItem(closestItem);
-
                         if (entity._ignoredItems && typeof entity._ignoredItems.add === 'function') {
                             entity._ignoredItems.add(closestItem.id);
                             setTimeout(() => {
@@ -157,11 +135,8 @@
                                 }
                             }, 10000);
                         }
-
-                        entity.targetItem = null;
-                        entity.isMoving = false;
-                        entity.moveX = undefined;
-                        entity.moveY = undefined;
+                        entity.targetItem = null; entity.isMoving = false;
+                        entity.moveX = undefined; entity.moveY = undefined;
                     }
                     skipSearch = true;
                 }
@@ -279,7 +254,6 @@
                     }
                 }
 
-                // 💡 [다음 타겟 탐색 및 즉각 추적 - 멈춤 현상 원천 차단]
                 if (!skipSearch && (!entity.target || (entity.target.hp ?? entity.target.h ?? 0) <= 0 || entity.target.isDead)) {
                     let bestTarget = null;
                     let bestScore = Infinity;
@@ -302,7 +276,6 @@
                             return true;
                         });
 
-                        // 1단계 탐색: 에이전트(2500px) / 플레이어(800px) -> 주변에 없으면 전체 맵으로 즉시 풀 확장
                         let searchRadius = isAgent ? 2500 : 800;
                         let nearMobs = validMobs.filter(e => fastHypot(e.x - entity.x, e.y - entity.y) <= searchRadius);
                         let candidatePool = nearMobs.length > 0 ? nearMobs : validMobs;
@@ -323,7 +296,7 @@
                         entity.targetId = bestTarget.id;
                         entity.moveX = bestTarget.x;
                         entity.moveY = bestTarget.y;
-                        entity.isMoving = true; // 💡 타겟 발견 즉시 접근 이동 시작
+                        entity.isMoving = true; 
                         if (typeof env.shareTarget === 'function') env.shareTarget(bestTarget.id);
                     } else {
                         entity.target = null;
@@ -334,7 +307,7 @@
                             entity.isMoving = true;
                         } else {
                             let notMoving = !entity.isMoving || (entity.moveX && fastHypot(entity.moveX - entity.x, entity.moveY - entity.y) < 30);
-                            let wanderDelay = isAgent ? 800 : 1500; // 멍때림 방지를 위해 딜레이 단축
+                            let wanderDelay = isAgent ? 800 : 1500;
 
                             if (notMoving && (!entity.lastWander || now - (entity.lastWander || 0) > wanderDelay)) {
                                 entity.lastWander = now;
@@ -542,15 +515,17 @@
                 }
 
                 if (dist <= atkRange + 30 && !isWaitingCd && !actionTaken) {
-                    entity.isMoving = false; entity.moveX = undefined; entity.moveY = undefined;
-                    entity.lastAttack = now; entity.angle = Math.atan2(finalTarget.y - entity.y, finalTarget.x - entity.x);
+                    entity.isMoving = false; 
+                    entity.moveX = undefined; 
+                    entity.moveY = undefined;
+                    entity.lastAttack = now; 
+                    entity.angle = Math.atan2(finalTarget.y - entity.y, finalTarget.x - entity.x);
+                    
                     let baseAtk = entity.atk || 20;
 
-                    // 💀 [데스나이트 불화살 판별기]
                     let isDeathForm = Boolean(entity.equip && entity.equip.armor && entity.equip.armor.name.includes('데스'));
                     let arrowColor = isDeathForm ? '#ff2200' : '#ffffff';
 
-                    // 💡 [무기 발동 옵션 연산 코어] 무기의 고유 스킬, 마법 속성 발동, 흡혈/마나 스틸 실시간 처리
                     let processWeaponHit = (attacker, targetObj, dmgVal) => {
                         let wp = attacker.equip && attacker.equip.weapon;
                         if (!wp) return;
@@ -605,8 +580,12 @@
                                 return curHp > 0 && fastHypot(e.x - entity.x, e.y - entity.y) < 150 && (e.targetId === entity.id || e.targetId === entity.socketId || e.t === entity.id);
                             }) : [];
                             if (attackersNear.length >= 3 || (entity.hp / (entity.maxHp || 100)) < 0.4) {
-                                entity.furyUntil = now + 4000; entity.furyCooldownUntil = now + 6000; entity.furyCleavedThisCycle = false;
-                                if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", entity.x, entity.y, null, 'ultimate', entity, 20);
+                                entity.furyUntil = now + 4000; 
+                                entity.furyCooldownUntil = now + 6000; 
+                                entity.furyCleavedThisCycle = false;
+                                if (typeof env.triggerPassiveBroadcast === 'function') {
+                                    env.triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", entity.x, entity.y, null, 'ultimate', entity, 20);
+                                }
                             }
                         }
                     }
@@ -616,10 +595,13 @@
                             env.castAttackSpell(finalTarget, chosenSpell, entity);
                             if (chosenSpell === '트리플 애로우' && pClass === 'elf') {
                                 if (!(now < (entity.elfFuryUntil || 0)) && !(now < (entity.elfFuryCooldownUntil || 0))) {
-                                    entity.elfHitCount = (entity.elfHitCount || 0) + 3;
-                                    if (entity.elfHitCount >= 5) {
-                                    entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
-                                }
+                                    entity.elfHitCount = (entity.elfHitCount || 0) + 3; // 트리플 애로우 +3스택
+                                    if (entity.elfHitCount >= 5) { // 🌟 5타로 완화
+                                        entity.elfHitCount = 0;
+                                        entity.elfFuryUntil = now + 4000;
+                                        entity.elfFuryCooldownUntil = now + 7000;
+                                        entity.elfFuryTextShown = false;
+                                    }
                                 }
                             }
                         }
@@ -658,13 +640,18 @@
                                     entity.furyCleavedThisCycle = true;
                                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('광폭화 클리브', finalTarget.x, finalTarget.y, finalTarget.id, 'ultimate', entity);
                                 }
-                            } else { entity.furyCleavedThisCycle = false; }
+                            } else { 
+                                entity.furyCleavedThisCycle = false; 
+                            }
                         }
                         else if (pClass === 'elf') {
                             if (!(now < (entity.elfFuryUntil || 0)) && !(now < (entity.elfFuryCooldownUntil || 0))) {
-                                entity.elfHitCount = (entity.elfHitCount || 0) + 1;
-                                if (entity.elfHitCount >= 5) {
-                                    entity.elfHitCount = 0; entity.elfFuryUntil = now + 4000; entity.elfFuryCooldownUntil = now + 6000; entity.elfFuryTextShown = false;
+                                entity.elfHitCount = (entity.elfHitCount || 0) + 1; // 평타 +1스택
+                                if (entity.elfHitCount >= 5) { // 🌟 5타 발동
+                                    entity.elfHitCount = 0;
+                                    entity.elfFuryUntil = now + 4000;
+                                    entity.elfFuryCooldownUntil = now + 7000;
+                                    entity.elfFuryTextShown = false;
                                 }
                             }
 
@@ -678,7 +665,10 @@
                                 }) : [];
                                 
                                 let bowEnchant = (entity.equip && entity.equip.weapon && entity.equip.weapon.enchantValue) ? entity.equip.weapon.enchantValue : 0;
-                                let furyAtk = Math.floor(baseAtk * (1.4 + (bowEnchant * 0.1)));
+                                
+                                // 🌟 딜 배율 1.4배로 통일
+                                let furyMultiplier = 1.4 + (bowEnchant * 0.1); 
+                                let furyAtk = Math.floor(baseAtk * furyMultiplier);
                                 let totalFuryDamage = 0;
 
                                 splashTargets.forEach(st => {
@@ -705,7 +695,6 @@
                                     if (typeof env.damageEntity === 'function') env.damageEntity(finalTarget, trueDmg, entity, 'magic', '에코 오브 실프');
                                     if (typeof env.triggerPassiveBroadcast === 'function') env.triggerPassiveBroadcast('에코 오브 실프', finalTarget.x, finalTarget.y, finalTarget.id, 'normal', entity);
                                 } else {
-                                    // 🏹 데스나이트 화염 화살 발사 적용
                                     if (typeof env.spawnArrow === 'function') env.spawnArrow(entity, finalTarget, baseAtk, arrowColor);
                                     else if (typeof env.damageEntity === 'function') env.damageEntity(finalTarget, baseAtk, entity, 'physical');
                                     processWeaponHit(entity, finalTarget, baseAtk);
@@ -715,7 +704,6 @@
                         else {
                             if (isRangedAttacker) {
                                 if (typeof env.playSound === 'function') env.playSound('bow');
-                                // 🏹 데스나이트 화염 화살 발사 적용
                                 if (typeof env.spawnArrow === 'function') env.spawnArrow(entity, finalTarget, baseAtk, arrowColor);
                                 else if (typeof env.damageEntity === 'function') env.damageEntity(finalTarget, baseAtk, entity, 'physical');
                                 processWeaponHit(entity, finalTarget, baseAtk);
@@ -728,20 +716,18 @@
                     }
                 }
 
-            // 💡 [용병 떨림 완벽 해결] 플레이어와의 거리에 데드존(Deadzone) 적용
             } else if (isMerc && myLeader && !entity.target && !isManualMoving) {
                 let distToLeader = fastHypot(myLeader.x - entity.x, myLeader.y - entity.y);
-                if (distToLeader > 120) { // 너무 멀면 출발
+                if (distToLeader > 120) { 
                     let angle = Math.atan2(myLeader.y - entity.y, myLeader.x - entity.x);
                     entity.moveX = myLeader.x - Math.cos(angle) * 60;
                     entity.moveY = myLeader.y - Math.sin(angle) * 60;
                     entity.isMoving = true;
-                } else if (distToLeader < 60) { // 가까워지면 확실히 정지
+                } else if (distToLeader < 60) { 
                     entity.isMoving = false;
                     entity.moveX = undefined;
                     entity.moveY = undefined;
                 } else {
-                    // 60~120 사이일 때는 기존 상태 유지 (이동 중이면 마저 이동)
                     if (entity.isMoving && entity.moveX !== undefined) {
                         let destDist = fastHypot(entity.moveX - entity.x, entity.moveY - entity.y);
                         if (destDist < 10) {

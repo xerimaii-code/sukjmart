@@ -3117,21 +3117,33 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
     if (isMyAttack && !e.isPlayer && !e.isSummon) {
         let attackerId = (attacker && attacker.isSummon) ? attacker.id : window.socket.id;
 
-        // 1. 활 공격이고, 화살이 꽂힌 시점(isFromParticle)이 아닌 '발사' 시점일 경우
         if (isBow && !isFromParticle && hitType === 'physical') {
             attacker.lastAttack = performance.now();
             attacker.angle = aimAngle;
             
+            // 🌟 플레이어 평타 1타 누적 및 5타 발동
+            let nowTime = Date.now();
+            let isCoolingDown = nowTime < (attacker.elfFuryCooldownUntil || 0);
+            if (attacker === player && !(nowTime < (attacker.elfFuryUntil || 0)) && !isCoolingDown) {
+                attacker.elfHitCount = (attacker.elfHitCount || 0) + 1; 
+                if (attacker.elfHitCount >= 5) { 
+                    attacker.elfHitCount = 0;
+                    attacker.elfFuryUntil = nowTime + 4000;
+                    attacker.elfFuryCooldownUntil = nowTime + 7000; 
+                    if (typeof dmgTexts !== 'undefined') {
+                        dmgTexts.push({ x: attacker.x, y: attacker.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 22 });
+                    }
+                }
+            }
+
             if (typeof playSound === 'function') playSound('bow');
 
-            // 타 유저들에게 공격 모션과 화살 애니메이션 동기화
             if (window.socket && currentUser) {
                 window.socket.emit('player_attack_action', {
                     casterId: attackerId, angle: aimAngle, targetId: e.id, targetX: e.x, targetY: e.y, isBow: true, actionType: 'shoot', color: projColor
                 });
             }
 
-            // 내 화면에 화살 파티클 생성 (적중 시 isFromParticle = true 로 이 함수가 다시 호출됨)
             if (!window.isBgTick && typeof particles !== 'undefined') {
                 particles.push({ 
                     x: attacker.x, y: attacker.y, speed: 24, life: 1.5, maxLife: 1.5, 
@@ -3139,7 +3151,6 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
                     type: 'arrow', target: e, dmg: dmg, attacker: attacker, rollHit: true 
                 });
             } else {
-                // 백그라운드일 경우 렌더링이 멈추므로, 가상의 화살 비행 시간 후 비동기 전송
                 let dist = Math.hypot(e.x - attacker.x, e.y - attacker.y);
                 let flightTime = (dist / 1440) * 1000;
                 setTimeout(() => {
@@ -3148,15 +3159,13 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
                     }
                 }, flightTime);
             }
-            return; // 💡 여기서 함수를 종료하여, 발사 즉시 대미지가 들어가는 버그 차단!
+            return; 
         }
 
-        // 2. 근접/마법 공격이거나, 화살이 방금 대상에게 '적중(isFromParticle=true)'했을 경우
         e.hitTime = performance.now();
         e.angle = aimAngle;
 
         if (!isBow && !isFromParticle) { 
-            // 근접 공격 모션 전송
             attacker.lastAttack = performance.now();
             attacker.angle = aimAngle;
             if (typeof playSound === 'function') playSound('swing');
@@ -3165,14 +3174,9 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
             }
         }
 
-        // 💡 마침내 서버로 대미지 적용 전송
         if (window.socket && currentUser) {
             window.socket.emit('player_attack_request', {
-                targetId: e.id,
-                attackerId: attackerId,
-                attackType: hitType,
-                calculatedDmg: dmg,
-                magicName: skillName || player.selectedManualSpell || null
+                targetId: e.id, attackerId: attackerId, attackType: hitType, calculatedDmg: dmg, magicName: skillName || player.selectedManualSpell || null
             });
         }
     }
@@ -3182,40 +3186,18 @@ window.damageEntity = function(e, dmg, attacker, hitType = 'physical', skillName
     }
 };
 
-
 function createFireballExplosionEffect(x, y, aoeRadius) {
     if (typeof isBgTick !== 'undefined' && isBgTick) return;
     if (typeof particles === 'undefined' || !Array.isArray(particles)) return;
 
-    particles.push({
-        type: 'fireball_core_flash',
-        x: x, y: y,
-        life: 0.25, maxLife: 0.25,
-        size: aoeRadius * 0.9,
-        color: '#ffea00'
-    });
-
+    particles.push({ type: 'fireball_core_flash', x: x, y: y, life: 0.25, maxLife: 0.25, size: aoeRadius * 0.9, color: '#ffea00' });
     for (let i = 0; i < 6; i++) {
         let angle = (Math.PI * 2 / 6) * i;
-        particles.push({
-            type: 'fireball_spark', x: x, y: y,
-            vx: Math.cos(angle) * 80, vy: Math.sin(angle) * 80,
-            life: 0.3, maxLife: 0.3, size: 8, color: '#ff3300'
-        });
+        particles.push({ type: 'fireball_spark', x: x, y: y, vx: Math.cos(angle) * 80, vy: Math.sin(angle) * 80, life: 0.3, maxLife: 0.3, size: 8, color: '#ff3300' });
     }
-
     for (let i = 0; i < 12; i++) {
-        let rx = (Math.random() - 0.5) * (aoeRadius * 0.5);
-        let ry = (Math.random() - 0.5) * (aoeRadius * 0.5);
-        particles.push({
-            type: 'fireball_flame',
-            x: x + rx, y: y + ry,
-            vx: (Math.random() - 0.5) * 30,
-            vy: -Math.random() * 60 - 20,
-            life: 0.6, maxLife: 0.6,
-            size: Math.random() * 14 + 8,
-            color: Math.random() < 0.5 ? '#ff2200' : '#ff8800'
-        });
+        let rx = (Math.random() - 0.5) * (aoeRadius * 0.5); let ry = (Math.random() - 0.5) * (aoeRadius * 0.5);
+        particles.push({ type: 'fireball_flame', x: x + rx, y: y + ry, vx: (Math.random() - 0.5) * 30, vy: -Math.random() * 60 - 20, life: 0.6, maxLife: 0.6, size: Math.random() * 14 + 8, color: Math.random() < 0.5 ? '#ff2200' : '#ff8800' });
     }
 }
 
@@ -3223,7 +3205,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
     if (!magicName || typeof magicDb === 'undefined' || !magicDb[magicName]) return;
     let mData = magicDb[magicName];
 
-    // 💡 1. 쿨타임 검증
     let now = performance.now();
     caster.spellCooldowns = caster.spellCooldowns || {};
     if (caster.spellCooldowns[magicName] > now + 10000) caster.spellCooldowns[magicName] = 0; 
@@ -3235,64 +3216,45 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return;
     }
 
-    // 2. 특수 마법: 서먼 몬스터
     if (magicName === '서먼 몬스터') {
         if (caster.mp >= mData.mp) {
-            caster.mp -= mData.mp;
-            caster.spellCooldowns[magicName] = performance.now();
+            caster.mp -= mData.mp; caster.spellCooldowns[magicName] = performance.now();
             if (window.socket && currentUser) window.socket.emit('player_summon_monster', { level: caster.level || 1 });
             if (typeof playSound === 'function') playSound('spell');
             if (typeof addMessage === 'function') addMessage("✨ 소환수를 소환합니다!", '#5ff');
             if (typeof updateUI === 'function') updateUI();
-        } else {
-            if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55');
-        }
+        } else { if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55'); }
         return;
     }
 
-    // 3. 힐 마법
     let isHealSpell = mData.heal || magicName.includes('힐') || magicName === '네이쳐스 터치' || magicName === '워터 라이프';
     if (isHealSpell) {
         if (caster.mp >= mData.mp) {
-            caster.mp -= mData.mp;
-            caster.spellCooldowns[magicName] = performance.now();
-            let healAmt = mData.heal || 40;
-            let actualTarget = target || caster;
+            caster.mp -= mData.mp; caster.spellCooldowns[magicName] = performance.now();
+            let healAmt = mData.heal || 40; let actualTarget = target || caster;
             actualTarget.hp = Math.min(actualTarget.maxHp || (actualTarget === player ? currentMaxHp : 100), actualTarget.hp + healAmt);
-            
-            if (window.socket && currentUser) {
-                window.socket.emit('player_magic_action', { magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id, casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap });
-            }
+            if (window.socket && currentUser) { window.socket.emit('player_magic_action', { magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id, casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap }); }
             if (typeof playSound === 'function') playSound('heal');
             if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: actualTarget.x, y: actualTarget.y - 30, text: `+${healAmt} 힐!`, life: 1.2, color: '#5f5' });
             if (typeof updateUI === 'function') updateUI();
-        } else {
-            if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55');
-        }
+        } else { if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55'); }
         return;
     }
 
-    // 4. 버프 마법
     let isBuffSpell = mData.type === 'buff' || magicName === '가속' || magicName === '가속(헤이스트)' || magicName === '윈드 워크' || magicName === '실드';
     if (isBuffSpell) {
         if (caster.mp >= mData.mp) {
-            caster.mp -= mData.mp;
-            caster.spellCooldowns[magicName] = performance.now();
+            caster.mp -= mData.mp; caster.spellCooldowns[magicName] = performance.now();
             let actualTarget = target || caster;
-            if (window.socket && currentUser) {
-                window.socket.emit('player_magic_action', { magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id, casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap });
-            }
+            if (window.socket && currentUser) { window.socket.emit('player_magic_action', { magicName, targetX: actualTarget.x, targetY: actualTarget.y, targetId: actualTarget.id || window.socket.id, casterX: caster.x, casterY: caster.y, casterId: caster.id || window.socket.id, map: currentMap }); }
             if (typeof applyBuff === 'function') applyBuff(magicName, mData.duration || 300000, mData.icon || '💨', mData.buffType || 'speed', mData.val || 60, actualTarget);
             if (typeof playSound === 'function') playSound('spell');
             if (typeof updateUI === 'function') updateUI();
             if (caster === player && typeof addMessage === 'function') addMessage(`✨ [마법 시전] ${magicName}!`, '#5fd');
-        } else {
-            if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55');
-        }
+        } else { if (caster === player && typeof addMessage === 'function') addMessage("MP가 부족합니다.", '#f55'); }
         return;
     }
 
-    // 5. 공격 마법 유효성 검사
     let isAttackMagic = mData.type === 'attack' || mData.dmg;
     if (isAttackMagic) {
         if (typeof isInSafeZone === 'function' && (isInSafeZone(currentMap, caster.x, caster.y) || (target && isInSafeZone(currentMap, target.x, target.y)))) { 
@@ -3317,16 +3279,13 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
         return; 
     }
     
-    // 6. 최종 공격 마법 시전 집행
     if (caster.mp >= mData.mp) {
         caster.mp -= mData.mp; 
         caster.spellCooldowns[magicName] = performance.now();
         if (caster === player) lastSpellCastTime = performance.now();
 
-      if (typeof playSound === 'function') {
-            if (magicName === '트리플 애로우' || magicName.includes('실프의 폭풍')) {
-                // 트리플 애로우는 개별 투사체 발사 시 bow 사운드를 내므로 여기선 스킵
-            }
+        if (typeof playSound === 'function') {
+            if (magicName === '트리플 애로우' || magicName.includes('실프의 폭풍')) { } // 화살 효과음은 damageEntity 발사 시점에서 재생
             else if (magicName === '미티어 스트라이크') playSound('meteor');
             else if (magicName === '이럽션') playSound('eruption');
             else if (magicName === '디스인티그레이트') playSound('disintegrate');
@@ -3342,8 +3301,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             else if (magicName.includes('아이스 스파이크')) playSound('ice_spike');
             else if (magicName === '에너지 볼트') playSound('energy_bolt');
             else playSound('spell');
-        
-        
         } else {
             if (typeof playSound === 'function') playSound('fireball');
         }
@@ -3377,13 +3334,16 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
             let nowTime = Date.now();
             let isCoolingDown = nowTime < (caster.elfFuryCooldownUntil || 0);
 
+            // 🌟 [스킬 스택 누적] 트리플 사용 시 +3 누적 및 5타 완화
             if (caster === player && !(nowTime < (caster.elfFuryUntil || 0)) && !isCoolingDown) {
-                caster.elfHitCount = (caster.elfHitCount || 0) + 3; 
+                caster.elfHitCount = (caster.elfHitCount || 0) + 3;
                 if (caster.elfHitCount >= 5) {
                     caster.elfHitCount = 0;
                     caster.elfFuryUntil = nowTime + 4000;
-                    caster.elfFuryCooldownUntil = nowTime + 6000;
-                    if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 25});
+                    caster.elfFuryCooldownUntil = nowTime + 7000;
+                    if (typeof dmgTexts !== 'undefined') {
+                        dmgTexts.push({ x: caster.x, y: caster.y - 50, text: "🌪️ SYLPH TEMPEST! (실프의 폭풍)", life: 1.5, color: '#34d399', fontSize: 22 });
+                    }
                 }
             }
 
@@ -3391,7 +3351,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
 
             for (let i = 0; i < 3; i++) {
                 setTimeout(() => {
-                    // 💡 수동 파티클 생성 코드 제거됨 (damageEntity가 알아서 딜레이 적용 후 발사함)
                     if (target && target.hp > 0 && target.map === currentMap) {
                         if (isFury) {
                             let splashTargets = entities.filter(e => e && e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && !e.isDead && Math.hypot(e.x - target.x, e.y - target.y) <= 200);
@@ -3412,7 +3371,6 @@ function castAttackSpell(target, magicName, caster = player, ignoreLearnCheck = 
                         } else {
                             damageEntity(target, Math.floor(finalDmg / 3), caster, 'physical', '트리플 애로우');
                         }
-                        // 소리는 damageEntity에서 발사 시점에 재생하므로 생략
                         if (typeof updateUI === 'function') updateUI();
                     }
                 }, i * 90);
@@ -5263,7 +5221,7 @@ window.updateMercenaryAI = function(dt = 16.6) {
     let playerHasHaste = Boolean(player.buffs && (player.buffs['가속(헤이스트)'] || player.buffs['초록물약']));
     
     activeMercs.forEach(m => {
-        let pDist = Math.hypot(player.x - m.x, player.y - m.y); // 💡 수정됨
+        let pDist = Math.hypot(player.x - m.x, player.y - m.y); 
 
         if (pDist > 600) {
             let angle = Math.random() * Math.PI * 2;
@@ -5320,12 +5278,12 @@ window.updateMercenaryAI = function(dt = 16.6) {
 
         let currentTarget = m.target;
         let isCurrentTargetAlive = currentTarget && currentTarget.hp > 0 && !currentTarget.isDead && currentTarget.map === currentMap;
-        let nearbyDangerMob = entities.find(e => e && !e.isSummon && !e.isPlayer && e.hp > 0 && !e.isDead && e.map === currentMap && Math.hypot(e.x - m.x, e.y - m.y) < 140); // 💡 수정됨
+        let nearbyDangerMob = entities.find(e => e && !e.isSummon && !e.isPlayer && e.hp > 0 && !e.isDead && e.map === currentMap && Math.hypot(e.x - m.x, e.y - m.y) < 140);
 
         if (!isCurrentTargetAlive) {
-            let candidates = entities.filter(e => e && !e.isSummon && !e.isPlayer && e.hp > 0 && !e.isDead && e.map === currentMap && Math.hypot(e.x - m.x, e.y - m.y) < 400); // 💡 수정됨
+            let candidates = entities.filter(e => e && !e.isSummon && !e.isPlayer && e.hp > 0 && !e.isDead && e.map === currentMap && Math.hypot(e.x - m.x, e.y - m.y) < 400);
             if (candidates.length > 0) {
-                candidates.sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y)); // 💡 수정됨
+                candidates.sort((a, b) => Math.hypot(a.x - m.x, a.y - m.y) - Math.hypot(b.x - m.x, b.y - m.y));
                 m.target = candidates[0];
             } else { m.target = null; }
         } else {
@@ -5344,14 +5302,14 @@ window.updateMercenaryAI = function(dt = 16.6) {
 
         let chosenSpell = null;
         if (!isLowMpMode && target) {
-            let nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - target.x, en.y - target.y) <= 180).length; // 💡 수정됨
+            let nearbyCount = entities.filter(en => en && en.map === currentMap && !en.isSummon && en.hp > 0 && !en.isDead && Math.hypot(en.x - target.x, en.y - target.y) <= 180).length;
             chosenSpell = typeof selectOptimalSpell === 'function' ? selectOptimalSpell(m, nearbyCount, target) : null;
         }
 
         let pushX = 0, pushY = 0;
         activeMercs.forEach(other => {
             if (other !== m) {
-                let d = Math.hypot(m.x - other.x, m.y - other.y); // 💡 수정됨
+                let d = Math.hypot(m.x - other.x, m.y - other.y); 
                 if (d < 50 && d > 0.1) {
                     let factor = ((50 - d) / 50) * 0.5;
                     pushX += ((m.x - other.x) / d) * factor;
@@ -5361,7 +5319,7 @@ window.updateMercenaryAI = function(dt = 16.6) {
         });
 
         if (target && target.hp > 0 && !target.isDead) {
-            let distToEnemy = Math.hypot(target.x - m.x, target.y - m.y); // 💡 수정됨
+            let distToEnemy = Math.hypot(target.x - m.x, target.y - m.y);
             let isRanged = m.mercType === 'wizard' || (m.mercType === 'elf' && m.equip?.weapon?.isBow !== false);
             let maxAttackRange = isRanged ? 280 : 55;
             let isFleeing = (m.hp / m.maxHp) <= 0.25 && (m.mercHpPotionCount || 0) <= 0;
@@ -5373,7 +5331,7 @@ window.updateMercenaryAI = function(dt = 16.6) {
                 m.y += Math.sin(fleeAngle) * 2 + pushY;
                 m.angle = fleeAngle;
             } 
-            else if (isRanged && (distToEnemy < 180 || (nearbyDangerMob && Math.hypot(nearbyDangerMob.x - m.x, nearbyDangerMob.y - m.y) < 120))) { // 💡 수정됨
+            else if (isRanged && (distToEnemy < 180 || (nearbyDangerMob && Math.hypot(nearbyDangerMob.x - m.x, nearbyDangerMob.y - m.y) < 120))) {
                 m.isMoving = true;
                 m.orbitAngle = (m.orbitAngle || Math.atan2(m.y - player.y, m.x - player.x)) + 0.02;
                 let safeSpotX = player.x + Math.cos(m.orbitAngle) * 240;
@@ -5406,7 +5364,7 @@ window.updateMercenaryAI = function(dt = 16.6) {
                     let isFury = now < (m.furyUntil || 0);
                     
                     if (!isFury && !isCoolingDown) {
-                        let attackersNear = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && Math.hypot(e.x - m.x, e.y - m.y) < 150 && e.targetId === m.id); // 💡 수정됨
+                        let attackersNear = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && Math.hypot(e.x - m.x, e.y - m.y) < 150 && e.targetId === m.id); 
                         if (attackersNear.length >= 3 || (m.hp / m.maxHp) < 0.4) {
                             m.furyUntil = now + 4000; m.furyCooldownUntil = now + 6000;
                             triggerPassiveBroadcast("🔥 BERSERK FURY! (광폭화)", m.x, m.y, null, 'ultimate', m, 20);
@@ -5426,7 +5384,7 @@ window.updateMercenaryAI = function(dt = 16.6) {
                     }
 
                     if (isFury) {
-                        let splashTargets = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && e.id !== target.id && Math.hypot(e.x - target.x, e.y - target.y) <= 95); // 💡 수정됨
+                        let splashTargets = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && e.id !== target.id && Math.hypot(e.x - target.x, e.y - target.y) <= 95); 
                         splashTargets.forEach(st => damageEntity(st, Math.floor(finalDamage * 0.6), m, 'physical'));
                         triggerPassiveBroadcast('광폭화 클리브', target.x, target.y, target.id, 'ultimate', m);
                     }
@@ -5434,36 +5392,55 @@ window.updateMercenaryAI = function(dt = 16.6) {
                 else if (m.mercType === 'elf') {
                     let isCoolingDown = now < (m.elfFuryCooldownUntil || 0);
                     
+                    // 🌟 5타 발동 완화 (용병)
                     if (!(now < (m.elfFuryUntil || 0)) && !isCoolingDown) {
                         m.elfHitCount = (m.elfHitCount || 0) + 1;
                         if (m.elfHitCount >= 5) {
-                            m.elfHitCount = 0; m.elfFuryUntil = now + 4000; m.elfFuryCooldownUntil = now + 6000;
+                            m.elfHitCount = 0; 
+                            m.elfFuryUntil = now + 4000; 
+                            m.elfFuryCooldownUntil = now + 7000;
                             triggerPassiveBroadcast("🌪️ SYLPH TEMPEST! (실프의 폭풍)", m.x, m.y, null, 'elf', m, 20);
                         }
                     }
                     if (typeof playSound === 'function') playSound('bow');
 
                     if (now < (m.elfFuryUntil || 0)) {
-                        let furyAtk = Math.floor(baseAtk * 1.4);
-                        let splashTargets = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && Math.hypot(e.x - target.x, e.y - target.y) <= 200); // 💡 수정됨
+                        let splashTargets = entities.filter(e => e.map === currentMap && !e.isPlayer && !e.isSummon && e.hp > 0 && Math.hypot(e.x - target.x, e.y - target.y) <= 200);
+                        
+                        let bowEnchant = (m.equip && m.equip.weapon && m.equip.weapon.enchantValue) ? m.equip.weapon.enchantValue : 0;
+                        
+                        // 🌟 플레이어와 동일한 대미지 배율 적용
+                        let furyMultiplier = 1.4 + (bowEnchant * 0.1); 
+                        let furyAtk = Math.floor(baseAtk * furyMultiplier);
+                        let totalFuryDamage = 0;
+
                         splashTargets.forEach(st => {
-                            damageEntity(st, furyAtk, m, 'physical', '실프의 폭풍');
-                            particles.push({ x: m.x, y: m.y, speed: 24, life: 1.5, maxLife: 1.5, color: '#34d399', isProj: true, isArrow: true, homing: true, type: 'arrow', target: st, dmg: furyAtk, attacker: m, rollHit: true });
+                            if (typeof damageEntity === 'function') damageEntity(st, furyAtk, m, 'physical', '실프의 폭풍');
+                            totalFuryDamage += furyAtk;
+                            if (typeof particles !== 'undefined') particles.push({ x: m.x, y: m.y, speed: 24, life: 1.5, maxLife: 1.5, color: '#34d399', isProj: true, isArrow: true, homing: true, type: 'arrow', target: st, dmg: furyAtk, attacker: m, rollHit: true });
                         });
-                        triggerPassiveBroadcast('실프의 폭풍', target.x, target.y, target.id, 'ultimate', m);
+
+                        let hpHeal = Math.max(1, Math.floor(totalFuryDamage * 0.02));
+                        let mpGain = Math.max(1, Math.floor(totalFuryDamage * 0.05));
+                        m.hp = Math.min(m.maxHp || 100, m.hp + hpHeal);
+                        m.mp = Math.min(m.maxMp || 100, m.mp + mpGain);
+
+                        if (typeof dmgTexts !== 'undefined') dmgTexts.push({ x: m.x, y: m.y - 35, text: `+${hpHeal} HP / +${mpGain} MP`, life: 1.2, color: '#6ee7b7', fontSize: 13 });
                     } else {
                         if (Math.random() < 0.25) {
                             let trueDmg = Math.floor(baseAtk * 1.3);
-                            damageEntity(target, trueDmg, m, 'magic', '에코 오브 실프');
+                            m.mp = Math.min(m.maxMp || 100, (m.mp || 0) + 4);
+                            if (typeof damageEntity === 'function') damageEntity(target, trueDmg, m, 'magic', '에코 오브 실프');
                             triggerPassiveBroadcast('에코 오브 실프', target.x, target.y, target.id, 'normal', m);
                         } else {
-                            particles.push({ x: m.x, y: m.y, speed: 24, life: 1.5, maxLife: 1.5, color: '#ffffff', isProj: true, isArrow: true, homing: true, type: 'arrow', target: target, dmg: baseAtk, attacker: m, rollHit: true });
-                            window.socket.emit('player_attack_action', { casterId: m.id, angle: m.angle, targetId: target.id, targetX: target.x, targetY: target.y, isBow: true, actionType: 'shoot' });
+                            let arrowColor = (m.equip && m.equip.armor && m.equip.armor.name && m.equip.armor.name.includes('데스')) ? '#ff2200' : '#ffffff';
+                            if (typeof particles !== 'undefined') particles.push({ x: m.x, y: m.y, speed: 24, life: 1.5, maxLife: 1.5, color: arrowColor, isProj: true, isArrow: true, homing: true, type: 'arrow', target: target, dmg: baseAtk, attacker: m, rollHit: true });
+                            if (window.socket) window.socket.emit('player_attack_action', { casterId: m.id, angle: m.angle, targetId: target.id, targetX: target.x, targetY: target.y, isBow: true, actionType: 'shoot' });
                         }
                     }
                 }
                 else if (m.mercType === 'wizard') {
-                    let nearbyCount = entities.filter(mob => mob.map === currentMap && !mob.isPlayer && !mob.isSummon && mob.hp > 0 && Math.hypot(mob.x - target.x, mob.y - target.y) <= 180).length; // 💡 수정됨
+                    let nearbyCount = entities.filter(mob => mob.map === currentMap && !mob.isPlayer && !mob.isSummon && mob.hp > 0 && Math.hypot(mob.x - target.x, mob.y - target.y) <= 180).length;
                     let wizardSkills = ['에너지 볼트', '파이어볼', '이럽션', '선버스트', '블리자드', '라이트닝 스톰'].filter(sName => {
                         let mData = magicDb[sName]; return mData && m.mp >= mData.mp;
                     });
@@ -6086,4 +6063,3 @@ function getMercColorByOwner(ownerKey) {
     const colors = ['#38bdf8', '#f472b6', '#fbbf24', '#34d399', '#a78bfa', '#f87171', '#60a5fa', '#facc15', '#a3e635'];
     return colors[Math.abs(hash) % colors.length];
 }
-
