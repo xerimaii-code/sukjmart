@@ -1725,16 +1725,16 @@ function processMonsterAI() {
                             let magicName = magicPool[Math.floor(Math.random() * magicPool.length)];
                             
                             const SPELL_CONFIGS = {
-                                '미티어 스트라이크': { delay: 1.2, radius: 160, dmg: 480 },
-                                '디스인티그레이트': { delay: 1.0, radius: 140, dmg: 450 },
-                                '저지먼트':         { delay: 1.2, radius: 170, dmg: 420 },
-                                '블리자드':         { delay: 1.1, radius: 150, dmg: 380 },
-                                '라이트닝 스톰':     { delay: 1.0, radius: 130, dmg: 300 },
-                                '토네이도':         { delay: 1.0, radius: 130, dmg: 280 },
-                                '이럽션':           { delay: 0.9, radius: 120, dmg: 220 },
-                                '파이어볼':         { delay: 0.8, radius: 110, dmg: 160 },
-                                '콜 라이트닝':       { delay: 0.7, radius: 100, dmg: 140 }
-                            };
+    '미티어 스트라이크': { delay: 1.35, radius: 150, dmg: 420 }, // 회피를 위해 delay 1.35로 보정
+    '디스인티그레이트': { delay: 1.10, radius: 130, dmg: 390 },
+    '저지먼트':         { delay: 1.35, radius: 160, dmg: 400 },
+    '블리자드':         { delay: 1.20, radius: 140, dmg: 340 },
+    '라이트닝 스톰':     { delay: 1.00, radius: 125, dmg: 280 },
+    '토네이도':         { delay: 1.00, radius: 125, dmg: 260 },
+    '이럽션':           { delay: 0.90, radius: 110, dmg: 200 },
+    '파이어볼':         { delay: 0.85, radius: 100, dmg: 150 },
+    '콜 라이트닝':       { delay: 0.75, radius: 90,  dmg: 130 }
+};
 
                             let cfg = SPELL_CONFIGS[magicName] || { delay: 1.0, radius: 120, dmg: 200 };
                             const castTargetX = target.x;
@@ -1751,44 +1751,48 @@ function processMonsterAI() {
                             });
 
                             setTimeout(() => {
-                                let ownerP = players[ownerSocketId];
-                                if (!ownerP || ownerP.map !== mapId) return;
+    let ownerP = players[ownerSocketId];
+    if (!ownerP || ownerP.map !== mapId) return;
 
-                                let currentTarget = target.socketId ? ownerP : (ownerP.mercs && ownerP.mercs.find(m => m.id === target.id));
-                                if (!currentTarget || currentTarget.hp <= 0) return;
+    let currentTarget = target.socketId ? ownerP : (ownerP.mercs && ownerP.mercs.find(m => m.id === target.id));
+    if (!currentTarget || currentTarget.hp <= 0) return;
 
-                                let pDist = Math.hypot(currentTarget.x - castTargetX, currentTarget.y - castTargetY);
+    let pDist = Math.hypot(currentTarget.x - castTargetX, currentTarget.y - castTargetY);
 
-                                if (pDist <= cfg.radius + 45) {
-                                    let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
-                                    let targetReduc = currentTarget.totalDmgReduction || 0;
-                                    
+    // 🌟 [핵심 개선] +45px 억까 판정 제거 -> +12px (캐릭터 충돌 반경 수준)로 타이트하게 조절
+    if (pDist <= cfg.radius + 12) {
+        let targetMr = currentTarget.totalMr || (currentTarget.int ? currentTarget.int * 2 : 50);
+        let targetReduc = currentTarget.totalDmgReduction || 0;
 
-                                    let targetDodge = currentTarget.dodge || 0;
-                                    if (currentTarget.charClass === 'elf') targetDodge += 5; 
-                                    if (Math.random() * 100 < targetDodge) {
-                                        io.to(ownerSocketId).emit('take_damage', { isDodge: true, targetId: currentTarget.id || currentTarget.socketId });
-                                        return;
-                                    }
+        let targetDodge = currentTarget.dodge || 0;
+        if (currentTarget.charClass === 'elf') targetDodge += 5; 
+        if (Math.random() * 100 < targetDodge) {
+            io.to(ownerSocketId).emit('take_damage', { isDodge: true, targetId: currentTarget.id || currentTarget.socketId });
+            return;
+        }
 
-                                    let magicRatio = 100 / (100 + targetMr);
-                                    let rawMagicDmg = Math.floor(cfg.dmg * magicRatio);
-                                    let finalMagicDmg = Math.max(1, rawMagicDmg - targetReduc);
+        let magicRatio = 100 / (100 + targetMr);
+        let rawMagicDmg = Math.floor(cfg.dmg * magicRatio);
+        let calculatedDmg = Math.max(1, rawMagicDmg - targetReduc);
 
-                                    currentTarget.hp = Math.max(0, currentTarget.hp - finalMagicDmg);
-                                    io.to(ownerSocketId).emit('take_damage', { 
-                                        damage: finalMagicDmg, 
-                                        hitType: 'magic', 
-                                        hpRemaining: currentTarget.hp, 
-                                        targetId: currentTarget.id || currentTarget.socketId 
-                                    });
-                                } else {
-                                    io.to(ownerSocketId).emit('take_damage', { 
-                                        isDodge: true, 
-                                        targetId: currentTarget.id || currentTarget.socketId 
-                                    });
-                                }
-                            }, cfg.delay * 1000);
+        // 🌟 [원샷 캡 적용] 요정/법사 의문사 방지를 위해 최대 HP의 65% 초과 대미지는 상쇄
+        let maxAllowedDmg = Math.floor((currentTarget.maxHp || 1000) * 0.65);
+        let finalMagicDmg = Math.min(calculatedDmg, maxAllowedDmg);
+
+        currentTarget.hp = Math.max(0, currentTarget.hp - finalMagicDmg);
+        io.to(ownerSocketId).emit('take_damage', { 
+            damage: finalMagicDmg, 
+            hitType: 'magic', 
+            hpRemaining: currentTarget.hp, 
+            targetId: currentTarget.id || currentTarget.socketId 
+        });
+    } else {
+        io.to(ownerSocketId).emit('take_damage', { 
+            isDodge: true, 
+            targetId: currentTarget.id || currentTarget.socketId 
+        });
+    }
+}, cfg.delay * 1000);
 
                         } else if (isBowMob || isSpellMob) {
                             let isMagic = isSpellMob;

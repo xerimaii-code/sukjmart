@@ -1334,6 +1334,7 @@ class AIAgentClient {
     }
 
     // 💡 [용병 초기 세팅] 플레이어가 고용할 때와 완벽히 동일한 장비 및 가방 지급
+    // 💡 플레이어의 용병 고용 로직(ui.js)과 100% 동일하게 맞춘 AI 용병 고용/생성기
     checkMercenaryHire() {
         if (Date.now() > this.nextMercCheckTime) {
             this.nextMercCheckTime = Date.now() + 30000 + (Math.random() * 10000); 
@@ -1342,28 +1343,42 @@ class AIAgentClient {
 
             if (myMercs.length < 3 && this.charData.adena >= (cost + 10000)) {
                 this.charData.adena -= cost;
-                let bestType = this.charData.charClass === 'wizard' ? 'knight' : 'wizard';
-                 
+
+                // 에이전트 직업에 맞춰 균형 있게 용병 선택 (또는 무작위)
+                const types = ['knight', 'elf', 'wizard'];
+                let mercType = types[Math.floor(Math.random() * types.length)];
+
+                let typeTitle = mercType === 'knight' ? '기사 용병' : (mercType === 'wizard' ? '마법사 용병' : '요정 용병');
+                let mercName = `${typeTitle} ${myMercs.length + 1}호`;
+                let color = mercType === 'wizard' ? '#88f' : (mercType === 'elf' ? '#8f8' : '#ccc');
+                let targetLevel = this.charData.level || 1;
+                
+                // ui.js의 플레이어 용병 스탯 공식과 동일하게 적용
+                let maxHp = targetLevel * 100 + 200;
+                let maxMp = targetLevel * 50 + 100;
+
                 let defaultWeapon, defaultArmor, starterInventory;
-                if (bestType === 'knight') {
-                    defaultWeapon = { id: 'w_saura_6', name: '+6 싸울아비 장검', type: 'weapon', atk: 16 };
-                    defaultArmor = { id: 'a_muquan_4', name: '+4 무관의 갑옷', def: 8, type: 'armor' };
+
+                if (mercType === 'knight') {
+                    defaultWeapon = { name: '+6 싸울아비 장검', type: 'weapon', atk: 16, enchantValue: 6 };
+                    defaultArmor = { name: '+4 강철 판금 갑옷', type: 'armor', def: 8, enchantValue: 4 };
                     starterInventory = [
                         { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
                         { name: '초록 물약', type: 'potion', count: 20 },
                         { name: '용기의 물약', type: 'potion', count: 10 }
                     ];
-                } else if (bestType === 'elf') {
-                    defaultWeapon = { id: 'w_bow_6', name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true };
-                    defaultArmor = { id: 'a_elf_4', name: '+4 요정족 판금 갑옷', def: 6, type: 'armor' };
+                } else if (mercType === 'elf') {
+                    defaultWeapon = { name: '+6 화염의 활', type: 'weapon', atk: 14, isBow: true, enchantValue: 6 };
+                    defaultArmor = { name: '+4 요정족 판금 갑옷', type: 'armor', def: 6, enchantValue: 4 };
                     starterInventory = [
                         { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
                         { name: '초록 물약', type: 'potion', count: 20 },
                         { name: '엘븐 와퍼', type: 'potion', count: 10 }
                     ];
-                } else {
-                    defaultWeapon = { id: 'w_mana_6', name: '+6 마나의 지팡이', type: 'weapon', atk: 10, sp: 2 };
-                    defaultArmor = { id: 'a_robe_4', name: '+4 신관의 로브', def: 5, type: 'armor' };
+                } else if (mercType === 'wizard') {
+                    // 💡 마법사 용병 전용 정석 장비 (+6 마나의 지팡이 +4 신관의 로브)
+                    defaultWeapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2, mpDrain: 2, enchantValue: 6 };
+                    defaultArmor = { name: '+4 신관의 로브', type: 'armor', def: 6, mpRegen: 5, enchantValue: 4 };
                     starterInventory = [
                         { name: '주홍 물약', type: 'potion', count: 100, heal: 60 },
                         { name: '파란 물약', type: 'potion', count: 50 },
@@ -1371,18 +1386,74 @@ class AIAgentClient {
                     ];
                 }
 
-                this.charData.mercs.push({
-                    id: 'merc_' + Date.now() + '_' + Math.floor(Math.random()*1000),
-                    name: `AI용병 ${myMercs.length + 1}호`, mercType: bestType, charClass: bestType,
-                    x: this.charData.x + 20, y: this.charData.y + 20,
-                    size: 20, hp: 500, maxHp: 500, mp: 200, maxMp: 200,
-                    atk: (this.charData.level || 1) * 3 + 10, def: 10, level: this.charData.level || 1,
-                    isSummon: true, isMercenary: true, ownerId: this.socket.id,
-                    equip: { weapon: defaultWeapon, armor: defaultArmor },
+                let correctMaxExp = 100; // 레벨업 기준 통
+
+                let newMerc = {
+                    id: 'merc_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+                    name: mercName,
+                    mercType: mercType,
+                    charClass: mercType,
+                    x: this.charData.x + (Math.random() * 40 - 20),
+                    y: this.charData.y + (Math.random() * 40 - 20),
+                    map: this.charData.map,
+                    size: 20,
+                    hp: maxHp,
+                    maxHp: maxHp,
+                    mp: maxMp,
+                    maxMp: maxMp,
+                    atk: targetLevel * 3 + 10,
+                    def: 10,
+                    speed: 150,
+                    level: targetLevel,
+                    exp: 0,
+                    maxExp: correctMaxExp,
+                    color: color,
+                    isSummon: true,
+                    isMercenary: true,
+                    ownerId: this.socket.id,
+                    stance: 'attack',
+                    // 💡 장비 슬롯 규격을 플레이어 용병과 완전히 일치시킴
+                    equip: { 
+                        weapon: defaultWeapon, 
+                        armor: defaultArmor, 
+                        helmet: null, 
+                        cloak: null, 
+                        gloves: null, 
+                        boots: null, 
+                        shield: null 
+                    },
+                    mercHpPotionCount: 0,
+                    mercMpPotionCount: 0,
                     inv: starterInventory,
-                    requirePotion: false, requireBuffPotion: false, waitingForAdena: false,
-                    isMoving: false, angle: 0, buffs: {}
-                });
+                    skills: [],
+                    activeBuffs: [],
+                    requirePotion: false, 
+                    requireBuffPotion: false, 
+                    waitingForAdena: false,
+                    isMoving: false, 
+                    angle: 0, 
+                    buffs: {}
+                };
+
+                this.charData.mercs.push(newMerc);
+
+                 this.charData.mercs = this.charData.mercs || []; 
+
+     
+        this.charData.mercs.forEach(m => {
+            let mType = m.mercType || m.charClass;
+            if (mType === 'wizard') {
+                let wpName = m.equip && m.equip.weapon ? m.equip.weapon.name : '';
+                if (!wpName.includes('지팡이')) {
+                    m.equip = m.equip || {};
+                    m.equip.weapon = { name: '+6 마나의 지팡이', type: 'weapon', atk: 8, sp: 2, mpDrain: 2, enchantValue: 6 };
+                    m.equip.armor = { name: '+4 신관의 로브', type: 'armor', def: 6, mpRegen: 5, enchantValue: 4 };
+                    console.log(`[🔧 용병 장비 보정] 마법사 용병(${m.name})의 장비를 정석 지팡이 세팅으로 바로잡았습니다.`);
+                }
+            }
+        });
+
+        this.recalculateAgentStats();
             }
         }
     }
