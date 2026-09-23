@@ -1960,16 +1960,17 @@ function processMonsterSpawning() {
 
         if (spawnBatch > 0 && mData.m?.length > 0) {
             let mapScalingMultiplier = 1.0;
-            let isEndgameMap = mData.recLv && (mData.recLv.includes('100+') || mData.recLv.includes('105+'));
+            // 💡 [수정] 110 및 스케일링 텍스트를 인식하도록 조건 추가
+            let isEndgameMap = mData.recLv && (mData.recLv.includes('100+') || mData.recLv.includes('105+') || mData.recLv.includes('110') || mData.recLv.includes('스케일링'));
 
             if (isEndgameMap) {
                 let playersInMap = Object.values(players).filter(p => p && p.map === mapId);
-                let maxLevelInMap = 105;
+                let maxLevelInMap = 110; // 💡 기준 레벨을 110으로 상향
                 playersInMap.forEach(p => { if (p.level > maxLevelInMap) maxLevelInMap = p.level; });
 
-                if (maxLevelInMap > 105) {
-                    let overLevel = maxLevelInMap - 105;
-                    mapScalingMultiplier = 1.0 + (overLevel * 0.15); 
+                if (maxLevelInMap > 110) {
+                    let overLevel = maxLevelInMap - 110;
+                    mapScalingMultiplier = 1.0 + (overLevel * 0.15); // 110레벨 초과 시 1레벨당 몬스터 스탯 15%씩 증가
                 }
             }
 
