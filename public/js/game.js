@@ -319,10 +319,70 @@ function generateRealisticMap(mapId, bgType) {
         cx.fillStyle = vGrad; cx.fillRect(0, 0, w, h);
     }
     else if (bgType === 'stone') {
-        cx.fillStyle = mapId === 'oren' ? '#e0e8f0' : '#73737a'; cx.fillRect(0, 0, w, h);
+        cx.fillStyle = '#73737a'; cx.fillRect(0, 0, w, h);
         for(let i=0; i<100000; i++) {
-            cx.fillStyle = mapId === 'oren' ? '#ffffff' : '#606066';
+            cx.fillStyle = '#606066';
             cx.fillRect(Math.random()*w, Math.random()*h, 4, 4);
+        }
+    }
+    // ❄️ [신규 추가] 오렌 영지 전용 눈/얼음 지형 생성 로직
+    else if (bgType === 'snow') {
+        // 기본 바닥 (차갑고 푸른빛이 도는 눈밭)
+        cx.fillStyle = '#eaf2f8'; cx.fillRect(0, 0, w, h);
+        
+        // 눈 입자 노이즈 질감
+        for(let i=0; i<150000; i++) {
+            cx.fillStyle = Math.random() > 0.5 ? '#ffffff' : '#d4e6f1';
+            cx.fillRect(Math.random()*w, Math.random()*h, 3, 3);
+        }
+        
+        // 얼음 덩어리 및 눈 쌓인 바위 배치
+        for(let i=0; i<2500; i++) {
+            let tx = Math.random()*w; let ty = Math.random()*h;
+            let size = 15 + Math.random()*20;
+            
+            // 그림자
+            cx.fillStyle = 'rgba(100,120,140,0.3)'; 
+            cx.beginPath(); cx.ellipse(tx+5, ty+5, size*1.2, size*0.8, 0, 0, Math.PI*2); cx.fill();
+            
+            // 바위/얼음 본체
+            let isIce = Math.random() < 0.3;
+            if (isIce) {
+                // 반투명한 푸른 얼음
+                cx.fillStyle = '#a9cce3'; 
+                cx.beginPath(); cx.moveTo(tx, ty-size); cx.lineTo(tx-size*0.8, ty+size*0.5); cx.lineTo(tx+size*0.8, ty+size*0.5); cx.fill();
+                cx.fillStyle = 'rgba(255,255,255,0.6)'; // 얼음 반사광
+                cx.beginPath(); cx.moveTo(tx, ty-size); cx.lineTo(tx, ty+size*0.5); cx.lineTo(tx+size*0.4, ty+size*0.2); cx.fill();
+            } else {
+                // 눈 덮인 바위
+                cx.fillStyle = '#7f8c8d'; 
+                cx.beginPath(); cx.arc(tx, ty, size, 0, Math.PI*2); cx.fill();
+                cx.fillStyle = '#ffffff'; // 윗부분 눈
+                cx.beginPath(); cx.arc(tx, ty-size*0.3, size*0.8, 0, Math.PI); cx.fill();
+            }
+        }
+        
+        // 눈 덮인 고목/침엽수 배치
+        for(let i=0; i<800; i++) {
+            let tx = Math.random()*w; let ty = Math.random()*h;
+            let size = 25 + Math.random()*15;
+            
+            // 그림자
+            cx.fillStyle = 'rgba(0,0,0,0.2)'; 
+            cx.beginPath(); cx.ellipse(tx, ty+size/2, size, size/3, 0, 0, Math.PI*2); cx.fill();
+            
+            // 나무 기둥
+            cx.fillStyle = '#4a3219'; 
+            cx.fillRect(tx-3, ty-size, 6, size);
+            
+            // 눈 덮인 솔잎 (삼각형 층층이)
+            cx.fillStyle = '#ffffff'; // 눈 덮인 잎사귀
+            cx.strokeStyle = '#2d4522'; cx.lineWidth = 1.5;
+            for(let j=3; j>=1; j--) {
+                let hOff = ty - size*1.2 + (j*size*0.3);
+                let wOff = size * 0.4 * j;
+                cx.beginPath(); cx.moveTo(tx, hOff - size*0.5); cx.lineTo(tx - wOff, hOff); cx.lineTo(tx + wOff, hOff); cx.fill(); cx.stroke();
+            }
         }
     }
     else if (bgType === 'tower') {
@@ -1094,11 +1154,68 @@ function drawHumanoid(ctx, name, color, sz, isAttacking, isMoving, frame, isHit,
     }
     else if (safeName.includes('오크') || safeName.includes('오우거') || safeName.includes('미노타우르스') || safeName.includes('예티') || safeName.includes('골렘')) {
         let isOgre = safeName.includes('오우거');
-        let skin = color || '#2e5a1b';
-        ctx.fillStyle = skin; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-
-        ctx.beginPath(); ctx.ellipse(0, -s*1.0, isOgre ? s*1.4 : s*0.9, isOgre ? s*1.2 : s*0.7, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        let isYeti = safeName.includes('예티');
+        let isIceGolem = safeName.includes('얼음 골렘');
         
+        let skin = color || '#2e5a1b';
+        if (isYeti) skin = '#f8fafc'; // 예티의 하얀 털
+        if (isIceGolem) skin = 'rgba(186, 230, 253, 0.85)'; // 반투명한 얼음
+        
+        ctx.fillStyle = skin; 
+        ctx.strokeStyle = isIceGolem ? '#0284c7' : '#000'; // 얼음 골렘은 파란 외곽선
+        ctx.lineWidth = isIceGolem ? 2 : 1.5;
+
+        // ❄️ 아이스 골렘 특수 렌더링 (각진 얼음 덩어리)
+        if (isIceGolem) {
+            ctx.shadowBlur = 10; ctx.shadowColor = '#0ea5e9'; // 얼음 발광 효과
+            // 몸통 (다각형 얼음 덩어리)
+            ctx.beginPath(); ctx.moveTo(0, -s*1.6); ctx.lineTo(-s*1.2, -s*0.8); ctx.lineTo(-s*0.8, 0); ctx.lineTo(s*0.8, 0); ctx.lineTo(s*1.2, -s*0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+            // 내부 얼음 결정 묘사
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath(); ctx.moveTo(0, -s*1.5); ctx.lineTo(-s*0.6, -s*0.8); ctx.lineTo(0, -s*0.2); ctx.lineTo(s*0.6, -s*0.8); ctx.fill();
+            
+            // 양팔 (얼음 기둥)
+            let punchY = isAttacking ? -s*1.5 : 0;
+            ctx.beginPath(); ctx.moveTo(-s*1.8, -s*0.8 + punchY); ctx.lineTo(-s*1.0, -s*0.2 + punchY); ctx.lineTo(-s*1.4, s*0.6 + punchY); ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(s*1.8, -s*0.8); ctx.lineTo(s*1.0, -s*0.2); ctx.lineTo(s*1.4, s*0.6); ctx.closePath(); ctx.fill(); ctx.stroke();
+            
+            ctx.shadowBlur = 0; // 발광 리셋
+            drawBipedLegs('#0284c7', s*0.4, s*0.8, s*0.3); // 다리
+            ctx.restore();
+            return; // 아이스 골렘은 여기서 종료
+        }
+
+        // 몸통 그리기
+        ctx.beginPath(); ctx.ellipse(0, -s*1.0, isOgre ? s*1.4 : (isYeti ? s*1.1 : s*0.9), isOgre ? s*1.2 : (isYeti ? s*1.1 : s*0.7), 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        
+        // ❄️ 예티 특수 렌더링 (북실북실한 털 질감 묘사)
+        if (isYeti) {
+            ctx.fillStyle = '#e2e8f0';
+            for (let i = 0; i < 6; i++) {
+                let ang = (Math.PI / 3) * i;
+                ctx.beginPath(); ctx.arc(Math.cos(ang)*s*1.0, -s*1.0 + Math.sin(ang)*s*0.9, s*0.3, 0, Math.PI*2); ctx.fill();
+            }
+            // 예티 뿔/얼굴
+            ctx.fillStyle = '#0f172a'; // 검은 얼굴
+            ctx.beginPath(); ctx.ellipse(0, -s*1.2, s*0.5, s*0.4, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = '#ef4444'; // 붉은 눈
+            ctx.fillRect(-s*0.2, -s*1.3, 3, 3); ctx.fillRect(s*0.1, -s*1.3, 3, 3);
+            ctx.strokeStyle = '#b45309'; ctx.lineWidth = 3; // 뿔
+            ctx.beginPath(); ctx.moveTo(-s*0.3, -s*1.4); ctx.quadraticCurveTo(-s*0.8, -s*1.8, -s*1.0, -s*1.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(s*0.3, -s*1.4); ctx.quadraticCurveTo(s*0.8, -s*1.8, s*1.0, -s*1.5); ctx.stroke();
+            
+            // 예티 팔
+            let punchY = isAttacking ? -s*1.5 : 0;
+            ctx.fillStyle = skin; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.ellipse(-s*1.2, -s*0.2 + punchY, s*0.5, s*0.8, Math.PI/8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.ellipse(s*1.2, -s*0.2, s*0.5, s*0.8, -Math.PI/8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            
+            drawBipedLegs(skin, s*0.4, s*0.6, s*0.3);
+            ctx.restore();
+            return; // 예티는 여기서 종료
+        }
+
+        // 일반 오크/오우거 로직 (기존 유지)
         if (safeName.includes('전사')) {
             ctx.fillStyle = '#2f3640'; ctx.beginPath(); ctx.ellipse(0, -s*1.0, s*0.95, s*0.4, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             ctx.fillStyle = '#7f8c8d'; ctx.beginPath(); ctx.arc(-s*0.8, -s*1.1, s*0.3, 0, Math.PI*2); ctx.fill(); 
@@ -1111,10 +1228,6 @@ function drawHumanoid(ctx, name, color, sz, isAttacking, isMoving, frame, isHit,
             ctx.fillStyle = '#e5e7eb'; 
             ctx.beginPath(); ctx.moveTo(-s*0.2, -s*1.7); ctx.lineTo(-s*0.8, -s*2.2); ctx.lineTo(0, -s*1.7); ctx.fill(); ctx.stroke();
             ctx.beginPath(); ctx.moveTo(s*0.2, -s*1.7); ctx.lineTo(s*0.8, -s*2.2); ctx.lineTo(0, -s*1.7); ctx.fill(); ctx.stroke();
-        } else if (safeName.includes('예티') || safeName.includes('골렘')) {
-            let punchY = isAttacking ? -s*1.5 : 0;
-            ctx.beginPath(); ctx.ellipse(-s*1.2, -s*0.2 + punchY, s*0.6, s*0.8, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.ellipse(s*1.2, -s*0.2, s*0.6, s*0.8, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
         } else {
             ctx.fillStyle = '#ff0000'; ctx.fillRect(-s*0.45, -s*1.6, s*0.15, s*0.1); 
             ctx.fillStyle = '#eaddcd'; ctx.beginPath(); ctx.moveTo(-s*0.5, -s*1.3); ctx.lineTo(-s*0.6, -s*1.5); ctx.lineTo(-s*0.3, -s*1.3); ctx.fill(); 
@@ -1122,7 +1235,7 @@ function drawHumanoid(ctx, name, color, sz, isAttacking, isMoving, frame, isHit,
 
         if (safeName.includes('궁수')) {
             ctx.strokeStyle = '#5c4033'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(-s*0.7, atkY - s*0.6, s*0.8, -Math.PI/1.5, Math.PI/1.5); ctx.stroke(); 
-        } else if (!safeName.includes('예티') && !safeName.includes('골렘')) {
+        } else {
             ctx.fillStyle = '#4e342e'; ctx.fillRect(-s*0.9, atkY - s*1.4, 4, isOgre ? s*3.0 : s*2.2); 
             ctx.fillStyle = '#7f8c8d'; ctx.beginPath(); ctx.moveTo(-s*0.9, atkY - s*1.0); ctx.lineTo(-s*1.5, atkY - s*1.2); ctx.lineTo(-s*1.5, atkY - s*0.6); ctx.fill();
         }

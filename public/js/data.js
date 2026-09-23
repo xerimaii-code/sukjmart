@@ -55,7 +55,7 @@ const maps = {
     'tower_of_insolence_70': { ..._map('오만의 탑 70층', 'Lv.85~95', 'tower', ['bone_dragon', 'succubus_queen', 'lich'], [{id:'iris', x:3500, y:3500}], [], []), maxMobs: 90 },
     'tower_of_insolence_100': { ..._map('오만의 탑 정상', 'Lv.95~100', 'tower', ['lesser_demon', 'balrog'], [{id:'grim_reaper', x:3500, y:3500}], [], []), maxMobs: 90 },
     'fire_dragon_nest': { ..._map('화룡의 둥지', 'Lv.100+', 'lava', ['fire_egg', 'lavagolem', 'ifrit', 'cerberus'], [{id:'valakas', x:3500, y:3500}], [], []), maxMobs: 75 },
-    'oren': { ..._map('오렌 영지 (설벽)', 'Lv.60~75', 'stone', ['yeti', 'ice_golem'], [], [], []), maxMobs: 65 },
+    'oren': { ..._map('오렌 영지 (설벽)', 'Lv.60~75', 'snow', ['yeti', 'ice_golem'], [], [], []), maxMobs: 65 },
     'heine': { ..._map('하이네 (수중)', 'Lv.65~80', 'dungeon', ['crustacean', 'alligator', 'lizardman'], [], [], []), maxMobs: 75 },
     'aden': { ..._map('아덴 영지', 'Lv.75~90', 'grass', ['lizardman', 'gargoyle'], [], [], []), maxMobs: 65 },
     'forgotten_island': { ..._map('잊혀진 섬', 'Lv.85~99', 'dirt', ['minotaur', 'harpy', 'cockatrice'], [{id:'great_minotaur', x:3500, y:3500}], [], []), maxMobs: 80 },
