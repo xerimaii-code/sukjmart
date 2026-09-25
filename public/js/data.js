@@ -46,6 +46,24 @@ const maps = {
     'gludio_dungeon': { ..._map('글루디오 던전(본던)', 'Lv.30~45', 'dungeon', ['skeleton', 'ghoul', 'bugbear', 'slime'], [{id:'deathknight', x:3500, y:3500}], [], []), maxMobs: 90 },
     'gludin': { ..._map('글루딘 영지(사막 포함)', 'Lv.25~40', 'dirt', ['bugbear', 'scorpion', 'giant_ant', 'basilisk', 'slime'], [{id:'kurz', x:3500, y:3500}], [], []), maxMobs: 70 },
     'ant_cave': { ..._map('개미굴 (사막 동굴)', 'Lv.35~50', 'dungeon', ['giant_ant'], [{id:'ant_queen', x:3500, y:3500}], [], []), maxMobs: 85 },
+
+
+   'fire_village': {
+        ..._map('화전민 마을', '마을(안전)', 'blue_reeds', ['flame_goblin', 'ash_orc', 'lava_scorpion'], [{id:'flame_orc_chief', x:3500, y:3500}], [], [{x: 2000, y: 2000, r: 400}]),
+        maxMobs: 60
+    },
+
+
+    'dragon_tribute': {
+        ..._map('용의 부락', 'Lv.50~65', 'stone', ['valley_wyvern', 'rock_golem_guard', 'drake_ling'], [{id:'ancient_drake', x:3500, y:3500}], [], []),
+        maxMobs: 75
+    },
+    'blood_swamp': {
+        ..._map('피의 늪지대', 'Lv.40~55', 'dungeon', ['swamp_alligator', 'blood_lizardman', 'bog_monster'], [{id:'swamp_lord', x:2500, y:2500}], [], []),
+        maxMobs: 80
+    },
+
+
     'dragon_valley': { ..._map('용의 계곡', 'Lv.55~70', 'stone', ['skeleton_guard', 'ogre', 'cockatrice', 'scorpion'], [{id:'black_elder', x:2000, y:3500}, {id:'drake', x:1500, y:1500}], [], []), maxMobs: 75 },
     'dv_dungeon': { ..._map('용계 던전', 'Lv.65~80', 'dungeon', ['murian', 'succubus', 'bone_dragon'], [{id:'antharas', x:3500, y:3500}], [], []), maxMobs: 90 },
     'tower_of_insolence_1': { ..._map('오만의 탑 1층', 'Lv.75~85', 'tower', ['succubus', 'medusa', 'chimera'], [{id:'zenith_queen', x:3500, y:3500}], [], []), maxMobs: 80 },
@@ -156,8 +174,21 @@ const templates = {
         'caspa': _mob('카스파', 8000, 150, 90, 5000, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 250, isGroup: 'caspa_family', desc: '본던의 지배자'}),
         'balthazar': _mob('발터', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
         'melchior': _mob('메르키오르', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
-        'sema': _mob('세마', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'})
-    }, // 💡 꼬였던 괄호 2차 수정 (정상적으로 mobs 닫힘)
+        'sema': _mob('세마', 7500, 140, 90, 4500, [1500, 3000], 22, '#1e3a8a', {isBoss: true, matk: 200, isGroup: 'caspa_family'}),
+        'flame_goblin': _mob('화전민 고블린', 1800, 55, 90, 850, [150, 400], 18, '#ff4500', {desc: '화산재 뒤집어쓴 고블린'}),
+        'ash_orc': _mob('재의 오크', 3200, 85, 75, 1800, [300, 800], 22, '#cd853f', {desc: '불에 그슬린 오크 전사'}),
+        'lava_scorpion': _mob('용암 전갈', 2800, 95, 85, 2200, [400, 950], 24, '#b22222', {desc: '뜨거운 꼬리를 가진 전갈'}),
+        
+        // 용의 부락 관련 몬스터
+        'valley_wyvern': _mob('골짜기 와이번', 6500, 150, 110, 6000, [900, 2000], 32, '#4682b4', {isBow: true, desc: '하늘을 치솟는 와이번'}),
+        'rock_golem_guard': _mob('암석 수호골렘', 9500, 180, 50, 8500, [1200, 2800], 42, '#708090', {desc: '단단한 바위로 된 골렘'}),
+        'drake_ling': _mob('드레이크 링', 5000, 130, 95, 4500, [700, 1600], 28, '#2e8b57', {desc: '새끼 드레이크'}),
+
+        // 피의 늪지대 관련 몬스터
+        'swamp_alligator': _mob('늪지 악어', 4200, 110, 70, 3500, [500, 1200], 30, '#556b2f', {desc: '늪에 숨어있는 거대 악어'}),
+        'blood_lizardman': _mob('피투성이 리자드맨', 3800, 100, 90, 3000, [450, 1100], 22, '#8b0000', {desc: '피를 바른 리자드맨'}),
+        'bog_monster': _mob('늪 괴물', 4800, 125, 60, 4000, [600, 1400], 35, '#2f4f4f', {desc: '진흙과 늪의 정령'})
+    }, 
 
     // 💡 보스 몬스터 공격력 대폭 상향 패치 적용!
     bosses: {
@@ -166,11 +197,15 @@ const templates = {
         'giant_ungoliant': _mob('거대 웅골리언트', 25000, 260, 90, 4000, [1500, 4000], 40, '#7f1d1d', {matk: 200, isBoss: true}),
         'corrupted_ent': _mob('타락한 엔트', 32000, 310, 80, 4500, [1000, 3000], 45, '#15803d', {matk: 260, isBoss: true}),
         'ant_queen': _mob('여왕 개미', 65000, 420, 90, 120000, [10000, 25000], 60, '#78350f', {matk: 350, isBoss: true, drops: [{name: '거대 개미 여왕의 금빛 날개', chance: 0.05}]}),
+    
 
         // 중반 4인 파티 긴장감 구간 (물약 소모 시작)
         'baphomet': _mob('바포메트', 140000, 550, 105, 150000, [5000, 15000], 30, '#7f1d1d', {matk: 520, isBoss: true, isUndead: true, isMagicBoss: true}),
         'deathknight': _mob('데스나이트', 160000, 620, 115, 180000, [20000, 50000], 30, '#f87171', {matk: 580, isBoss: true, isUndead: true}),
         'black_elder': _mob('흑장로', 130000, 520, 90, 350000, [50000, 120000], 28, '#0f172a', {matk: 600, isBoss: true, isMagicBoss: true}),
+        'flame_orc_chief': _mob('재의 오크 대장', 180000, 480, 100, 250000, [40000, 100000], 45, '#8b0000', {matk: 420, isBoss: true, desc: '화전민 마을을 장악한 오크 우두머리'}),
+        'ancient_drake': _mob('고대 드레이크', 420000, 980, 120, 950000, [150000, 350000], 65, '#006400', {matk: 820, isBoss: true, desc: '용의 부락을 지키는 포악한 고대 드레이크'}),
+        'swamp_lord': _mob('늪지의 군주', 350000, 820, 90, 750000, [100000, 280000], 55, '#556b2f', {matk: 700, isBoss: true, desc: '피의 늪지대를 지배하는 거대 괴수'}),
 
         // 상위 보스 (기사 탱킹 및 컨트롤 필요)
         'kurz': _mob('커츠', 320000, 850, 105, 700000, [80000, 250000], 30, '#1e1b4b', {matk: 780, isBoss: true}),
@@ -204,7 +239,9 @@ const npcs = [
     { id: 'gerard_skt', name: '마법 (은기사)', x: 2150, y: 2050, map: 'silver_knight_town', color: '#7bf' },
     { id: 'mercenary_skt', name: '⚔️ 용병 단장', x: 2000, y: 1950, map: 'silver_knight_town', color: '#ff00aa' },
     { id: 'pandora_giran', name: '상인 (기란)', x: 1850, y: 1950, map: 'giran', color: '#f7d' },
-    { id: 'dayzel_giran', name: '강화 (기란)', x: 2150, y: 1950, map: 'giran', color: '#ff5' }
+    { id: 'dayzel_giran', name: '강화 (기란)', x: 2150, y: 1950, map: 'giran', color: '#ff5' },
+    { id: 'pandora_fv', name: '상인 (화전민)', x: 1850, y: 1950, map: 'fire_village', color: '#f7d' },
+    { id: 'dayzel_fv', name: '강화 (화전민)', x: 2150, y: 1950, map: 'fire_village', color: '#ff5' }
 ];
 
 const itemDb = [
@@ -530,27 +567,40 @@ function getExtraDesc(name) {
 const potionMap = { '빨간': { c: '#d00', g: '#f00' }, '주홍': { c: '#f80', g: '#fa0' }, '맑은': { c: '#fff', g: '#ddd' }, '파란': { c: '#00f', g: '#55f' }, '초록': { c: '#0c0', g: '#0f0' }, '용기': { c: '#da0', g: '#fd0' }, '와퍼': { c: '#8f8', g: '#afa' }, '고기': { c: '#a42', g: '#f66' } };
 function getPotionColorInfo(name) { if (!name || typeof name !== 'string') return { c: '#fff', g: '#fff' }; for(let key in potionMap) if(name.includes(key)) return potionMap[key]; return { c: '#fff', g: '#fff' }; }
 function getPotionIcon(type) { if(type === '고기') return `🍖`; let info = getPotionColorInfo(type); return `<div style="display:inline-block; width:16px; height:20px; background:radial-gradient(circle at 30% 30%, #fff 5%, ${info.c} 60%); border-radius: 5px 5px 2px 2px; border:1px solid #333; box-shadow: 0 0 5px ${info.g}; position:relative; overflow:hidden;"><div style="position:absolute; top:-2px; left:3px; width:8px; height:4px; background:#cca; border-radius:2px;"></div></div>`; }
+
+
 function getItemIcon(it) { 
     if (!it || !it.name) return '🎒'; 
-    let name = it.name; 
-    if(it.type === 'potion') return getPotionIcon(name); 
-    if(it.type === 'scroll') return '📜'; 
-    if(it.type === 'book') return '📘'; 
-    if(it.type === 'earring' || (typeof name === 'string' && name.includes('귀걸이'))) return '💎'; 
-    if(it.type === 'weapon') { 
-        if(it.isBow || (typeof name === 'string' && (name.includes('활') || name.includes('크로스보우') || name.includes('장궁')))) return '🏹'; 
-        if(typeof name === 'string' && name.includes('지팡이')) return '🦯'; 
+    let name = it.name || ''; 
+    let type = it.type || '';
+
+    if (type === 'potion') return getPotionIcon(name); 
+    if (type === 'scroll') return '📜'; 
+    if (type === 'book') return '📘'; 
+    if (type === 'earring' || name.includes('귀걸이')) return '💎'; 
+    
+    if (type === 'weapon') { 
+        if (it.isBow || name.includes('활') || name.includes('크로스보우') || name.includes('장궁')) return '🏹'; 
+        if (name.includes('지팡이')) return '🦯'; 
         return '🗡️'; 
     } 
-    if(it.type === 'armor') return '🦺'; 
-    if(it.type === 'helmet') return '🪖'; 
-    if(it.type === 'shield') return '🛡️'; 
-    if(it.type === 'cloak') return '🧥'; 
-    if(it.type === 'gloves') return '🧤'; 
-    if(it.type === 'boots') return '👢'; 
-    if(it.type === 'belt') return '🎗️'; 
-    if(it.type === 'ring1' || it.type === 'ring2' || it.type === 'ring') return '💍'; 
-    return '🎒'; 
+    
+    // 💡 부위별 완벽 매핑 (이름 포함 단어까지 꼼꼼히 검사)
+    if (type === 'armor' || name.includes('갑옷') || name.includes('로브')) return '🦺'; 
+    if (type === 'helmet' || name.includes('투구') || name.includes('면갑') || name.includes('축복')) return '🪖'; 
+    if (type === 'shield' || name.includes('방패')) return '🛡️'; 
+    
+    // 💡 날개류는 전용 깃털 아이콘, 그 외 망토는 외투 아이콘 적용
+    if (name.includes('날개')) return '🪽'; 
+    if (type === 'cloak' || name.includes('망토') || name.includes('권능')) return '🧥'; 
+    
+    if (type === 'gloves' || name.includes('장갑') || name.includes('글로브')) return '🧤'; 
+    if (type === 'boots' || name.includes('부츠') || name.includes('신발') || name.includes('샌달')) return '👢'; 
+    if (type === 'belt' || name.includes('벨트')) return '🎗️'; 
+    if (type.includes('ring') || name.includes('반지')) return '💍'; 
+    if (type === 'tshirt' || name.includes('티셔츠')) return '👕'; 
+    
+    return '🎒'; // 매핑되지 않은 기타 아이템만 가방으로 출력
 }
 
 function getStackKey(it) { if (it.isEnchantScroll) return `enchant_${it.enchantType}_${it.enchantValue}`; if (['potion', 'scroll', 'book', 'gold'].includes(it.type)) return it.name; if (['weapon', 'armor', 'helmet', 'shield', 'cloak', 'gloves', 'boots', 'belt', 'ring1', 'ring2', 'ring'].includes(it.type)) { let enchant = it.enchantValue || 0; let encType = it.enchantType || 'none'; let opts = (it.magicOptions || []).sort().join(','); return `eq_${it.name}_${enchant}_${encType}_${opts}`; } if (!it.id) it.id = 'eq_' + Math.random().toString(36).substr(2, 9); return it.id; }

@@ -272,6 +272,44 @@ function generateRealisticMap(mapId, bgType) {
             cx.fillStyle = '#426332'; cx.beginPath(); cx.arc(tx-size/4, ty-size/2-size/4, size*0.65, 0, Math.PI*2); cx.fill(); 
         }
     } 
+else if (bgType === 'blue_reeds') {
+        // 1. 차분하고 습지 느낌이 나는 딥 그린/청록빛 베이스 바닥
+        cx.fillStyle = '#2d4a3e'; 
+        cx.fillRect(0, 0, w, h);
+        
+        // 2. 바닥 질감 노이즈 (초원과 진흙의 조화)
+        for(let i = 0; i < 120000; i++) {
+            cx.fillStyle = Math.random() > 0.5 ? '#233830' : '#355c4d';
+            cx.fillRect(Math.random() * w, Math.random() * h, 3, 3);
+        }
+
+        // 3. 🌊 리니지 고증: 무성하게 자란 '긴 푸른 갈대' 렌더링
+        for(let i = 0; i < 2500; i++) {
+            let rx = Math.random() * w; 
+            let ry = Math.random() * h;
+            
+            // 마을 안전지대(중앙 2000, 2000) 주변은 갈대를 비워둠
+            if (Math.hypot(rx - 2000, ry - 2000) < 550) continue; 
+
+            let reedHeight = 25 + Math.random() * 20; // 긴 갈대 높이
+            let bend = (Math.random() - 0.5) * 8;     // 바람에 휘날리는 각도
+
+            // 갈대 줄기 (푸른빛을 띤 청록/올리브 톤)
+            cx.strokeStyle = '#4a7c59'; 
+            cx.lineWidth = 1.5;
+            cx.beginPath();
+            cx.moveTo(rx, ry);
+            cx.quadraticCurveTo(rx + bend * 0.5, ry - reedHeight * 0.5, rx + bend, ry - reedHeight);
+            cx.stroke();
+
+            // 갈대 상단 꽃술/이삭 부분 (특유의 푸르스름하고 은빛이 감도는 털 장식)
+            cx.fillStyle = '#739e82';
+            cx.beginPath();
+            cx.ellipse(rx + bend, ry - reedHeight, 2, 6, bend * 0.1, 0, Math.PI * 2);
+            cx.fill();
+        }
+    }
+
     else if (bgType === 'dirt') {
         cx.fillStyle = '#d1b98a'; cx.fillRect(0, 0, w, h);
         for(let i=0; i<150000; i++) {
@@ -453,8 +491,26 @@ function drawNameTag(ctx, text, x, y, isBoss, isNPC, customFontSize = null, cust
     ctx.fillText(text, x, y); 
     ctx.restore();
 }
-
-
+function getAlignmentColor(alignment) {
+    if (!alignment || alignment === 0) return '#ffffff'; // 중립은 하얀색
+    
+    // 변화 비율을 0.75로 제한하여 마지막 단계에서도 원색처럼 너무 짙어지지 않게 조절
+    let ratio = Math.min(1, Math.abs(alignment) / 30000) * 0.75; 
+    
+    if (alignment > 0) {
+        // 정의 (부드러운 하늘빛 파란 계열: #ffffff -> 은은한 파스텔 블루)
+        let r = Math.round(255 - (255 - 125) * ratio);
+        let g = Math.round(255 - (255 - 211) * ratio);
+        let b = Math.round(255 - (255 - 252) * ratio);
+        return `rgb(${r}, ${g}, ${b})`;
+    } else {
+        // 악인 (부드러운 다크 핑크/뮤트 레드 계열: #ffffff -> 은은한 로즈 톤)
+        let r = Math.round(255 - (255 - 252) * ratio);
+        let g = Math.round(255 - (255 - 165) * ratio);
+        let b = Math.round(255 - (255 - 165) * ratio);
+        return `rgb(${r}, ${g}, ${b})`;
+    }
+}
 function getArmorColor(charClass, grade) {
     if (grade >= 4) return ['#b91c1c', '#7f1d1d']; 
     if (grade === 3) return ['#9333ea', '#581c87']; 
@@ -467,8 +523,11 @@ function getArmorColor(charClass, grade) {
     return ['#64748b', '#334155'];
 }
 
+
+
+// =========================================================================
 // 🌟 [추가] 고급 망토 렌더링 전용 함수
-// 🌟 [교체] 고급 망토 렌더링 전용 함수 (대형 로고 및 구겨짐 효과 추가)
+// =========================================================================
 function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide) {
     if (!eq || !eq.cloak) return;
     ctx.save();
@@ -479,18 +538,19 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
     } else if (eq.cloak.name && eq.cloak.name.includes('은빛')) {
         cBase = '#94a3b8'; cDark = '#475569'; cLight = '#e2e8f0'; 
     } else if (eq.cloak.name && eq.cloak.name.includes('투명')) {
-        cBase = 'rgba(255, 255, 255, 0.4)'; cDark = 'rgba(200, 200, 200, 0.2)'; cLight = 'rgba(255, 255, 255, 0.6)';
+        cBase = 'rgba(210, 230, 250, 0.75)'; 
+        cDark = 'rgba(130, 155, 180, 0.5)'; 
+        cLight = 'rgba(255, 255, 255, 0.9)';
     } else if (charClass === 'elf') { 
         cBase = '#15803d'; cDark = '#064e3b'; cLight = '#4ade80'; 
     } else if (charClass === 'wizard') { 
-        // 💡 마법사 망토: 깊이감 있는 다크 네이비 톤
         cBase = '#231f65'; cDark = '#0e0b30'; cLight = '#6366f1'; 
     } else { 
         cBase = '#991b1b'; cDark = '#450a0a'; cLight = '#f87171'; 
     }
 
-    let sway = isMoving ? Math.sin(timestamp / 90) * (sz * 0.3) : Math.sin(timestamp / 200) * (sz * 0.05);
-    let wave = isMoving ? Math.cos(timestamp / 120) * (sz * 0.15) : 0;
+    let sway = isMoving ? (Math.sin(timestamp / 80) * (sz * 0.35) + Math.sin(timestamp / 160) * (sz * 0.1)) : (Math.sin(timestamp / 250) * (sz * 0.08));
+    let wave = isMoving ? (Math.cos(timestamp / 100) * (sz * 0.2) + Math.sin(timestamp / 200) * (sz * 0.1)) : (Math.cos(timestamp / 300) * (sz * 0.04));
     
     let grad = ctx.createLinearGradient(-sz, 0, sz, 0);
     grad.addColorStop(0, cDark);
@@ -515,16 +575,13 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
         ctx.quadraticCurveTo(0, sz * 1.1 + Math.abs(sway), sz * 1.2 - sway, sz * 0.9 - wave);
         ctx.quadraticCurveTo(sz * 1.1, -sz * 0.2, sz * 0.75, -sz * 0.85);
     } else if (isDown) {
-        ctx.moveTo(-sz * 0.6, -sz * 0.6);
-        ctx.quadraticCurveTo(-sz * 1.0, 0, -sz * 1.1 - sway, sz * 0.8 + wave);
-        ctx.lineTo(sz * 1.1 + sway, sz * 0.8 - wave);
-        ctx.quadraticCurveTo(sz * 1.0, 0, sz * 0.6, -sz * 0.6);
+        ctx.moveTo(-sz * 0.65, -sz * 0.7);
+        ctx.quadraticCurveTo(-sz * 1.1, -0.1, -sz * 1.25 - sway * 0.7, sz * 0.85 + wave);
+        ctx.lineTo(sz * 1.25 + sway * 0.7, sz * 0.85 - wave);
+        ctx.quadraticCurveTo(sz * 1.1, -0.1, sz * 0.65, -sz * 0.7);
     }
     ctx.closePath();
-    
-    
     ctx.fill();
-   
 
     if (isUp) {
         ctx.save();
@@ -532,7 +589,7 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
         
         let emblem = '🛡️';
         if (charClass === 'elf') emblem = '🏹';
-        else if (charClass === 'wizard') emblem = '✨'; // 💡 신비로운 별 로고
+        else if (charClass === 'wizard') emblem = '✨';
         
         ctx.globalAlpha = 0.40; 
         ctx.globalCompositeOperation = 'source-over'; 
@@ -569,7 +626,148 @@ function drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDo
     ctx.restore();
 }
 
-// 🌟 [교체] 캐릭터 통합 렌더링 함수 (렌더링 순서 버그 해결)
+// =========================================================================
+// 💀 [신규] 데스나이트 정밀 렌더링 코어 함수 (플레이어 & 보스 공용)
+// =========================================================================
+function drawDeathKnightPrecise(ctx, bs, isSide, isUp, isDown, isMoving, isSwinging, timestamp) {
+    let step = isMoving && !isSwinging ? Math.sin(timestamp / 80) * (bs * 0.22) : 0;
+    let capeSway = isMoving ? Math.sin(timestamp / 100) * (bs * 0.25) : Math.sin(timestamp / 200) * (bs * 0.08);
+    let headSway = isMoving ? Math.sin(timestamp / 120) * (bs * 0.05) : 0; 
+
+    let cArmor = '#1a1c20';      
+    let cTrim = '#d4af37';       
+    let cBone = '#e5e0d8';       
+    let cBoneShadow = '#8a8570'; 
+    let cCloth = '#3a2525';      
+
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    if (!isUp) {
+        ctx.fillStyle = cCloth; ctx.strokeStyle = '#000'; ctx.lineWidth = bs * 0.04;
+        ctx.beginPath();
+        ctx.moveTo(-bs * 0.25, -bs * 0.3);
+        ctx.quadraticCurveTo(-bs * 0.7 + capeSway, bs * 0.4, -bs * 0.6 + capeSway, bs * 0.9);
+        ctx.lineTo(-bs * 0.2 + capeSway * 0.5, bs * 0.8);
+        ctx.lineTo(bs * 0.2 + capeSway * 0.5, bs * 0.8);
+        ctx.lineTo(bs * 0.6 - capeSway, bs * 0.9);
+        ctx.quadraticCurveTo(bs * 0.7 - capeSway, bs * 0.4, bs * 0.25, -bs * 0.3);
+        ctx.fill(); ctx.stroke();
+    }
+
+    let lX1 = isSide ? -bs * 0.2 : -bs * 0.35;
+    let lX2 = isSide ? bs * 0.1 : bs * 0.35;
+
+    let drawLeg = (lx, yOffset) => {
+        ctx.strokeStyle = cBone; ctx.lineWidth = bs * 0.12;
+        ctx.beginPath(); ctx.moveTo(lx, -bs * 0.2); ctx.lineTo(lx, bs * 0.3 + yOffset); ctx.stroke();
+        
+        ctx.fillStyle = cArmor; ctx.strokeStyle = cTrim; ctx.lineWidth = bs * 0.05;
+        ctx.beginPath();
+        ctx.moveTo(lx - bs * 0.15, bs * 0.2 + yOffset);
+        ctx.lineTo(lx + bs * 0.15, bs * 0.2 + yOffset);
+        ctx.lineTo(lx + bs * 0.2, bs * 0.8 + yOffset);
+        ctx.lineTo(lx - bs * 0.2, bs * 0.8 + yOffset);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+
+        ctx.fillStyle = cTrim;
+        ctx.beginPath(); ctx.arc(lx, bs * 0.2 + yOffset, bs * 0.08, 0, Math.PI * 2); ctx.fill();
+
+        ctx.fillStyle = cBoneShadow;
+        ctx.beginPath(); ctx.ellipse(lx + bs * 0.05, bs * 0.85 + yOffset, bs * 0.15, bs * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+    };
+
+    drawLeg(lX1, -step); drawLeg(lX2, step); 
+
+    let bodyW = isSide ? bs * 0.8 : bs * 1.2;
+    let bodyX = -bodyW / 2;
+
+    ctx.fillStyle = cArmor; ctx.strokeStyle = cTrim; ctx.lineWidth = bs * 0.06;
+    ctx.beginPath();
+    ctx.moveTo(bodyX, -bs * 0.85);
+    ctx.quadraticCurveTo(bodyX + bodyW / 2, -bs * 0.9, bodyX + bodyW, -bs * 0.85);
+    ctx.lineTo(bodyX + bodyW * 1.1, -bs * 0.2); 
+    ctx.lineTo(bodyX + bodyW * 0.5, 0);         
+    ctx.lineTo(bodyX - bodyW * 0.1, -bs * 0.2); 
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    if (!isUp) {
+        ctx.fillStyle = cTrim;
+        ctx.fillRect(-bs * 0.04, -bs * 0.65, bs * 0.08, bs * 0.35); 
+        ctx.fillRect(-bs * 0.15, -bs * 0.55, bs * 0.3, bs * 0.06);  
+    }
+
+    let drawPauldron = (px) => {
+        let pSway = isMoving ? Math.sin(timestamp / 100) * (bs * 0.03) : 0;
+        ctx.fillStyle = cArmor; ctx.strokeStyle = cTrim; ctx.lineWidth = bs * 0.05;
+        ctx.beginPath();
+        ctx.moveTo(px, -bs * 0.7 + pSway);
+        ctx.quadraticCurveTo(px + (px > 0 ? bs * 0.4 : -bs * 0.4), -bs * 1.0 + pSway, px + (px > 0 ? bs * 0.7 : -bs * 0.7), -bs * 0.8 + pSway);
+        ctx.lineTo(px + (px > 0 ? bs * 0.8 : -bs * 0.8), -bs * 0.4 + pSway);
+        ctx.lineTo(px + (px > 0 ? bs * 0.3 : -bs * 0.3), -bs * 0.5 + pSway); 
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+    };
+
+    if (isSide) drawPauldron(0);
+    else { drawPauldron(-bs * 0.5); drawPauldron(bs * 0.5); }
+
+    let hY = -bs * 1.1 + headSway;
+    
+    ctx.fillStyle = cArmor; ctx.strokeStyle = cTrim; ctx.lineWidth = bs * 0.04;
+    ctx.beginPath(); ctx.arc(0, hY + bs * 0.15, bs * 0.3, 0, Math.PI); ctx.fill(); ctx.stroke(); 
+
+    ctx.fillStyle = cBone; ctx.strokeStyle = '#111'; ctx.lineWidth = bs * 0.04;
+    ctx.beginPath();
+    ctx.arc(0, hY - bs * 0.05, bs * 0.22, Math.PI, Math.PI * 2); 
+    ctx.lineTo(bs * 0.18, hY + bs * 0.05);  
+    ctx.lineTo(bs * 0.12, hY + bs * 0.25);  
+    ctx.lineTo(-bs * 0.12, hY + bs * 0.25); 
+    ctx.lineTo(-bs * 0.18, hY + bs * 0.05); 
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    if (!isUp) {
+        ctx.fillStyle = '#050505';
+        ctx.beginPath(); ctx.ellipse(-bs * 0.08, hY + bs * 0.05, bs * 0.06, bs * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(bs * 0.08, hY + bs * 0.05, bs * 0.06, bs * 0.08, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(0, hY + bs * 0.12); ctx.lineTo(-bs * 0.03, hY + bs * 0.18); ctx.lineTo(bs * 0.03, hY + bs * 0.18); ctx.fill();
+
+        ctx.strokeStyle = '#666'; ctx.lineWidth = bs * 0.02;
+        ctx.beginPath(); ctx.moveTo(-bs * 0.08, hY + bs * 0.22); ctx.lineTo(bs * 0.08, hY + bs * 0.22); ctx.stroke();
+        for(let i=-2; i<=2; i++) {
+            ctx.beginPath(); ctx.moveTo(i * bs * 0.025, hY + bs * 0.19); ctx.lineTo(i * bs * 0.025, hY + bs * 0.25); ctx.stroke();
+        }
+
+        ctx.shadowBlur = 10; ctx.shadowColor = '#ccff00';
+        ctx.fillStyle = '#ffffff'; 
+        if (isSide) {
+            ctx.beginPath(); ctx.arc(bs * 0.08, hY + bs * 0.05, 3, 0, Math.PI * 2); ctx.fill();
+        } else {
+            ctx.beginPath(); ctx.arc(-bs * 0.08, hY + bs * 0.05, 2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(bs * 0.08, hY + bs * 0.05, 2, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.shadowBlur = 0; 
+    }
+
+    if (!isSide) {
+        ctx.save();
+        let offShoulderX = isDown ? bs * 0.55 : -bs * 0.55;
+        let offShoulderY = -bs * 0.7;
+        let offArmAngle = isMoving ? Math.sin(timestamp / 150) * 0.3 : 0.1;
+        ctx.translate(offShoulderX, offShoulderY);
+        ctx.rotate(offArmAngle);
+        
+        ctx.strokeStyle = cBone; ctx.lineWidth = bs * 0.08;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, bs * 0.4); ctx.stroke(); 
+        
+        ctx.fillStyle = cArmor; ctx.strokeStyle = cTrim; ctx.lineWidth = bs * 0.04;
+        ctx.beginPath(); ctx.moveTo(-bs*0.1, bs*0.4); ctx.lineTo(bs*0.1, bs*0.4); ctx.lineTo(bs*0.12, bs*0.8); ctx.lineTo(-bs*0.12, bs*0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.restore();
+    }
+}
+
+// =========================================================================
+// 🌟 [교체] 캐릭터 통합 렌더링 함수 (플레이어용 풀버전)
+// =========================================================================
 function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp) {
     if (isNaN(ent.x) || isNaN(ent.y)) { ent.x = 2000; ent.y = 2000; }
     if (isNaN(ent.lastAttack)) ent.lastAttack = 0;
@@ -585,7 +783,6 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
     let t = elapsed / actualAtkDelay; if (t > 1.0) t = 1.0;
     let isSwinging = isAttacking && t < 1.0;
     
-    // 💡 [데스나이트 변신 감지]
     let isDeath = eq && eq.armor && typeof eq.armor.name === 'string' && eq.armor.name.includes('데스');
     
     let wpName = '';
@@ -612,235 +809,145 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
             }
         }
 
-        // 💡 [데스나이트 망토 & 일반 망토 렌더링 준비]
-        let bs = sz; 
-        let capeSway = isMoving ? Math.sin(timestamp / 100) * (bs * 0.3) : Math.sin(timestamp / 200) * (bs * 0.1);
-        
-        let drawDKCape = () => {
-            ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.moveTo(-bs * 0.4, -bs * 0.8);
-            ctx.bezierCurveTo(-bs * 1.3 + capeSway, -bs * 0.2, -bs * 1.5 + capeSway, bs * 0.6, -bs * 1.1 + capeSway, bs * 1.1);
-            ctx.lineTo(-bs * 0.6, bs * 0.8);
-            ctx.lineTo(-bs * 0.2, bs * 1.0 + capeSway * 0.5);
-            ctx.lineTo(bs * 0.3, bs * 0.7);
-            ctx.lineTo(bs * 0.8 - capeSway, bs * 1.1);
-            ctx.bezierCurveTo(bs * 1.2 - capeSway, bs * 0.8, bs * 1.3 - capeSway, 0, bs * 0.5, -bs * 0.8);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-        };
-
-        // 🌟 [레이어 1: 등 뒤 망토] (앞이나 옆을 볼 때 캐릭터 뒤에 깔림)
-        if (isDeath && !isUp) {
-            drawDKCape();
-        } else if (!isDeath && !isUp && eq && eq.cloak) {
-            drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
-        }
+        if (!isUp && eq && eq.cloak && !isDeath) drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
 
         let bodyW = isSide ? sz*1.2 : sz*1.4;
         let bodyX = isSide ? -sz*0.6 : -sz*0.7;
 
-        // ==========================================
-        // 💀 데스나이트 본체 상하좌우(isUp/isDown/isSide) 렌더링
-        // ==========================================
         if (isDeath) {
-            let step = isMoving && !isSwinging ? Math.sin(timestamp / 80) * (bs * 0.22) : 0;
-            let boneColor = '#e2e8f0'; let boneDark = '#cbd5e1'; let goldColor = '#ca8a04'; 
-            let navyTrim = '#1e3a8a'; let darkIron = '#1e293b';
-
-            // 1. 다리 (옆모습일 때 앞뒤 배치 보정)
-            let lX1 = isSide ? -bs * 0.25 : -bs * 0.45;
-            let lX2 = isSide ? bs * 0.05 : bs * 0.15;
-            let lW = isSide ? bs * 0.25 : bs * 0.3;
-
-            ctx.fillStyle = boneDark; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
-            ctx.fillRect(lX1, 0, lW, bs * 0.85 - step); ctx.strokeRect(lX1, 0, lW, bs * 0.85 - step);
-            ctx.fillStyle = navyTrim; ctx.fillRect(lX1, bs * 0.6 - step, lW, bs * 0.15);
-            ctx.fillStyle = goldColor; ctx.beginPath(); ctx.arc(lX1 + lW/2, bs * 0.35 - step, lW/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-            ctx.fillStyle = boneColor; 
-            ctx.fillRect(lX2, 0, lW, bs * 0.85 + step); ctx.strokeRect(lX2, 0, lW, bs * 0.85 + step);
-            ctx.fillStyle = navyTrim; ctx.fillRect(lX2, bs * 0.6 + step, lW, bs * 0.15);
-            ctx.fillStyle = goldColor; ctx.beginPath(); ctx.arc(lX2 + lW/2, bs * 0.35 + step, lW/2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-            // 2. 몸통
-            ctx.fillStyle = darkIron;
-            ctx.beginPath(); ctx.roundRect(bodyX, -bs*0.9, bodyW, bs*0.9, 4); ctx.fill(); ctx.stroke();
-            
-            if (!isUp) {
-                ctx.fillStyle = boneColor;
-                ctx.beginPath(); 
-                ctx.moveTo(bodyX + bs*0.05, -bs*0.7); ctx.lineTo(bodyX + bodyW - bs*0.05, -bs*0.7);
-                ctx.lineTo(bodyX + bodyW*0.8, -bs*0.1); ctx.lineTo(bodyX + bodyW*0.2, -bs*0.1); 
-                ctx.closePath(); ctx.fill(); ctx.stroke();
-
-                ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-                ctx.beginPath();
-                for(let i = 0; i < 3; i++) {
-                    let ry = -bs * 0.6 + i * (bs * 0.18);
-                    ctx.moveTo(bodyX + bs*0.1, ry); ctx.lineTo(0, ry + bs*0.05); ctx.lineTo(bodyX + bodyW - bs*0.1, ry);
-                }
-                ctx.stroke();
-            }
-
-            // 3. 어깨
-            let shX1 = isSide ? -bs * 0.3 : -bs * 0.55;
-            let shX2 = isSide ? bs * 0.2 : bs * 0.55;
-            ctx.fillStyle = goldColor;
-            ctx.beginPath(); ctx.arc(shX1, -bs*0.75, bs*0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(shX2, -bs*0.75, bs*0.2, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = navyTrim;
-            ctx.beginPath(); ctx.arc(shX1, -bs*0.75, bs*0.08, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(shX2, -bs*0.75, bs*0.08, 0, Math.PI*2); ctx.fill();
-
-            // 4. 머리 및 안광 (상하좌우 완벽 보정)
-            let headSway = isMoving ? Math.sin(timestamp / 120) * (bs * 0.1) : 0;
-            ctx.fillStyle = '#f1f5f9';
-            ctx.beginPath(); ctx.arc(0, -bs*1.1 + headSway, bs*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            
-            ctx.fillStyle = navyTrim;
-            ctx.beginPath(); ctx.arc(0, -bs*1.15 + headSway, bs*0.32, Math.PI, 0); ctx.fill(); ctx.stroke();
-            
-            // 앞이나 옆모습일 때만 얼굴(눈)을 그림 (뒤돌아 있으면 얼굴 생략)
-            if (!isUp) {
-                ctx.fillStyle = goldColor;
-                if (isSide) {
-                    // 옆모습 투구 렌더링
-                    ctx.beginPath(); ctx.moveTo(0, -bs*1.1 + headSway); ctx.lineTo(bs*0.3, -bs*1.3 + headSway); ctx.lineTo(bs*0.2, -bs*0.9 + headSway); ctx.fill();
-                    ctx.fillStyle = '#000';
-                    ctx.fillRect(bs*0.1, -bs*1.15 + headSway, bs*0.1, bs*0.08);
-                    ctx.fillStyle = '#ff1100'; 
-                    ctx.beginPath(); ctx.arc(bs*0.15, -bs*1.11 + headSway, 2.5, 0, Math.PI*2); ctx.fill();
-                } else {
-                    // 앞모습 투구 렌더링
-                    ctx.beginPath(); ctx.moveTo(-bs*0.1, -bs*1.1 + headSway); ctx.lineTo(0, -bs*1.4 + headSway); ctx.lineTo(bs*0.1, -bs*1.1 + headSway); ctx.fill(); ctx.stroke();
-                    ctx.fillStyle = '#000';
-                    ctx.fillRect(-bs * 0.15, -bs * 1.15 + headSway, bs * 0.1, bs * 0.08);
-                    ctx.fillRect(bs * 0.05, -bs * 1.15 + headSway, bs * 0.1, bs * 0.08);
-                    ctx.fillStyle = '#ff1100'; 
-                    ctx.beginPath(); ctx.arc(-bs * 0.1, -bs * 1.11 + headSway, 2.5, 0, Math.PI*2); ctx.fill();
-                    ctx.beginPath(); ctx.arc(bs * 0.1, -bs * 1.11 + headSway, 2.5, 0, Math.PI*2); ctx.fill();
-                }
-            }
-        } 
+            let bs = sz; 
+            drawDeathKnightPrecise(ctx, bs, isSide, isUp, isDown, isMoving, isSwinging, timestamp);
+        }
         else if (charClass === 'knight') {
-            let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, 0); 
-            let armorColor = getArmorColor('knight', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
-            cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
-            ctx.fillStyle = cGrad; ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            let armorGrade = (eq && eq.armor) ? (eq.armor.grade || 0) : 0;
+            let cGrad = ctx.createLinearGradient(bodyX, -sz*0.8, bodyX + bodyW, 0); 
+            if (armorGrade >= 4) { cGrad.addColorStop(0, '#fca5a5'); cGrad.addColorStop(0.3, '#b91c1c'); cGrad.addColorStop(1, '#450a0a'); } 
+            else if (armorGrade >= 2) { cGrad.addColorStop(0, '#7dd3fc'); cGrad.addColorStop(0.3, '#0284c7'); cGrad.addColorStop(1, '#0c4a6e'); } 
+            else { cGrad.addColorStop(0, '#cbd5e1'); cGrad.addColorStop(0.3, '#64748b'); cGrad.addColorStop(1, '#1e293b'); }
             
-            ctx.beginPath(); ctx.roundRect(bodyX, -sz*0.8, bodyW, sz*0.9, 3); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = armorColor[1]; 
-            ctx.beginPath(); ctx.arc(bodyX, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(bodyX + bodyW, -sz*0.8, sz*0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            
-            ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('knight', eq.helmet.grade || 0)[0] : '#e0ac69';
-            ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            
-            if(eq && eq.helmet) {
-                ctx.fillStyle = '#b4860b';
+            // 기사 갑옷 몸통 렌더링
+            ctx.fillStyle = cGrad; ctx.strokeStyle = '#020617'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.roundRect(bodyX, -sz*0.8, bodyW, sz*0.9, 4); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#475569'; 
+            ctx.beginPath(); ctx.arc(bodyX, -sz*0.8, sz*0.28, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.beginPath(); ctx.arc(bodyX + bodyW, -sz*0.8, sz*0.28, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = '#d97706'; ctx.fillRect(bodyX + bodyW/2 - 3, -sz*0.5, 6, sz*0.4);
+
+            // 🛡️ [개선된 투구 렌더링] 실제 철제 투구/면갑 스타일
+            let helmColor = armorGrade >= 3 ? '#eab308' : '#94a3b8';
+            let helmDark = armorGrade >= 3 ? '#854d0e' : '#334155';
+
+            if (eq && eq.helmet) {
+                // 철제 투구 돔 (상단부)
+                let hGrad = ctx.createLinearGradient(-sz*0.5, -sz*1.6, sz*0.5, -sz*0.9);
+                hGrad.addColorStop(0, '#f8fafc');
+                hGrad.addColorStop(0.4, helmColor);
+                hGrad.addColorStop(1, helmDark);
+
+                ctx.fillStyle = hGrad;
+                ctx.strokeStyle = '#0f172a';
+                ctx.lineWidth = 1.5;
+
+                // 투구 상단 둥근 각진 돔 구조
+                ctx.beginPath();
+                ctx.roundRect(-sz*0.42, -sz*1.45, sz*0.84, sz*0.68, [8, 8, 4, 4]);
+                ctx.fill();
+                ctx.stroke();
+
                 if (!isUp) { 
-                    ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*1.5); ctx.lineTo(-sz*0.4, -sz*1.8); ctx.lineTo(-sz*0.1, -sz*1.5); ctx.fill();
-                    ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*1.5); ctx.lineTo(sz*0.4, -sz*1.8); ctx.lineTo(sz*0.1, -sz*1.5); ctx.fill();
+                    // 안면 보호대 (Visor Plate)
+                    ctx.fillStyle = '#1e293b';
+                    ctx.beginPath();
+                    ctx.roundRect(-sz*0.36, -sz*1.22, sz*0.72, sz*0.42, 3);
+                    ctx.fill();
+                    ctx.stroke();
+
+                    // 투구 눈구멍(Visor Slit) - 묵직한 철제 가로 슬릿
+                    ctx.fillStyle = '#020617';
+                    ctx.fillRect(-sz*0.26, -sz*1.12, sz*0.52, sz*0.07);
+
+                    // 입김/환기구(Ventilation) 디테일 추가로 점 두개 느낌 완벽 탈피
+                    ctx.fillStyle = '#0f172a';
+                    ctx.fillRect(-sz*0.12, -sz*0.98, sz*0.24, sz*0.035);
+                    ctx.fillRect(-sz*0.08, -sz*0.92, sz*0.16, sz*0.035);
+
+                    // 영웅/전설 등급 이상일 경우 투구 상단 깃털/장식(Crest) 추가
+                    if (armorGrade >= 2) {
+                        ctx.fillStyle = armorGrade >= 4 ? '#dc2626' : '#2563eb';
+                        ctx.beginPath();
+                        ctx.moveTo(0, -sz*1.45);
+                        ctx.lineTo(-sz*0.18, -sz*1.82);
+                        ctx.lineTo(sz*0.18, -sz*1.82);
+                        ctx.fill();
+                    }
+                } else { 
+                    // 뒷모습일 때의 투구 뒷면
+                    ctx.fillStyle = helmDark;
+                    ctx.beginPath();
+                    ctx.roundRect(-sz*0.36, -sz*1.22, sz*0.72, sz*0.42, 3);
+                    ctx.fill();
+                    ctx.stroke();
                 }
-            } else if (isUp) { 
-                ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, 0, Math.PI*2); ctx.fill(); 
             } else { 
-                ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); 
+                // 투구를 장착하지 않은 기본 머리
+                ctx.fillStyle = '#e0ac69';
+                ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                if (isUp) { 
+                    ctx.fillStyle = '#3e2723'; 
+                    ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.4, 0, Math.PI*2); ctx.fill(); 
+                } else { 
+                    ctx.fillStyle = '#3e2723'; 
+                    ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.4, Math.PI, Math.PI*2); ctx.fill(); 
+                }
             }
         }
         else if (charClass === 'elf') {
-            let eBodyW = isSide ? sz*0.9 : sz*1.1;
-            let eBodyX = isSide ? -sz*0.45 : -sz*0.55;
-
+            let eBodyW = isSide ? sz*0.9 : sz*1.1; let eBodyX = isSide ? -sz*0.45 : -sz*0.55;
             let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, 0); 
-            let armorColor = getArmorColor('elf', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
-            cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
-            ctx.fillStyle = cGrad; ctx.strokeStyle = '#14532d'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.roundRect(eBodyX, -sz*0.8, eBodyW, sz*0.9, 2); ctx.fill(); ctx.stroke();
-            
-            if (!isUp) {
-                ctx.fillStyle = '#78350f'; ctx.fillRect(eBodyX, -sz*0.3, eBodyW, sz*0.15);
-                ctx.beginPath(); ctx.moveTo(eBodyX, -sz*0.8); ctx.lineTo(eBodyX + eBodyW, -sz*0.3); ctx.stroke();
-            }
-            
-            ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('elf', eq.helmet.grade || 0)[0] : '#fde047'; 
-            ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            
+            cGrad.addColorStop(0, '#4ade80'); cGrad.addColorStop(0.5, '#15803d'); cGrad.addColorStop(1, '#064e3b');
+            ctx.fillStyle = cGrad; ctx.strokeStyle = '#022c22'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.roundRect(eBodyX, -sz*0.8, eBodyW, sz*0.9, 3); ctx.fill(); ctx.stroke();
+            if (!isUp) { ctx.fillStyle = '#78350f'; ctx.fillRect(eBodyX, -sz*0.3, eBodyW, sz*0.15); ctx.fillStyle = '#f59e0b'; ctx.fillRect(-sz*0.15, -sz*0.32, sz*0.3, sz*0.18); }
+            ctx.fillStyle = '#fde047'; ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.4, 0, Math.PI*2); ctx.fill(); ctx.stroke();
             if(!isUp && (!(eq && eq.helmet) || (eq.helmet.name && typeof eq.helmet.name === 'string' && eq.helmet.name.includes('엘름')))) {
-                ctx.fillStyle = '#e0ac69';
-                ctx.beginPath(); ctx.ellipse(-sz*0.4, -sz*1.1, sz*0.25, sz*0.1, Math.PI/4, 0, Math.PI*2); ctx.fill();
-                ctx.beginPath(); ctx.ellipse(sz*0.4, -sz*1.1, sz*0.25, sz*0.1, -Math.PI/4, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#e0ac69'; ctx.beginPath(); ctx.ellipse(-sz*0.42, -sz*1.1, sz*0.22, sz*0.08, Math.PI/4, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(sz*0.42, -sz*1.1, sz*0.22, sz*0.08, -Math.PI/4, 0, Math.PI*2); ctx.fill();
             }
         }
         else if (charClass === 'wizard') {
-            let wBodyW = isSide ? sz*1.2 : sz*1.4;
-            let wBodyX = isSide ? -sz*0.6 : -sz*0.7;
-
+            let wBodyW = isSide ? sz*1.2 : sz*1.4; let wBodyX = isSide ? -sz*0.6 : -sz*0.7;
             let cGrad = ctx.createLinearGradient(0, -sz*0.8, 0, sz*0.6); 
-            let armorColor = getArmorColor('wizard', (eq && eq.armor) ? (eq.armor.grade || 0) : 0);
-            cGrad.addColorStop(0, armorColor[0]); cGrad.addColorStop(1, armorColor[1]);
-            ctx.fillStyle = cGrad; ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1;
-            
+            cGrad.addColorStop(0, '#4338ca'); cGrad.addColorStop(0.5, '#312e81'); cGrad.addColorStop(1, '#0f172a');
+            ctx.fillStyle = cGrad; ctx.strokeStyle = '#1e1b4b'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(wBodyX + sz*0.2, -sz*0.8); ctx.lineTo(wBodyX + wBodyW - sz*0.2, -sz*0.8); 
             ctx.lineTo(wBodyX + wBodyW, sz*0.6); ctx.lineTo(wBodyX, sz*0.6); ctx.fill(); ctx.stroke();
-            
-            if (!isUp) {
-                ctx.strokeStyle = '#facc15'; ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.moveTo(-sz*0.2, -sz*0.8); ctx.lineTo(-sz*0.3, sz*0.6); ctx.stroke();
-                ctx.beginPath(); ctx.moveTo(sz*0.2, -sz*0.8); ctx.lineTo(sz*0.3, sz*0.6); ctx.stroke();
-            }
-
-            ctx.fillStyle = (eq && eq.helmet) ? getArmorColor('wizard', eq.helmet.grade || 0)[0] : '#e0ac69';
-            ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            
-            if(eq && eq.helmet) {
-                ctx.fillStyle = armorColor[1];
-                ctx.beginPath(); ctx.ellipse(0, -sz*0.9, sz*0.8, sz*0.15, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-                if (!isUp) { ctx.beginPath(); ctx.moveTo(-sz*0.3, -sz*0.9); ctx.lineTo(0, -sz*1.6); ctx.lineTo(sz*0.3, -sz*0.9); ctx.fill(); }
-            } else if (isUp) {
-                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, 0, Math.PI*2); ctx.fill(); 
-            } else { 
-                ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); 
-            }
+            if (!isUp) { ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-sz*0.15, -sz*0.8); ctx.lineTo(-sz*0.2, sz*0.6); ctx.stroke(); ctx.beginPath(); ctx.moveTo(sz*0.15, -sz*0.8); ctx.lineTo(sz*0.2, sz*0.6); ctx.stroke(); }
+            ctx.fillStyle = '#312e81'; ctx.beginPath(); ctx.arc(0, -sz*1.1, sz*0.45, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+            if(eq && eq.helmet || true) {
+                ctx.fillStyle = '#1e1b4b'; ctx.beginPath(); ctx.ellipse(0, -sz*0.95, sz*0.75, sz*0.15, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+                if (!isUp) { ctx.beginPath(); ctx.moveTo(-sz*0.35, -sz*0.95); ctx.lineTo(0, -sz*1.65); ctx.lineTo(sz*0.35, -sz*0.95); ctx.fill(); ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(0, -sz*1.65, 3, 0, Math.PI*2); ctx.fill(); }
+            } else if (isUp) { ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, 0, Math.PI*2); ctx.fill(); } 
+            else { ctx.fillStyle = '#64748b'; ctx.beginPath(); ctx.arc(0, -sz*1.2, sz*0.45, Math.PI, Math.PI*2); ctx.fill(); }
         }
 
         let legOffset = (isMoving && !isSwinging && frame === 0) ? sz*0.3 : 0; 
-        let legSpread = 0;
-        let bowStance = 0;
-
+        let legSpread = 0; let bowStance = 0;
         if (isSwinging) {
-            if (wpType === 'bow') {
-                bowStance = isSide ? sz * 0.25 : sz * 0.1; 
-            } else {
-                legSpread = (charClass === 'knight' || isDeath) ? sz * 0.2 : (charClass === 'elf' ? sz * 0.1 : 0); 
-                if (!isSide) legSpread *= 0.5; 
-            }
+            if (wpType === 'bow') bowStance = isSide ? sz * 0.25 : sz * 0.1; 
+            else { legSpread = (charClass === 'knight' || isDeath) ? sz * 0.2 : (charClass === 'elf' ? sz * 0.1 : 0); if (!isSide) legSpread *= 0.5; }
         }
         
-        // 다리 렌더링 (일반 캐릭터)
         if (!isDeath) {
             if (charClass !== 'wizard') {
                 if (!window.cachedGradients) window.cachedGradients = {};
                 let gradKey = `leg_${sz}`;
-                if (!window.cachedGradients[gradKey]) {
-                    let grad = ctx.createLinearGradient(0, 0, 0, sz*0.8);
-                    grad.addColorStop(0, '#222'); grad.addColorStop(1, '#4a4a4a');
-                    window.cachedGradients[gradKey] = grad;
-                }
+                if (!window.cachedGradients[gradKey]) { let grad = ctx.createLinearGradient(0, 0, 0, sz*0.8); grad.addColorStop(0, '#222'); grad.addColorStop(1, '#4a4a4a'); window.cachedGradients[gradKey] = grad; }
                 ctx.fillStyle = window.cachedGradients[gradKey];
-                ctx.fillRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
-                ctx.strokeRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
-                ctx.fillRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); 
-                ctx.strokeRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); 
-                
-                if (!isUp) {
-                    ctx.fillStyle = '#181818'; ctx.fillRect(-sz*0.3, 0, sz*0.6, sz*0.15);
-                    ctx.fillStyle = '#d4af37'; ctx.fillRect(-sz*0.1, 0, sz*0.2, sz*0.15);
-                }
+                ctx.fillRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); ctx.strokeRect(-sz*0.3 - legSpread - bowStance, 0, sz*0.25, sz*0.8 - legOffset); 
+                ctx.fillRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); ctx.strokeRect(sz*0.05 + legSpread + bowStance, 0, sz*0.25, sz*0.8 + legOffset); 
+                if (!isUp) { ctx.fillStyle = '#181818'; ctx.fillRect(-sz*0.3, 0, sz*0.6, sz*0.15); ctx.fillStyle = '#d4af37'; ctx.fillRect(-sz*0.1, 0, sz*0.2, sz*0.15); }
             } else if (charClass === 'wizard') {
-                ctx.fillStyle = '#222';
-                ctx.fillRect(-sz*0.25 - legSpread, sz*0.6, sz*0.2, sz*0.2 - legOffset); 
-                ctx.fillRect(sz*0.05 + legSpread, sz*0.6, sz*0.2, sz*0.2 + legOffset); 
+                ctx.fillStyle = '#222'; ctx.fillRect(-sz*0.25 - legSpread, sz*0.6, sz*0.2, sz*0.2 - legOffset); ctx.fillRect(sz*0.05 + legSpread, sz*0.6, sz*0.2, sz*0.2 + legOffset); 
             }
         }
 
@@ -851,157 +958,416 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
             let armAngle = 0; let swordAbsAngle = 0; let armLen = sz * 0.5;
 
             if (isSwinging) {
-                if (isDeath) {
-                    // 💀 [데스나이트 전용 파괴적 공격 모션]
-                    armLen = sz * 0.7;
-                    if (wpType === 'bow') {
-                        if (t < 0.5) { armAngle = -Math.PI / 3; swordAbsAngle = Math.PI / 2; } 
-                        else { armAngle = -Math.PI / 6; swordAbsAngle = 0; }
-                    } else if (wpType === 'staff') {
-                        if (t < 0.2) { armAngle = -Math.PI * 0.7; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.7; }
-                        else if (t < 0.5) { armAngle = Math.PI * 0.3; swordAbsAngle = Math.PI * 0.8; shoulderY = -sz * 0.3; }
-                        else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI * 0.3) * (1 - p) + (Math.PI / 6) * p; swordAbsAngle = (Math.PI * 0.8) * (1 - p) - (Math.PI * 0.4) * p; }
-                    } else {
-                        if (t < 0.2) { armAngle = -Math.PI * 0.8; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.7; }
-                        else if (t < 0.5) { armAngle = Math.PI * 0.3; swordAbsAngle = Math.PI * 0.8; shoulderY = -sz * 0.3; }
-                        else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI * 0.3) * (1 - p) + (Math.PI / 8) * p; swordAbsAngle = (Math.PI * 0.8) * (1 - p) - (Math.PI * 0.75) * p; }
-                    }
-                } else if (wpType === 'bow') {
+                if (wpType === 'bow') {
                     armLen = sz * 0.6;
                     if (t < 0.5) {
-                        let phase = t / 0.5; 
-                        armAngle = (-Math.PI / 6) * (1 - phase) + (-Math.PI / 2) * phase; 
-                        swordAbsAngle = (0) * (1 - phase) + (Math.PI / 2) * phase; 
-                        shoulderX = (isSide ? sz * 0.1 : shoulderX) + (sz * 0.2 * phase);
+                        let phase = t / 0.5; armAngle = (-Math.PI / 6) * (1 - phase) + (-Math.PI / 2) * phase; swordAbsAngle = (0) * (1 - phase) + (Math.PI / 2) * phase; shoulderX = (isSide ? sz * 0.1 : shoulderX) + (sz * 0.2 * phase);
                     } else {
-                        let phase = (t - 0.5) / 0.5; 
-                        armAngle = (-Math.PI / 2) * (1 - phase) + (-Math.PI / 6) * phase; 
-                        swordAbsAngle = (Math.PI / 2) * (1 - phase) + (0) * phase; 
-                        shoulderX = (isSide ? sz * 0.3 : shoulderX) * (1 - phase);
+                        let phase = (t - 0.5) / 0.5; armAngle = (-Math.PI / 2) * (1 - phase) + (-Math.PI / 6) * phase; swordAbsAngle = (Math.PI / 2) * (1 - phase) + (0) * phase; shoulderX = (isSide ? sz * 0.3 : shoulderX) * (1 - phase);
                     }
-                } else if (charClass === 'knight') {
+                } else if (charClass === 'knight' || isDeath) {
                     let idleArm = Math.PI / 8, idleSword = -Math.PI * 0.75; armLen = sz * 0.6;
-                    if (t < 0.2) { armAngle = -Math.PI * 0.7; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } 
-                    else if (t < 0.5) { armAngle = Math.PI / 4; swordAbsAngle = Math.PI * 0.7; shoulderY = -sz * 0.4; } 
-                    else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI / 4) * (1 - p*p) + idleArm * (p*p); swordAbsAngle = (Math.PI * 0.7) * (1 - p*p) + idleSword * (p*p); }
+                    if (t < 0.2) { armAngle = -Math.PI * 0.7; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } else if (t < 0.5) { armAngle = Math.PI / 4; swordAbsAngle = Math.PI * 0.7; shoulderY = -sz * 0.4; } else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI / 4) * (1 - p*p) + idleArm * (p*p); swordAbsAngle = (Math.PI * 0.7) * (1 - p*p) + idleSword * (p*p); }
                 } else if (charClass === 'elf') {
                     let idleArm = Math.PI / 8, idleSword = -Math.PI * 0.75; armLen = sz * 0.6;
-                    if (t < 0.2) { armAngle = 0; swordAbsAngle = -Math.PI * 0.3; shoulderY = -sz * 0.5; } 
-                    else if (t < 0.5) { armAngle = -Math.PI * 0.3; swordAbsAngle = Math.PI * 0.55; shoulderY = -sz * 0.5; } 
-                    else { let p = (t - 0.5) / 0.5; armAngle = (-Math.PI * 0.3) * (1 - p) + idleArm * p; swordAbsAngle = (Math.PI * 0.55) * (1 - p) + idleSword * p; }
+                    if (t < 0.2) { armAngle = 0; swordAbsAngle = -Math.PI * 0.3; shoulderY = -sz * 0.5; } else if (t < 0.5) { armAngle = -Math.PI * 0.3; swordAbsAngle = Math.PI * 0.55; shoulderY = -sz * 0.5; } else { let p = (t - 0.5) / 0.5; armAngle = (-Math.PI * 0.3) * (1 - p) + idleArm * p; swordAbsAngle = (Math.PI * 0.55) * (1 - p) + idleSword * p; }
                 } else if (charClass === 'wizard') {
                     let idleArm = Math.PI / 6, idleSword = -Math.PI * 0.4; armLen = sz * 0.5;
-                    if (t < 0.2) { armAngle = -Math.PI * 0.2; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } 
-                    else if (t < 0.5) { armAngle = Math.PI * 0.1; swordAbsAngle = -Math.PI * 0.6; shoulderY = -sz * 0.5; } 
-                    else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI * 0.1) * (1 - p) + idleArm * p; swordAbsAngle = (-Math.PI * 0.6) * (1 - p) + idleSword * p; }
+                    if (t < 0.2) { armAngle = -Math.PI * 0.2; swordAbsAngle = -Math.PI * 0.2; shoulderY = -sz * 0.6; } else if (t < 0.5) { armAngle = Math.PI * 0.1; swordAbsAngle = -Math.PI * 0.6; shoulderY = -sz * 0.5; } else { let p = (t - 0.5) / 0.5; armAngle = (Math.PI * 0.1) * (1 - p) + idleArm * p; swordAbsAngle = (-Math.PI * 0.6) * (1 - p) + idleSword * p; }
                 }
             } else {
-                if (wpType === 'bow') { armAngle = -Math.PI / 6; swordAbsAngle = 0; } 
-                else if (wpType === 'staff') { armAngle = Math.PI / 6; swordAbsAngle = -Math.PI * 0.4; } 
-                else { armAngle = Math.PI / 8; swordAbsAngle = -Math.PI * 0.75; }
-                
-                if (isMoving && wpType !== 'bow') { 
-                    let sway = (wpType === 'staff') ? 0.015 : 0.05;
-                    armAngle += Math.sin(timestamp / 150) * (sway * 2); 
-                    swordAbsAngle += Math.sin(timestamp / 150) * sway; 
-                }
+                if (wpType === 'bow') { armAngle = -Math.PI / 6; swordAbsAngle = 0; } else if (wpType === 'staff') { armAngle = Math.PI / 6; swordAbsAngle = -Math.PI * 0.4; } else { armAngle = Math.PI / 8; swordAbsAngle = -Math.PI * 0.75; }
+                if (isMoving && wpType !== 'bow') { let sway = (wpType === 'staff') ? 0.015 : 0.05; armAngle += Math.sin(timestamp / 150) * (sway * 2); swordAbsAngle += Math.sin(timestamp / 150) * sway; }
             }
             
             ctx.translate(shoulderX, shoulderY); ctx.rotate(armAngle);
             
-            // 💀 [데스나이트 철갑 팔 강제 변환]
-            ctx.fillStyle = isDeath ? '#0f172a' : (eq.armor ? getArmorColor(charClass, eq.armor.grade || 0)[0] : '#e0ac69');
-            
-            ctx.fillRect(-sz*0.15, 0, sz*0.3, armLen); 
-            ctx.translate(0, armLen);
-            if (wpType !== 'bow') { ctx.rotate(-armAngle); ctx.rotate(swordAbsAngle); }
-
-            ctx.fillStyle = eq.gloves ? '#444' : '#e0ac69'; ctx.beginPath(); ctx.arc(0, 0, sz*0.2, 0, Math.PI*2); ctx.fill();
-
-            // 🌟 [무기 등급 & 인챈트 외형 반영]
-            let wGrade = eq.weapon.grade || 0;
-            let wEnchant = eq.weapon.enchantValue || 0;
-            let wColor = '#eee'; 
-            let glow = null;
-
-            if (wGrade >= 7) { wColor = '#f33'; glow = '#ff0000'; } 
-            else if (wGrade >= 5) { wColor = '#fbbf24'; glow = '#d97706'; } 
-            else if (wGrade >= 3) { wColor = '#c084fc'; glow = '#9333ea'; } 
-            else if (wpType === 'bow') { wColor = '#852'; } 
-            else if (wpType === 'staff') { wColor = '#531'; glow = '#a3f'; }
-
-            if (wEnchant >= 10) glow = '#ff00ff';
-            else if (wEnchant >= 9) glow = '#ff0055';
-            else if (wEnchant >= 7 && !glow) glow = '#00ffff';
-
-            // 💀 [데스나이트 불무기 강제 변환]
             if (isDeath) {
-                let fireGrad = ctx.createLinearGradient(0, -sz*2.5, 0, 0);
-                fireGrad.addColorStop(0, '#ffffff');
-                fireGrad.addColorStop(0.3, '#ffea00');
-                fireGrad.addColorStop(0.7, '#ff2200');
-                fireGrad.addColorStop(1, '#3b0000');
-                wColor = fireGrad;
-                glow = '#ff2200';
+                ctx.strokeStyle = '#e5e0d8'; ctx.lineWidth = sz * 0.08;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, armLen); ctx.stroke();
+                
+                ctx.fillStyle = '#1a1c20'; ctx.strokeStyle = '#d4af37'; ctx.lineWidth = sz * 0.04;
+                ctx.beginPath();
+                ctx.moveTo(-sz * 0.1, armLen * 0.4); ctx.lineTo(sz * 0.1, armLen * 0.4);
+                ctx.lineTo(sz * 0.13, armLen * 0.9); ctx.lineTo(-sz * 0.13, armLen * 0.9);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.translate(0, armLen);
+                if (wpType !== 'bow') { ctx.rotate(-armAngle); ctx.rotate(swordAbsAngle); }
+                ctx.fillStyle = '#8a8570'; ctx.beginPath(); ctx.arc(0, 0, sz * 0.12, 0, Math.PI*2); ctx.fill();
+            } else {
+                ctx.fillStyle = eq.armor ? getArmorColor(charClass, eq.armor.grade || 0)[0] : '#e0ac69';
+                ctx.fillRect(-sz*0.15, 0, sz*0.3, armLen); 
+                ctx.translate(0, armLen);
+                if (wpType !== 'bow') { ctx.rotate(-armAngle); ctx.rotate(swordAbsAngle); }
+                ctx.fillStyle = eq.gloves ? '#444' : '#e0ac69'; ctx.beginPath(); ctx.arc(0, 0, sz*0.2, 0, Math.PI*2); ctx.fill();
             }
+
+            let wGrade = eq.weapon.grade || 0; let wEnchant = eq.weapon.enchantValue || 0; let wColor = '#eee'; let glow = null;
+            if (wGrade >= 7) { wColor = '#f33'; glow = '#ff0000'; } else if (wGrade >= 5) { wColor = '#fbbf24'; glow = '#d97706'; } else if (wGrade >= 3) { wColor = '#c084fc'; glow = '#9333ea'; } else if (wpType === 'bow') { wColor = '#852'; } else if (wpType === 'staff') { wColor = '#531'; glow = '#a3f'; }
+            if (wEnchant >= 10) glow = '#ff00ff'; else if (wEnchant >= 9) glow = '#ff0055'; else if (wEnchant >= 7 && !glow) glow = '#00ffff';
 
             if (glow) { ctx.shadowBlur = 15; ctx.shadowColor = glow; }
             
             if(wpType === 'bow') {
-                let bowColor = isDeath ? '#ff5500' : wColor;
-                ctx.lineWidth = isDeath ? 4 : 2; 
-                ctx.strokeStyle = bowColor; 
-                ctx.beginPath(); ctx.arc(0, -sz*0.6, sz*0.8, -Math.PI/2, Math.PI/2); ctx.stroke(); 
-                
-                ctx.strokeStyle = isDeath ? '#ff2200' : '#fff'; 
-                ctx.lineWidth = isDeath ? 2 : 1; 
-                ctx.beginPath(); ctx.moveTo(0,-sz*1.4); ctx.lineTo(0,sz*0.2); ctx.stroke();
-                
-                if (isSwinging && isDeath) {
-                    ctx.fillStyle = '#ff2200';
-                    ctx.fillRect(-2, -sz*0.6, sz*0.8, 4); // 💡 장전된 불화살 시각 효과 추가
-                }
+                ctx.lineWidth = 2; ctx.strokeStyle = wColor; ctx.beginPath(); ctx.arc(0, -sz*0.6, sz*0.8, -Math.PI/2, Math.PI/2); ctx.stroke(); 
+                ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0,-sz*1.4); ctx.lineTo(0,sz*0.2); ctx.stroke();
             } else if(wpType === 'staff') {
                 ctx.fillStyle = '#421'; ctx.fillRect(-2, -sz*1.7, 4, sz*2.3); 
                 ctx.fillStyle = glow ? glow : (typeof wColor === 'string' && wColor === '#531' ? '#5cf' : wColor);
-                ctx.beginPath(); ctx.arc(0, -sz*1.9, sz*0.3, 0, Math.PI*2); ctx.fill();
-                ctx.strokeStyle = '#fd0'; ctx.lineWidth = 1.5; ctx.stroke();
-            } else if(wpType === 'dagger') {
+                ctx.beginPath(); ctx.arc(0, -sz*1.9, sz*0.15, 0, Math.PI*2); ctx.fill();
+                ctx.strokeStyle = '#fd0'; ctx.lineWidth = 1; ctx.stroke();
+            }else if(wpType === 'dagger') {
                 ctx.fillStyle = '#111'; ctx.fillRect(-2, -sz*0.1, 4, sz*0.4); ctx.fillStyle = '#b8860b'; ctx.fillRect(-sz*0.3, -4, sz*0.6, 4); 
-                if (typeof wColor === 'string') {
-                    let bladeGrad = ctx.createLinearGradient(0, -sz*1.3, 0, 0); 
-                    bladeGrad.addColorStop(0, '#fff'); bladeGrad.addColorStop(1, wColor); 
-                    ctx.fillStyle = bladeGrad; 
-                } else { ctx.fillStyle = wColor; }
+                if (typeof wColor === 'string') { let bladeGrad = ctx.createLinearGradient(0, -sz*1.3, 0, 0); bladeGrad.addColorStop(0, '#fff'); bladeGrad.addColorStop(1, wColor); ctx.fillStyle = bladeGrad; } else { ctx.fillStyle = wColor; }
                 ctx.beginPath(); ctx.moveTo(-sz*0.15, -4); ctx.lineTo(-sz*0.08, -sz*1.0); ctx.lineTo(0, -sz*1.5); ctx.lineTo(sz*0.08, -sz*1.0); ctx.lineTo(sz*0.15, -4); ctx.fill();
                 ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-0.5, -sz*1.2, 1, sz*1.2);
             } else {
                 ctx.fillStyle = '#111'; ctx.fillRect(-3, -sz*0.1, 6, sz*0.5); ctx.fillStyle = '#b8860b'; ctx.fillRect(-sz*0.4, -4, sz*0.8, 6); 
-                if (typeof wColor === 'string') {
-                    let bladeGrad = ctx.createLinearGradient(0, -sz*2.8, 0, 0); 
-                    bladeGrad.addColorStop(0, '#fff'); bladeGrad.addColorStop(1, wColor); 
-                    ctx.fillStyle = bladeGrad; 
-                } else { ctx.fillStyle = wColor; }
+                if (typeof wColor === 'string') { let bladeGrad = ctx.createLinearGradient(0, -sz*2.8, 0, 0); bladeGrad.addColorStop(0, '#fff'); bladeGrad.addColorStop(1, wColor); ctx.fillStyle = bladeGrad; } else { ctx.fillStyle = wColor; }
                 ctx.beginPath(); ctx.moveTo(-sz*0.2, -4); ctx.lineTo(-sz*0.12, -sz*2.4); ctx.lineTo(0, -sz*2.9); ctx.lineTo(sz*0.12, -sz*2.4); ctx.lineTo(sz*0.2, -4); ctx.fill();
                 ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-1, -sz*2.4, 2, sz*2.3);
             }
             ctx.restore();
         }
 
-        // 🌟 [레이어 3: 등 덮기] 위쪽(뒤)을 볼 때 망토가 등 위로 올라옴
-        if (isUp) {
-            if (isDeath) {
-                drawDKCape();
-            } else if (eq && eq.cloak) {
-                drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
-            }
-        }
+        if (isUp && eq && eq.cloak && !isDeath) drawLuxuryCloak(ctx, eq, charClass, sz, isMoving, timestamp, isUp, isDown, isSide);
 
     } finally {
         ctx.restore();
     }
 }
 
+// =========================================================================
+// 👑 [전체 교체] 보스 몬스터 렌더링 함수
+// =========================================================================
+function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
+    ctx.save();
+    let s = sz * 1.35; 
+    let atkY = isAttacking ? -s * 0.45 : 0;
+    let safeName = String(name || '').trim();
+
+    if (isHit) { ctx.globalAlpha = 0.85; ctx.filter = 'brightness(230%)'; }
+
+    ctx.shadowBlur = 0; ctx.save(); ctx.scale(1, 0.35);
+    let shadowPulse = Math.sin(ts / 150) * (s * 0.1);
+    let sGrad = ctx.createRadialGradient(0, s * 2.2, 0, 0, s * 2.2, s * 1.5 + shadowPulse);
+    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.85)'); sGrad.addColorStop(0.5, 'rgba(45, 0, 0, 0.45)'); sGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = sGrad; ctx.beginPath(); ctx.arc(0, s * 2.2, s * 1.5 + shadowPulse, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+
+    // ----------------------------------------------------
+    // 🔥 [1] 데스나이트 보스 전용 렌더링 (1.7배 크기 + 전용 광선검)
+    // ----------------------------------------------------
+    if (safeName.includes('데스나이트')) {
+        let bs = sz * 1.7; 
+        if (isAttacking) ctx.translate(bs * 0.15, bs * 0.05);
+
+        drawDeathKnightPrecise(ctx, bs, false, false, true, isMoving, isAttacking, ts);
+
+        ctx.save();
+        let armLen = bs * 0.6;
+        ctx.translate(bs * 0.5, -bs * 0.7); 
+        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
+        
+        ctx.strokeStyle = '#e5e0d8'; ctx.lineWidth = bs * 0.08;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, armLen); ctx.stroke();
+        
+        ctx.fillStyle = '#1a1c20'; ctx.strokeStyle = '#d4af37'; ctx.lineWidth = bs * 0.04;
+        ctx.beginPath();
+        ctx.moveTo(-bs * 0.1, armLen * 0.4); ctx.lineTo(bs * 0.1, armLen * 0.4);
+        ctx.lineTo(bs * 0.13, armLen * 0.9); ctx.lineTo(-bs * 0.13, armLen * 0.9);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+
+        ctx.translate(0, armLen);
+        ctx.fillStyle = '#8a8570'; ctx.beginPath(); ctx.arc(0, 0, bs * 0.12, 0, Math.PI*2); ctx.fill();
+
+        let swordLen = bs * 3.2; 
+        ctx.fillStyle = '#222'; ctx.fillRect(-bs * 0.06, 0, bs * 0.12, bs * 0.4);
+        ctx.fillStyle = '#1a1c20'; ctx.strokeStyle = '#d4af37'; ctx.lineWidth = bs * 0.03;
+        ctx.beginPath(); 
+        ctx.moveTo(-bs * 0.35, -bs * 0.05); ctx.lineTo(bs * 0.35, -bs * 0.05); 
+        ctx.lineTo(bs * 0.15, bs * 0.15); ctx.lineTo(-bs * 0.15, bs * 0.15); 
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+
+        ctx.lineCap = 'round';
+        ctx.shadowBlur = bs * 0.8; ctx.shadowColor = '#ccff00';
+        ctx.strokeStyle = 'rgba(200, 255, 0, 0.4)'; ctx.lineWidth = bs * 0.3;
+        ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+
+        ctx.shadowBlur = bs * 0.3; ctx.shadowColor = '#ffffff';
+        ctx.strokeStyle = '#eeff66'; ctx.lineWidth = bs * 0.12;
+        ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = bs * 0.04;
+        ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+        ctx.restore();
+    }
+    // ----------------------------------------------------
+    // 💀 [2] 리치 (Lich)
+    // ----------------------------------------------------
+    else if (safeName.includes('리치')) {
+        let hoverY = Math.sin(ts / 120) * (s * 0.25); ctx.translate(0, hoverY);
+        ctx.fillStyle = '#0f172a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s * 0.65, -s * 1.3); ctx.lineTo(s * 0.65, -s * 1.3); ctx.lineTo(s * 1.1, s * 0.8); ctx.lineTo(0, s * 0.6); ctx.lineTo(-s * 1.1, s * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#1e1b4b'; ctx.beginPath(); ctx.ellipse(0, -s * 1.2, s * 0.8, s * 0.35, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#020617'; ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, Math.PI, 0); ctx.lineTo(s * 0.35, -s * 1.0); ctx.lineTo(-s * 0.35, -s * 1.0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 12; ctx.shadowColor = '#f00'; ctx.fillStyle = '#ff1111'; ctx.beginPath(); ctx.arc(-s * 0.15, -s * 1.35, 4, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(s * 0.15, -s * 1.35, 4, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; 
+        ctx.fillStyle = '#eab308'; ctx.beginPath(); ctx.moveTo(-s*0.2, -s*0.9); ctx.lineTo(0, -s*0.7); ctx.lineTo(s*0.2, -s*0.9); ctx.fill();
+        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(s * 0.75, s * 0.6); ctx.lineTo(s * 0.75, atkY - s * 2.3); ctx.stroke(); 
+        ctx.fillStyle = '#eab308'; ctx.beginPath(); ctx.arc(s * 0.75, atkY - s * 2.4, s * 0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 15; ctx.shadowColor = '#0ff'; ctx.fillStyle = '#e0f2fe'; ctx.beginPath(); ctx.arc(s * 0.75, atkY - s * 2.4, s * 0.15, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+    }
+    // ----------------------------------------------------
+    // 🦇 [3] 바포메트 (Baphomet)
+    // ----------------------------------------------------
+    else if (safeName.includes('바포메트')) {
+        let wingMotion = Math.sin(ts / 80) * (s * 0.25);
+        ctx.fillStyle = '#260808'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.1); ctx.bezierCurveTo(-s * 1.8, -s * 2.5 + wingMotion, -s * 2.6, -s * 1.5 + wingMotion, -s * 2.4, -s * 0.2 + wingMotion); ctx.lineTo(-s * 0.3, -s * 0.4); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.1); ctx.bezierCurveTo(s * 1.8, -s * 2.5 + wingMotion, s * 2.6, -s * 1.5 + wingMotion, s * 2.4, -s * 0.2 + wingMotion); ctx.lineTo(s * 0.3, -s * 0.4); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.2); ctx.lineTo(s * 0.5, -s * 1.2); ctx.lineTo(s * 0.85, s * 0.85); ctx.lineTo(-s * 0.85, s * 0.85); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#f1f5f9'; ctx.beginPath(); ctx.ellipse(0, -s * 1.35, s * 0.38, s * 0.48, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(-s * 0.2, -s * 1.5); ctx.bezierCurveTo(-s * 1.4, -s * 2.4, -s * 1.6, -s * 0.9, -s * 1.0, -s * 0.7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.2, -s * 1.5); ctx.bezierCurveTo(s * 1.4, -s * 2.4, s * 1.6, -s * 0.9, s * 1.0, -s * 0.7); ctx.stroke();
+    }
+    else if (safeName.includes('대정령') || safeName.includes('정령')) {
+        let hoverY = Math.sin(ts / 150) * (s * 0.2); ctx.translate(0, hoverY); let pulse = Math.sin(ts / 100) * (s * 0.1); 
+        let auraGrad = ctx.createRadialGradient(0, -s * 0.8, 0, 0, -s * 0.8, s * 1.4 + pulse);
+        auraGrad.addColorStop(0, 'rgba(232, 121, 249, 0.9)'); auraGrad.addColorStop(0.4, 'rgba(192, 132, 252, 0.5)'); auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)'); 
+        ctx.fillStyle = auraGrad; ctx.beginPath(); ctx.arc(0, -s * 0.8, s * 1.4 + pulse, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = 'rgba(217, 70, 239, 0.6)'; ctx.beginPath(); ctx.moveTo(0, -s * 1.6); ctx.quadraticCurveTo(s * 0.6, -s * 1.3, s * 0.5, -s * 0.7); ctx.lineTo(s * 0.9, -s * 0.2 + atkY); ctx.lineTo(0, -s * 0.1); ctx.lineTo(-s * 0.7, -s * 0.4 + atkY); ctx.quadraticCurveTo(-s * 0.9, -s * 1.1, 0, -s * 1.6); ctx.fill();
+        ctx.strokeStyle = '#fae8ff'; ctx.lineWidth = 3 + (Math.sin(ts / 50) * 1); ctx.shadowBlur = 15; ctx.shadowColor = '#d946ef';
+        let f1 = Math.sin(ts / 70) * (s * 0.15); let f2 = Math.cos(ts / 90) * (s * 0.15);
+        ctx.beginPath(); ctx.moveTo(-s * 0.3 + f1, -s * 1.2); ctx.lineTo(0, -s * 0.9 + f2); ctx.lineTo(-s * 0.2, -s * 0.5); ctx.lineTo(s * 0.3 + f1, -s * 0.2); ctx.moveTo(s * 0.4, -s * 1.1 + f2); ctx.lineTo(s * 0.1, -s * 0.8); ctx.lineTo(s * 0.5 + f1, -s * 0.5); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
+    }
+    // ----------------------------------------------------
+    // 🛡️ [4] 커츠 / 흑기사 대장 (Kurz / Black Knight Chief)
+    // ----------------------------------------------------
+    else if (safeName.includes('커츠') || safeName.includes('흑기사 대장')) {
+        let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
+        ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 1.0); ctx.lineTo(-s * 1.3, s * 0.9); ctx.lineTo(s * 1.3, s * 0.9); ctx.lineTo(s * 0.6, -s * 1.0); ctx.fill();
+        let armorGrad = ctx.createLinearGradient(0, -s * 1.2, 0, s);
+        armorGrad.addColorStop(0, '#334155'); armorGrad.addColorStop(0.5, '#0f172a'); armorGrad.addColorStop(1, '#020617');
+        ctx.fillStyle = armorGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.fillRect(-s * 0.5, 0, s * 0.4, s * 0.8 - step); ctx.strokeRect(-s * 0.5, 0, s * 0.4, s * 0.8 - step);
+        ctx.fillRect(s * 0.1, 0, s * 0.4, s * 0.8 + step); ctx.strokeRect(s * 0.1, 0, s * 0.4, s * 0.8 + step);
+        ctx.beginPath(); ctx.roundRect(-s * 0.8, -s * 1.2, s * 1.6, s * 1.3, 8); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.arc(-s * 0.8, -s * 1.0, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(s * 0.8, -s * 1.0, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.45, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#f00'; ctx.fillRect(-s * 0.1, -s * 1.6, s * 0.2, s * 0.2);
+        ctx.save(); ctx.translate(s * 0.7, atkY - s * 0.5); ctx.rotate(isAttacking ? Math.PI / 4 : -Math.PI / 8);
+        ctx.fillStyle = '#64748b'; ctx.fillRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0); ctx.strokeRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0);
+        ctx.fillStyle = '#b45309'; ctx.fillRect(-s * 0.4, -s * 0.2, s * 0.8, s * 0.15); ctx.restore();
+    }
+    else if (safeName.includes('웅골리언트')) {
+        let legSway = isMoving ? Math.sin(ts / 50) * (s * 0.3) : Math.sin(ts / 150) * (s * 0.1);
+        let abdGrad = ctx.createRadialGradient(-s*0.5, -s*0.8, 0, -s*0.5, -s*0.8, s*1.5);
+        abdGrad.addColorStop(0, '#991b1b'); abdGrad.addColorStop(1, '#1c1917'); 
+        ctx.fillStyle = abdGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*1.2, s*0.9, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
+        ctx.fillStyle = '#dc2626'; ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*0.8, s*0.15, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*0.15, s*0.7, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(s*0.6, -s*0.5, s*0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#f00'; ctx.shadowBlur = 10; ctx.shadowColor = '#f00';
+        ctx.fillRect(s*0.7, -s*0.7, 5, 5); ctx.fillRect(s*0.9, -s*0.6, 6, 6); ctx.fillRect(s*0.7, -s*0.5, 4, 4); ctx.fillRect(s*0.9, -s*0.4, 5, 5); ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#291313'; ctx.lineWidth = 5; ctx.lineJoin = 'round'; ctx.beginPath();
+        for(let i=0; i<4; i++) {
+            let sDir = i % 2 === 0 ? legSway : -legSway; let legY = -s*1.4 + sDir;
+            ctx.moveTo(-s*0.2, -s*0.4); ctx.lineTo(-s*1.2 + i*s*0.6, legY); ctx.lineTo(-s*1.6 + i*s*0.9, s*0.5);
+            ctx.moveTo(s*0.2, -s*0.4); ctx.lineTo(s*1.2 - i*s*0.6, legY); ctx.lineTo(s*1.6 - i*s*0.9, s*0.5);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#f1f5f9'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(s*0.8, -s*0.3); ctx.quadraticCurveTo(s*1.2, atkY, s*1.0, s*0.4 + atkY); ctx.quadraticCurveTo(s*0.7, 0, s*0.6, -s*0.2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s*0.5, -s*0.2); ctx.quadraticCurveTo(s*0.9, atkY, s*0.7, s*0.4 + atkY); ctx.quadraticCurveTo(s*0.4, 0, s*0.3, -s*0.1); ctx.fill(); ctx.stroke();
+        if (isAttacking) { ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.arc(s*1.0, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.7, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill(); }
+    }
+    // ----------------------------------------------------
+    // 🌳 [타락한 엔트] - 일반 엔트의 거대화 및 기괴화 (부패한 고목)
+    // ----------------------------------------------------
+    else if (safeName.includes('타락한 엔트') || safeName.includes('엔트')) {
+        let sway = isMoving ? Math.sin(ts / 120) * (s * 0.15) : Math.sin(ts / 200) * (s * 0.05);
+        let breathe = isMoving ? Math.sin(ts / 90) * (s * 0.05) : 0;
+        ctx.fillStyle = 'rgba(132, 204, 22, 0.2)'; ctx.beginPath(); ctx.ellipse(0, s * 0.8, s * 1.5, s * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#1c1917'; ctx.lineWidth = s * 0.25; ctx.lineCap = 'round'; ctx.beginPath();
+        for(let i = -2; i <= 2; i++) { let rootSway = Math.sin(ts / 80 + i) * (s * 0.1); ctx.moveTo(i * s * 0.3, s * 0.5); ctx.quadraticCurveTo(i * s * 0.8 + rootSway, s * 0.8, i * s * 1.2, s * 1.0); } ctx.stroke();
+        let trunkGrad = ctx.createLinearGradient(-s*0.5, -s*1.5, s*0.5, s*0.5);
+        trunkGrad.addColorStop(0, '#271005'); trunkGrad.addColorStop(0.5, '#3f271d'); trunkGrad.addColorStop(1, '#1c1917');
+        ctx.fillStyle = trunkGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-s * 0.5, s * 0.6); ctx.quadraticCurveTo(-s * 0.7 - sway, -s * 0.2, -s * 0.5 - sway, -s * 1.2 - breathe); ctx.lineTo(s * 0.5 - sway, -s * 1.2 - breathe); ctx.quadraticCurveTo(s * 0.7 - sway, -s * 0.2, s * 0.5, s * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = '#4d7c0f'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-s * 0.2 - sway, -s * 0.8 - breathe); ctx.lineTo(0 - sway, -s * 0.4); ctx.lineTo(-s * 0.1, 0); ctx.stroke();
+        ctx.strokeStyle = '#84cc16'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(s * 0.2 - sway, -s * 0.9 - breathe); ctx.lineTo(s * 0.1 - sway, -s * 0.5); ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(-s * 0.2 - sway, -s * 0.9 - breathe, s * 0.15, s * 0.1, Math.PI/8, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(s * 0.2 - sway, -s * 0.9 - breathe, s * 0.12, s * 0.08, -Math.PI/8, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 15; ctx.shadowColor = '#bef264'; ctx.fillStyle = '#a3e635'; ctx.beginPath(); ctx.arc(-s * 0.2 - sway, -s * 0.9 - breathe, s * 0.05, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s * 0.2 - sway, -s * 0.9 - breathe, s * 0.04, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(0 - sway, -s * 0.5 - breathe, s * 0.25, s * 0.35, 0, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = '#4d7c0f'; ctx.beginPath(); ctx.ellipse(0 - sway, -s * 0.5 - breathe, s * 0.15, s * 0.2, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#271005'; ctx.lineJoin = 'round'; ctx.lineWidth = s * 0.35; ctx.beginPath(); ctx.moveTo(-s * 0.5 - sway, -s * 0.7 - breathe); ctx.quadraticCurveTo(-s * 1.5, -s * 1.0 + atkY, -s * 1.2, s * 0.2 + atkY); ctx.stroke();
+        ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.moveTo(-s * 1.2, s * 0.2 + atkY); ctx.lineTo(-s * 1.5, s * 0.8 + atkY); ctx.lineTo(-s * 0.9, s * 0.5 + atkY); ctx.fill();
+        ctx.lineWidth = s * 0.2; ctx.beginPath(); ctx.moveTo(s * 0.5 - sway, -s * 0.8 - breathe); ctx.quadraticCurveTo(s * 1.2, -s * 1.2 + atkY, s * 1.5, -s * 0.2 + atkY); ctx.stroke();
+        ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.moveTo(s * 1.5, -s * 0.2 + atkY); ctx.lineTo(s * 2.0, s * 0.3 + atkY); ctx.lineTo(s * 1.3, s * 0.1 + atkY); ctx.fill();
+        ctx.fillStyle = '#84cc16'; for(let j = 0; j < 6; j++) { let sporeX = Math.sin(ts / 50 + j) * (s * 1.2) - sway; let sporeY = -s * 1.5 + (ts / 20 + j * 50) % (s * 2) - breathe; ctx.beginPath(); ctx.arc(sporeX, sporeY, 2 + Math.random()*2, 0, Math.PI*2); ctx.fill(); }
+    }
+    // ----------------------------------------------------
+    // 🦇 [5] 데몬 (Demon) - 날개 달린 거대 악마
+    // ----------------------------------------------------
+    else if (safeName.includes('데몬')) {
+        let flap = isMoving ? Math.sin(ts / 70) * (s * 0.4) : 0;
+        ctx.fillStyle = '#450a0a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.0); ctx.lineTo(-s * 2.5, -s * 2.0 + flap); ctx.lineTo(-s * 1.5, 0); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 1.0); ctx.lineTo(s * 2.5, -s * 2.0 + flap); ctx.lineTo(s * 1.5, 0); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#b91c1c'; let step = isMoving ? Math.sin(ts / 90) * (s * 0.2) : 0;
+        ctx.fillRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step);
+        ctx.fillRect(s * 0.2, 0, s * 0.4, s * 0.9 + step); ctx.strokeRect(s * 0.2, 0, s * 0.4, s * 0.9 + step);
+        ctx.beginPath(); ctx.roundRect(-s * 0.8, -s * 1.3, s * 1.6, s * 1.4, 10); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 2.5, -s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.8); ctx.quadraticCurveTo(s * 1.2, -s * 2.5, s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#facc15'; ctx.fillRect(-s * 0.2, -s * 1.6, 6, 6); ctx.fillRect(s * 0.1, -s * 1.6, 6, 6);
+    }
+    // ----------------------------------------------------
+    // 🗡️ [6] 명황 단테스 (Dantes) - 다크엘프 수장
+    // ----------------------------------------------------
+    else if (safeName.includes('단테스')) {
+        let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
+        ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.moveTo(0, -s * 1.5); ctx.quadraticCurveTo(-s * 1.5, -s * 0.5, -s * 0.8, s * 0.5); ctx.lineTo(0, -s * 1.0); ctx.fill();
+        let armorGrad = ctx.createLinearGradient(0, -s * 1.3, 0, 0); armorGrad.addColorStop(0, '#1e1b4b'); armorGrad.addColorStop(1, '#312e81');
+        ctx.fillStyle = armorGrad; ctx.strokeStyle = '#a5b4fc'; ctx.lineWidth = 1.5;
+        ctx.fillRect(-s * 0.3, 0, s * 0.25, s * 0.9 - step); ctx.strokeRect(-s * 0.3, 0, s * 0.25, s * 0.9 - step);
+        ctx.fillRect(s * 0.05, 0, s * 0.25, s * 0.9 + step); ctx.strokeRect(s * 0.05, 0, s * 0.25, s * 0.9 + step);
+        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.2); ctx.lineTo(s * 0.5, -s * 1.2); ctx.lineTo(s * 0.3, s * 0.2); ctx.lineTo(-s * 0.3, s * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.arc(0, -s * 1.4, s * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#ef4444'; ctx.fillRect(-s*0.15, -s*1.45, 4, 4); ctx.fillRect(s*0.05, -s*1.45, 4, 4);
+        ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 0.5 + atkY); ctx.lineTo(-s * 1.5, atkY - s * 2.0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.6, -s * 0.5 + atkY); ctx.lineTo(s * 1.5, atkY - s * 2.0); ctx.stroke();
+    }
+    // ----------------------------------------------------
+    // 🪓 [7] 대미노타우르스 (Great Minotaur)
+    // ----------------------------------------------------
+    else if (safeName.includes('미노타우르스')) {
+        let step = isMoving ? Math.sin(ts / 90) * (s * 0.25) : 0;
+        ctx.fillStyle = '#451a03'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.fillRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step);
+        ctx.fillRect(s * 0.15, 0, s * 0.45, s * 0.8 + step); ctx.strokeRect(s * 0.15, 0, s * 0.45, s * 0.8 + step);
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.8, s * 1.3, s * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#78350f'; ctx.beginPath(); ctx.ellipse(0, -s * 0.7, s * 0.8, s * 0.6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#451a03'; ctx.beginPath(); ctx.arc(0, -s * 1.7, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fef08a'; ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 2.2, -s * 1.0, -s * 2.5); ctx.stroke(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(s * 0.4, -s * 1.8); ctx.quadraticCurveTo(s * 1.2, -s * 2.2, s * 1.0, -s * 2.5); ctx.stroke(); ctx.fill();
+        ctx.strokeStyle = '#eab308'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -s * 1.4, s * 0.15, 0, Math.PI * 2); ctx.stroke();
+        ctx.save(); ctx.translate(s * 0.8, atkY - s * 0.5); ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
+        ctx.fillStyle = '#451a03'; ctx.fillRect(-s * 0.1, -s * 2.5, s * 0.2, s * 3.5); 
+        ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#111'; ctx.beginPath(); ctx.arc(0, -s * 2.0, s * 0.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); 
+        ctx.restore();
+    }
+    // ----------------------------------------------------
+    // 👻 [8] 그림 리퍼 / 각성한 사신 (Grim Reaper)
+    // ----------------------------------------------------
+    else if (safeName.includes('리퍼') || safeName.includes('사신')) {
+        let hoverY = Math.sin(ts / 120) * (s * 0.2); ctx.translate(0, hoverY);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; ctx.beginPath(); ctx.ellipse(0, s * 0.5, s * 1.2, s * 0.4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.4); ctx.lineTo(s * 0.5, -s * 1.4); ctx.lineTo(s * 1.0, s * 0.8); ctx.lineTo(-s * 1.0, s * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#f8fafc'; ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.fillRect(-s * 0.15, -s * 1.55, 6, 8); ctx.fillRect(s * 0.05, -s * 1.55, 6, 8);
+        ctx.strokeStyle = '#27272a'; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(-s * 0.8, s * 0.8); ctx.lineTo(-s * 0.8, atkY - s * 2.5); ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s * 0.8, atkY - s * 2.3); ctx.quadraticCurveTo(-s * 2.5, atkY - s * 2.5, -s * 2.8, atkY - s * 1.0); ctx.quadraticCurveTo(-s * 2.0, atkY - s * 1.8, -s * 0.8, atkY - s * 2.0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+   
+else if (safeName.includes('재의 오크 대장')) {
+        let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
+        
+        // 거대한 오크 체형 다리
+        ctx.fillStyle = '#8b0000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+        ctx.fillRect(-s * 0.6, 0, s * 0.45, s * 0.9 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.45, s * 0.9 - step);
+        ctx.fillRect(s * 0.15, 0, s * 0.45, s * 0.9 + step); ctx.strokeRect(s * 0.15, 0, s * 0.45, s * 0.9 + step);
+        
+        // 거친 갑옷 몸통
+        ctx.fillStyle = '#cd853f'; ctx.beginPath(); ctx.roundRect(-s * 0.9, -s * 1.3, s * 1.8, s * 1.4, 8); ctx.fill(); ctx.stroke();
+        
+        // 머리 및 오크 투구 묘사
+        ctx.fillStyle = '#8b4513'; ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        // 🪓 화염이 깃든 거대한 양손 전투 도끼 (Melee Weapon)
+        ctx.save(); 
+        ctx.translate(s * 0.8, atkY - s * 0.5); 
+        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6); // 공격 시 도끼를 휘두르는 애니메이션 각도
+        
+        // 도끼 자루
+        ctx.fillStyle = '#3a2525'; 
+        ctx.fillRect(-s * 0.08, -s * 2.2, s * 0.16, s * 3.2);
+        
+        // 도끼 날 (초승달 모양의 거대한 날과 화염 파티클 느낌)
+        ctx.fillStyle = '#b22222'; 
+        ctx.strokeStyle = '#ff4500';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, -s * 2.5);
+        ctx.lineTo(s * 0.7, -s * 2.2);
+        ctx.lineTo(s * 0.7, -s * 1.6);
+        ctx.lineTo(0, -s * 1.8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.restore();
+    }    // ----------------------------------------------------
+    // 🐉 [신규 2] 고대 드레이크 (Ancient Drake) - 용의 부락
+    // ----------------------------------------------------
+    else if (safeName.includes('고대 드레이크')) {
+        let flap = isMoving ? Math.sin(ts / 60) * (s * 0.45) : 0;
+        
+        // 웅장한 거대 날개 (퍼덕이는 애니메이션)
+        ctx.fillStyle = '#004d00'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 1.0); ctx.lineTo(-s * 2.8, -s * 2.2 + flap); ctx.lineTo(-s * 1.2, s * 0.2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.4, -s * 1.0); ctx.lineTo(s * 2.8, -s * 2.2 + flap); ctx.lineTo(s * 1.2, s * 0.2); ctx.fill(); ctx.stroke();
+        
+        // 드래곤 몸통 및 머리 윤곽
+        ctx.fillStyle = '#006400'; ctx.beginPath(); ctx.ellipse(0, -s * 0.8, s * 1.2, s * 0.9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.ellipse(s * 0.9, -s * 1.3, s * 0.6, s * 0.4, -Math.PI / 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        // 사악하게 빛나는 붉은 눈
+        ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000';
+        ctx.fillStyle = '#ff0000'; ctx.beginPath(); ctx.arc(s * 1.1, -s * 1.4, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+    // ----------------------------------------------------
+    // 🐊 [신규 3] 늪지의 군주 (Swamp Lord) - 피의 늪지대
+    // ----------------------------------------------------
+    else if (safeName.includes('늪지의 군주')) {
+        let step = isMoving ? Math.sin(ts / 100) * (s * 0.15) : 0;
+        
+        // 늪지 악어/괴수 형태의 거대한 몸체
+        ctx.fillStyle = '#2f4f4f'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.7, s * 1.6, s * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        // 등껍질의 날카로운 돌기들
+        ctx.fillStyle = '#556b2f';
+        for (let i = -3; i <= 3; i++) {
+            ctx.beginPath(); ctx.arc(i * s * 0.35, -s * 1.3, s * 0.22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        }
+        
+        // 거친 머리 및 붉은 안광 눈
+        ctx.fillStyle = '#3b5323'; ctx.beginPath(); ctx.ellipse(-s * 1.2, -s * 0.9, s * 0.7, s * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.shadowBlur = 12; ctx.shadowColor = '#ff3300';
+        ctx.fillStyle = '#ff3300'; ctx.fillRect(-s * 1.5, -s * 1.1, 6, 6);
+        ctx.shadowBlur = 0;
+    }
+    // ----------------------------------------------------
+    // 👹 [12] 그 외 미할당 보스 (공용 그래픽 처리)
+    // ----------------------------------------------------
+    else {
+        ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(-s * 0.75, -s * 1.25, s * 1.5, s * 1.25, 6); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.4); ctx.lineTo(-s * 1.0, -s * 2.3); ctx.lineTo(-s * 0.1, -s * 1.5); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.4); ctx.lineTo(s * 1.0, -s * 2.3); ctx.lineTo(s * 0.1, -s * 1.5); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#334155'; ctx.fillRect(s * 0.75, atkY - s * 2.6, s * 0.35, s * 3.2);
+    }
+    ctx.restore();
+}
 
 window.checkLevelUp = function() {
     if (!player) return;
@@ -1375,68 +1741,60 @@ function drawHumanoid(ctx, name, color, sz, isAttacking, isMoving, frame, isHit,
             ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#000'; 
             
             if (safeName.includes('데스나이트')) {
-                ctx.fillStyle = '#ff2200'; ctx.fillRect(-s*0.22, -s*1.4, s*0.18, s*0.1); ctx.fillRect(s*0.04, -s*1.4, s*0.18, s*0.1); 
-                ctx.fillStyle = '#ff4400'; ctx.strokeStyle = '#661100'; 
-            }
-            
-            if (safeName.includes('도끼병')) {
+                let bs = sz * 1.7; 
+                if (isAttacking) ctx.translate(bs * 0.15, bs * 0.05);
+
+                drawDeathKnightPrecise(ctx, bs, false, false, true, isMoving, isAttacking, ts);
+
+                ctx.save();
+                let armLen = bs * 0.6;
+                ctx.translate(bs * 0.5, -bs * 0.7); 
+                ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
+                
+                ctx.strokeStyle = '#e5e0d8'; ctx.lineWidth = bs * 0.08;
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, armLen); ctx.stroke();
+                
+                ctx.fillStyle = '#1a1c20'; ctx.strokeStyle = '#d4af37'; ctx.lineWidth = bs * 0.04;
+                ctx.beginPath();
+                ctx.moveTo(-bs * 0.1, armLen * 0.4); ctx.lineTo(bs * 0.1, armLen * 0.4);
+                ctx.lineTo(bs * 0.13, armLen * 0.9); ctx.lineTo(-bs * 0.13, armLen * 0.9);
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.translate(0, armLen);
+                
+                ctx.fillStyle = '#8a8570'; ctx.beginPath(); ctx.arc(0, 0, bs * 0.12, 0, Math.PI*2); ctx.fill();
+
+                let swordLen = bs * 3.2; 
+                
+                ctx.fillStyle = '#222'; ctx.fillRect(-bs * 0.06, 0, bs * 0.12, bs * 0.4);
+                
+                ctx.fillStyle = '#1a1c20'; ctx.strokeStyle = '#d4af37'; ctx.lineWidth = bs * 0.03;
+                ctx.beginPath(); 
+                ctx.moveTo(-bs * 0.35, -bs * 0.05); ctx.lineTo(bs * 0.35, -bs * 0.05); 
+                ctx.lineTo(bs * 0.15, bs * 0.15); ctx.lineTo(-bs * 0.15, bs * 0.15); 
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+
+                ctx.lineCap = 'round';
+                ctx.shadowBlur = bs * 0.8; ctx.shadowColor = '#ccff00';
+                ctx.strokeStyle = 'rgba(200, 255, 0, 0.4)'; ctx.lineWidth = bs * 0.3;
+                ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+
+                ctx.shadowBlur = bs * 0.3; ctx.shadowColor = '#ffffff';
+                ctx.strokeStyle = '#eeff66'; ctx.lineWidth = bs * 0.12;
+                ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#ffffff'; ctx.lineWidth = bs * 0.04;
+                ctx.beginPath(); ctx.moveTo(0, -bs * 0.05); ctx.lineTo(0, -swordLen); ctx.stroke();
+
+                ctx.restore();
+            } else if (safeName.includes('도끼병')) {
                 ctx.fillRect(s*0.6, atkY - s*0.5, 3, s*2.0); 
                 ctx.beginPath(); ctx.arc(s*0.6, atkY + s*0.2, s*0.4, -Math.PI*0.5, Math.PI*0.5); ctx.fill(); 
             } else {
                 ctx.beginPath(); ctx.moveTo(s*0.6, atkY); ctx.lineTo(s*1.6, atkY - s*2.5); ctx.lineTo(s*1.9, atkY - s*2.2); ctx.lineTo(s*0.8, atkY + s*0.2); ctx.fill(); ctx.stroke(); 
             }
-            drawBipedLegs(color, s*0.3, s*0.8, s*0.15);
-        }
-    }
-    else if (safeName.includes('괴물 눈') || safeName.includes('크로') || safeName.includes('실라칸스') || safeName.includes('악어') || safeName.includes('가고일')) {
-        ctx.fillStyle = color || '#aaa'; ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
-
-        if (safeName.includes('괴물 눈')) {
-            let floatY = Math.sin(ts/150)*s*0.2;
-            ctx.beginPath(); ctx.arc(0, -s*1.0 + floatY, s*0.8, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            ctx.fillStyle = '#b91c1c'; ctx.beginPath(); ctx.arc(0, -s*1.0 + floatY, s*0.4, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0, -s*1.0 + floatY, s*0.15, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#c0392b'; ctx.strokeStyle = '#555';
-            for(let i=-1; i<=1; i++) {
-                let tSway = Math.sin(ts/100 + i)*s*0.2;
-                ctx.beginPath(); ctx.moveTo(i*s*0.4, -s*0.4 + floatY); ctx.lineTo(i*s*0.5, s*0.2 + floatY + tSway); ctx.lineTo(i*s*0.2, -s*0.4 + floatY); ctx.fill(); ctx.stroke();
-            }
-        } else if (safeName.includes('크로')) {
-            ctx.beginPath(); ctx.ellipse(0, -s*0.3, s*0.6, s*0.3, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-            let crawlY = isMoving ? Math.sin(ts/50)*s*0.2 : 0;
-            ctx.beginPath(); ctx.moveTo(-s*0.4, -s*0.3); ctx.lineTo(-s*0.8, -s*0.1 + crawlY); ctx.lineTo(-s*0.9, s*0.2 + crawlY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-s*0.1, -s*0.3); ctx.lineTo(-s*0.3, -s*0.1 - crawlY); ctx.lineTo(-s*0.4, s*0.2 - crawlY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(s*0.2, -s*0.3); ctx.lineTo(s*0.3, -s*0.1 + crawlY); ctx.lineTo(s*0.4, s*0.2 + crawlY); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(s*0.5, -s*0.3); ctx.lineTo(s*0.7, -s*0.1 - crawlY); ctx.lineTo(s*0.8, s*0.2 - crawlY); ctx.stroke();
-        } else if (safeName.includes('실라칸스') || safeName.includes('악어')) {
-            let len = s*1.4;
-            ctx.beginPath(); ctx.ellipse(0, -s*0.3, len, s*0.4, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
-            let flap = isMoving ? Math.sin(ts/60)*s*0.5 : 0;
-            ctx.beginPath(); ctx.moveTo(0, -s*0.7); ctx.lineTo(-s*0.5, -s*1.2); ctx.lineTo(s*0.5, -s*0.7); ctx.fill(); 
-            ctx.beginPath(); ctx.moveTo(len, -s*0.3); ctx.lineTo(len+s*0.8, -s*0.7 + flap); ctx.lineTo(len+s*0.8, s*0.1 + flap); ctx.fill(); 
-        } else { 
-            let wingFlap = isMoving ? Math.sin(ts/80)*s*0.5 : 0;
-            ctx.beginPath(); ctx.moveTo(0, -s*0.8); ctx.lineTo(-s*1.8, -s*1.8 + wingFlap); ctx.lineTo(-s*0.5, 0); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(0, -s*0.8); ctx.lineTo(s*1.8, -s*1.8 + wingFlap); ctx.lineTo(s*0.5, 0); ctx.fill(); ctx.stroke();
-            ctx.beginPath(); ctx.arc(0, -s*1.0, s*0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        }
-    }
-    else if (safeName.includes('엔트') || safeName.includes('펑거스') || safeName.includes('플라워')) {
-        if (safeName.includes('펑거스')) { 
-            ctx.fillStyle = '#f5deb3'; ctx.fillRect(-s*0.2, -s*0.6, s*0.4, s*0.6); 
-            ctx.fillStyle = color || '#8b4513'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.ellipse(0, -s*0.6, s*0.7, s*0.4, 0, Math.PI, Math.PI*2); ctx.fill(); ctx.stroke(); 
-        } else { 
-            ctx.fillStyle = '#4a3219'; ctx.strokeStyle = '#222'; ctx.lineWidth = 2;
-            ctx.fillRect(-s*0.4, -s*1.6, s*0.8, s*1.6); ctx.strokeRect(-s*0.4, -s*1.6, s*0.8, s*1.6); 
-            ctx.fillStyle = color || '#228b22'; 
-            ctx.beginPath(); ctx.arc(0, -s*1.8, s*0.9, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(-s*0.6, -s*1.4, s*0.7, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(s*0.6, -s*1.4, s*0.7, 0, Math.PI*2); ctx.fill();
-            if (isAttacking) { 
-                ctx.strokeStyle = '#4a3219'; ctx.lineWidth = 4;
-                ctx.beginPath(); ctx.moveTo(-s*0.4, -s*1.0); ctx.lineTo(-s*1.5, atkY - s*1.2); ctx.stroke();
-            }
+            if (!safeName.includes('데스나이트')) drawBipedLegs(color, s*0.3, s*0.8, s*0.15);
         }
     }
     else {
@@ -1449,760 +1807,6 @@ function drawHumanoid(ctx, name, color, sz, isAttacking, isMoving, frame, isHit,
 
     ctx.restore();
 }
-
-// ==========================================
-// 👑 [보스 몬스터 초정밀 원작 스타일 렌더링 - 60FPS 최적화 버전]
-// ==========================================
-function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
-    ctx.save();
-    let s = sz * 1.35; // 웅장한 보스 스케일
-    let atkY = isAttacking ? -s * 0.45 : 0;
-    let safeName = String(name || '').trim();
-
-    if (isHit) {
-        ctx.globalAlpha = 0.85;
-        ctx.filter = 'brightness(230%)';
-    }
-
-    // [1] 바닥 암흑 마법 오라 & 룬 진동 그림자 (모든 보스 공통)
-    ctx.shadowBlur = 0;
-    ctx.save();
-    ctx.scale(1, 0.35);
-    let shadowPulse = Math.sin(ts / 150) * (s * 0.1);
-    let sGrad = ctx.createRadialGradient(0, s * 2.2, 0, 0, s * 2.2, s * 1.5 + shadowPulse);
-    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.85)');
-    sGrad.addColorStop(0.5, 'rgba(45, 0, 0, 0.45)');
-    sGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = sGrad;
-    ctx.beginPath(); ctx.arc(0, s * 2.2, s * 1.5 + shadowPulse, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
-
-    // ----------------------------------------------------
-    // 🔥 [1] 데스나이트 (Death Knight)
-    // ----------------------------------------------------
-    if (safeName.includes('데스나이트')) {
-        let step = isMoving ? Math.sin(ts / 80) * (s * 0.22) : 0;
-        let sway = isMoving ? Math.sin(ts / 120) * (s * 0.1) : 0;
-        let capeSway = isMoving ? Math.sin(ts / 100) * (s * 0.25) : Math.sin(ts / 200) * (s * 0.08);
-
-        // 컬러 팔레트 (클래식 고증 기반)
-        let boneColor = '#e2e8f0'; 
-        let boneDark = '#cbd5e1'; 
-        let goldColor = '#ca8a04'; 
-        let navyTrim = '#1e3a8a';  
-        let darkIron = '#1e293b';
-
-        ctx.strokeStyle = '#000'; 
-        ctx.lineWidth = 1.5;
-
-        // 0. 찢어지고 흩날리는 붉은 망토 (가장 뒤쪽 레이어)
-        ctx.fillStyle = '#7f1d1d'; // 검붉은 색
-        ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.5, -s * 0.8);
-        ctx.bezierCurveTo(-s * 1.3 + capeSway, -s * 0.2, -s * 1.5 + capeSway, s * 0.6, -s * 1.1 + capeSway, s * 1.1);
-        ctx.lineTo(-s * 0.6, s * 0.8);
-        ctx.lineTo(-s * 0.2, s * 1.0 + capeSway * 0.5);
-        ctx.lineTo(s * 0.3, s * 0.7);
-        ctx.lineTo(s * 0.8 - capeSway, s * 1.1);
-        ctx.bezierCurveTo(s * 1.2 - capeSway, s * 0.8, s * 1.3 - capeSway, 0, s * 0.5, -s * 0.8);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // 1. 다리 (백골 판금 & 황금 무릎 보호대 & 푸른 띠)
-        ctx.fillStyle = boneDark; 
-        ctx.fillRect(-s * 0.45, 0, s * 0.3, s * 0.85 - step); ctx.strokeRect(-s * 0.45, 0, s * 0.3, s * 0.85 - step);
-        ctx.fillStyle = navyTrim; ctx.fillRect(-s * 0.45, s * 0.6 - step, s * 0.3, s * 0.15);
-        ctx.fillStyle = goldColor; ctx.beginPath(); ctx.arc(-s * 0.3, s * 0.35 - step, s * 0.15, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-        ctx.fillStyle = boneColor;
-        ctx.fillRect(s * 0.15, 0, s * 0.3, s * 0.85 + step); ctx.strokeRect(s * 0.15, 0, s * 0.3, s * 0.85 + step);
-        ctx.fillStyle = navyTrim; ctx.fillRect(s * 0.15, s * 0.6 + step, s * 0.3, s * 0.15);
-        ctx.fillStyle = goldColor; ctx.beginPath(); ctx.arc(s * 0.3, s * 0.35 + step, s * 0.15, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-
-        // 2. 몸통 (네이비 언더아머 + 백골 갈비뼈 흉갑)
-        ctx.fillStyle = darkIron;
-        ctx.beginPath(); ctx.roundRect(-s * 0.5, -s * 0.9, s * 1.0, s * 0.9, 4); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = boneColor;
-        ctx.beginPath(); 
-        ctx.moveTo(-s * 0.55, -s * 0.8); ctx.lineTo(s * 0.55, -s * 0.8);
-        ctx.lineTo(s * 0.35, -s * 0.1); ctx.lineTo(-s * 0.35, -s * 0.1); 
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        for(let i = 0; i < 3; i++) {
-            let ry = -s * 0.6 + i * (s * 0.18);
-            ctx.moveTo(-s * 0.4, ry); ctx.lineTo(0, ry + s*0.05); ctx.lineTo(s * 0.4, ry);
-        }
-        ctx.stroke();
-
-        // 3. 어깨 견갑 (황금색 + 네이비)
-        ctx.fillStyle = goldColor;
-        ctx.beginPath(); ctx.arc(-s * 0.55, -s * 0.75, s * 0.25, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(s * 0.55, -s * 0.75, s * 0.25, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = navyTrim;
-        ctx.beginPath(); ctx.arc(-s * 0.55, -s * 0.75, s * 0.1, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.55, -s * 0.75, s * 0.1, 0, Math.PI*2); ctx.fill();
-
-        // 4. 머리 (해골 얼굴 + 붉은 안광)
-        ctx.fillStyle = '#f1f5f9';
-        ctx.beginPath(); ctx.arc(0, -s * 1.15 + sway, s * 0.3, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = navyTrim;
-        ctx.beginPath(); ctx.arc(0, -s * 1.2 + sway, s * 0.32, Math.PI, 0); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = goldColor;
-        ctx.beginPath(); ctx.moveTo(-s*0.1, -s*1.2 + sway); ctx.lineTo(0, -s*1.6 + sway); ctx.lineTo(s*0.1, -s*1.2 + sway); ctx.fill(); ctx.stroke();
-
-        // 어둠 속 붉은 눈
-        ctx.fillStyle = '#000';
-        ctx.fillRect(-s * 0.15, -s * 1.2 + sway, s * 0.1, s * 0.08);
-        ctx.fillRect(s * 0.05, -s * 1.2 + sway, s * 0.1, s * 0.08);
-        
-        ctx.shadowBlur = 8; ctx.shadowColor = '#f00'; // 붉은 안광 글로우 효과
-        ctx.fillStyle = '#ff1100'; 
-        ctx.beginPath(); ctx.arc(-s * 0.1, -s * 1.16 + sway, 2.5, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.1, -s * 1.16 + sway, 2.5, 0, Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // 5. 불타는 대검
-        ctx.save();
-        ctx.translate(s * 0.7, atkY - s * 0.3);
-        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
-        
-        ctx.fillStyle = goldColor;
-        ctx.fillRect(-s * 0.08, 0, s * 0.16, s * 0.35);
-        ctx.fillStyle = darkIron;
-        ctx.fillRect(-s * 0.25, -s * 0.05, s * 0.5, s * 0.1); 
-
-        // 검신 외곽 화염 잔상 (투명도 있는 오렌지/레드)
-        ctx.fillStyle = 'rgba(255, 60, 0, 0.35)';
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.22, 0); ctx.lineTo(-s * 0.15, -s * 2.8); ctx.lineTo(0, -s * 3.45);
-        ctx.lineTo(s * 0.15, -s * 2.8); ctx.lineTo(s * 0.22, 0);
-        ctx.closePath(); ctx.fill();
-
-        // 검신 본체 (하양 -> 노랑 -> 빨강 그라데이션)
-        let swordGrad = ctx.createLinearGradient(0, -s * 3.2, 0, 0);
-        swordGrad.addColorStop(0, '#ffffff');
-        swordGrad.addColorStop(0.25, '#ffea00');
-        swordGrad.addColorStop(0.65, '#ff2200');
-        swordGrad.addColorStop(1, '#3b0000');
-        ctx.fillStyle = swordGrad;
-        
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.16, 0); ctx.lineTo(-s * 0.1, -s * 2.7); ctx.lineTo(0, -s * 3.3);
-        ctx.lineTo(s * 0.1, -s * 2.7); ctx.lineTo(s * 0.16, 0);
-        ctx.closePath(); ctx.fill();
-        
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -s * 2.8); ctx.stroke();
-        
-        ctx.restore();
-    }
-    // ----------------------------------------------------
-    // 💀 [2] 리치 (Lich) - 원작 스타일의 후드, 로브, 지팡이
-    // ----------------------------------------------------
-    else if (safeName.includes('리치')) {
-        let hoverY = Math.sin(ts / 120) * (s * 0.25); // 공중 부양 모션
-        ctx.translate(0, hoverY);
-
-        // 1. 찢어진 흑보라색 마도 로브 (망토 결합형)
-        ctx.fillStyle = '#0f172a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.65, -s * 1.3);
-        ctx.lineTo(s * 0.65, -s * 1.3);
-        ctx.lineTo(s * 1.1, s * 0.8);
-        ctx.lineTo(0, s * 0.6); // 너덜너덜한 밑단 중앙
-        ctx.lineTo(-s * 1.1, s * 0.8);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // 2. 어깨 장식 및 로브 주름
-        ctx.fillStyle = '#1e1b4b'; // 깊은 보라색
-        ctx.beginPath(); ctx.ellipse(0, -s * 1.2, s * 0.8, s * 0.35, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
-        // 3. 거대하고 깊은 후드
-        ctx.fillStyle = '#020617';
-        ctx.beginPath(); 
-        ctx.arc(0, -s * 1.5, s * 0.5, Math.PI, 0);
-        ctx.lineTo(s * 0.35, -s * 1.0); 
-        ctx.lineTo(-s * 0.35, -s * 1.0); 
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // 4. 어둠 속의 붉은 안광
-        ctx.shadowBlur = 12; ctx.shadowColor = '#f00';
-        ctx.fillStyle = '#ff1111';
-        ctx.beginPath(); ctx.arc(-s * 0.15, -s * 1.35, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.15, -s * 1.35, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0; // 초기화
-
-        // 5. 황금빛 해골 장식 (가슴팍)
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath(); ctx.moveTo(-s*0.2, -s*0.9); ctx.lineTo(0, -s*0.7); ctx.lineTo(s*0.2, -s*0.9); ctx.fill();
-
-        // 6. 리치의 해골 지팡이 (스태프)
-        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.moveTo(s * 0.75, s * 0.6); ctx.lineTo(s * 0.75, atkY - s * 2.3); ctx.stroke(); // 자루
-        // 지팡이 끝의 빛나는 보석/해골
-        ctx.fillStyle = '#eab308';
-        ctx.beginPath(); ctx.arc(s * 0.75, atkY - s * 2.4, s * 0.25, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.shadowBlur = 15; ctx.shadowColor = '#0ff';
-        ctx.fillStyle = '#e0f2fe';
-        ctx.beginPath(); ctx.arc(s * 0.75, atkY - s * 2.4, s * 0.15, 0, Math.PI * 2); ctx.fill();
-        ctx.shadowBlur = 0;
-    }
-    // ----------------------------------------------------
-    // 🦇 [3] 바포메트 (Baphomet)
-    // ----------------------------------------------------
-    else if (safeName.includes('바포메트')) {
-        let wingMotion = Math.sin(ts / 80) * (s * 0.25);
-        ctx.fillStyle = '#260808'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
-        // 피막 날개
-        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.1); ctx.bezierCurveTo(-s * 1.8, -s * 2.5 + wingMotion, -s * 2.6, -s * 1.5 + wingMotion, -s * 2.4, -s * 0.2 + wingMotion); ctx.lineTo(-s * 0.3, -s * 0.4); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.1); ctx.bezierCurveTo(s * 1.8, -s * 2.5 + wingMotion, s * 2.6, -s * 1.5 + wingMotion, s * 2.4, -s * 0.2 + wingMotion); ctx.lineTo(s * 0.3, -s * 0.4); ctx.fill(); ctx.stroke();
-
-        // 로브 & 해골 머리
-        ctx.fillStyle = '#111827'; ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.2); ctx.lineTo(s * 0.5, -s * 1.2); ctx.lineTo(s * 0.85, s * 0.85); ctx.lineTo(-s * 0.85, s * 0.85); ctx.closePath(); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#f1f5f9'; ctx.beginPath(); ctx.ellipse(0, -s * 1.35, s * 0.38, s * 0.48, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        
-        // 산양 뿔
-        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.moveTo(-s * 0.2, -s * 1.5); ctx.bezierCurveTo(-s * 1.4, -s * 2.4, -s * 1.6, -s * 0.9, -s * 1.0, -s * 0.7); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.2, -s * 1.5); ctx.bezierCurveTo(s * 1.4, -s * 2.4, s * 1.6, -s * 0.9, s * 1.0, -s * 0.7); ctx.stroke();
-    }
-else if (safeName.includes('대정령') || safeName.includes('정령')) {
-        let hoverY = Math.sin(ts / 150) * (s * 0.2); // 정령 특유의 공중 부양
-        ctx.translate(0, hoverY);
-
-        let pulse = Math.sin(ts / 100) * (s * 0.1); // 크기가 커졌다 작아지는 맥동 효과
-
-        // 1. 외부 오라 (안개처럼 퍼지는 보랏빛 마력 덩어리)
-        let auraGrad = ctx.createRadialGradient(0, -s * 0.8, 0, 0, -s * 0.8, s * 1.4 + pulse);
-        auraGrad.addColorStop(0, 'rgba(232, 121, 249, 0.9)'); // 중심부: 밝은 핑크/보라
-        auraGrad.addColorStop(0.4, 'rgba(192, 132, 252, 0.5)'); // 중간부: 탁한 보라색
-        auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)'); // 외곽: 투명하게 사라짐
-        
-        ctx.fillStyle = auraGrad;
-        ctx.beginPath(); 
-        ctx.arc(0, -s * 0.8, s * 1.4 + pulse, 0, Math.PI * 2); 
-        ctx.fill();
-
-        // 빛이 겹칠수록 밝아지는 혼합 모드 적용 (에너지체 질감 극대화)
-        ctx.globalCompositeOperation = 'lighter';
-
-        // 2. 내부 에너지 코어 (불규칙하게 일렁이는 형체)
-        ctx.fillStyle = 'rgba(217, 70, 239, 0.6)'; // 강렬한 마젠타
-        ctx.beginPath();
-        ctx.moveTo(0, -s * 1.6);
-        ctx.quadraticCurveTo(s * 0.6, -s * 1.3, s * 0.5, -s * 0.7);
-        ctx.lineTo(s * 0.9, -s * 0.2 + atkY); // 공격 시 촉수처럼 뻗어나감
-        ctx.lineTo(0, -s * 0.1);
-        ctx.lineTo(-s * 0.7, -s * 0.4 + atkY); // 공격 시 촉수처럼 뻗어나감
-        ctx.quadraticCurveTo(-s * 0.9, -s * 1.1, 0, -s * 1.6);
-        ctx.fill();
-
-        // 3. 번개 및 마력 균열 (가운데 찢어지는 듯한 기하학적 선)
-        ctx.strokeStyle = '#fae8ff'; // 거의 흰색에 가까운 핑크
-        ctx.lineWidth = 3 + (Math.sin(ts / 50) * 1); // 선 두께도 번뜩이게
-        ctx.shadowBlur = 15;
-        ctx.shadowColor = '#d946ef';
-
-        // 애니메이션에 따라 선이 지지직거리며 움직임
-        let f1 = Math.sin(ts / 70) * (s * 0.15);
-        let f2 = Math.cos(ts / 90) * (s * 0.15);
-
-        ctx.beginPath();
-        // 중앙 균열 1
-        ctx.moveTo(-s * 0.3 + f1, -s * 1.2);
-        ctx.lineTo(0, -s * 0.9 + f2);
-        ctx.lineTo(-s * 0.2, -s * 0.5);
-        ctx.lineTo(s * 0.3 + f1, -s * 0.2);
-        
-        // 사이드 균열 2
-        ctx.moveTo(s * 0.4, -s * 1.1 + f2);
-        ctx.lineTo(s * 0.1, -s * 0.8);
-        ctx.lineTo(s * 0.5 + f1, -s * 0.5);
-        ctx.stroke();
-
-        // 렌더링 모드 및 그림자 복구 (다른 몬스터 렌더링에 영향 방지)
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.shadowBlur = 0;
-    }
-
-    // ----------------------------------------------------
-    // 🛡️ [4] 커츠 / 흑기사 대장 (Kurz / Black Knight Chief)
-    // ----------------------------------------------------
-    else if (safeName.includes('커츠') || safeName.includes('흑기사 대장')) {
-        let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
-
-        // 붉은 망토
-        ctx.fillStyle = '#7f1d1d';
-        ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 1.0); ctx.lineTo(-s * 1.3, s * 0.9); ctx.lineTo(s * 1.3, s * 0.9); ctx.lineTo(s * 0.6, -s * 1.0); ctx.fill();
-
-        // 흑철 판금 갑옷 그라데이션
-        let armorGrad = ctx.createLinearGradient(0, -s * 1.2, 0, s);
-        armorGrad.addColorStop(0, '#334155'); armorGrad.addColorStop(0.5, '#0f172a'); armorGrad.addColorStop(1, '#020617');
-        ctx.fillStyle = armorGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        
-        // 다리
-        ctx.fillRect(-s * 0.5, 0, s * 0.4, s * 0.8 - step); ctx.strokeRect(-s * 0.5, 0, s * 0.4, s * 0.8 - step);
-        ctx.fillRect(s * 0.1, 0, s * 0.4, s * 0.8 + step); ctx.strokeRect(s * 0.1, 0, s * 0.4, s * 0.8 + step);
-        
-        // 거대 흉갑
-        ctx.beginPath(); ctx.roundRect(-s * 0.8, -s * 1.2, s * 1.6, s * 1.3, 8); ctx.fill(); ctx.stroke();
-        
-        // 견갑 (어깨)
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath(); ctx.arc(-s * 0.8, -s * 1.0, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(s * 0.8, -s * 1.0, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
-        // 십자 틈새 투구 및 안광
-        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.45, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#f00'; ctx.fillRect(-s * 0.1, -s * 1.6, s * 0.2, s * 0.2);
-
-        // 대검
-        ctx.save();
-        ctx.translate(s * 0.7, atkY - s * 0.5);
-        ctx.rotate(isAttacking ? Math.PI / 4 : -Math.PI / 8);
-        ctx.fillStyle = '#64748b'; ctx.fillRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0); ctx.strokeRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0);
-        ctx.fillStyle = '#b45309'; ctx.fillRect(-s * 0.4, -s * 0.2, s * 0.8, s * 0.15); // 크로스가드
-        ctx.restore();
-    }
-else if (safeName.includes('웅골리언트')) {
-        let legSway = isMoving ? Math.sin(ts / 50) * (s * 0.3) : Math.sin(ts / 150) * (s * 0.1);
-        
-        // 1. 거대 거미 복부 (크고 검붉은 엉덩이 그라데이션)
-        let abdGrad = ctx.createRadialGradient(-s*0.5, -s*0.8, 0, -s*0.5, -s*0.8, s*1.5);
-        abdGrad.addColorStop(0, '#991b1b'); // 진홍색
-        abdGrad.addColorStop(1, '#1c1917'); // 흑갈색
-        ctx.fillStyle = abdGrad; 
-        ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*1.2, s*0.9, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke(); 
-        
-        // 보스 특유의 복부 십자가/독 십자 무늬
-        ctx.fillStyle = '#dc2626';
-        ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*0.8, s*0.15, 0, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(-s*0.5, -s*0.8, s*0.15, s*0.7, 0, 0, Math.PI*2); ctx.fill();
-
-        // 2. 가슴 및 머리 부분
-        ctx.fillStyle = '#111'; 
-        ctx.beginPath(); ctx.arc(s*0.6, -s*0.5, s*0.5, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-        
-        // 거미의 다중 붉은 안광
-        ctx.fillStyle = '#f00'; 
-        ctx.shadowBlur = 10; ctx.shadowColor = '#f00';
-        ctx.fillRect(s*0.7, -s*0.7, 5, 5); ctx.fillRect(s*0.9, -s*0.6, 6, 6); 
-        ctx.fillRect(s*0.7, -s*0.5, 4, 4); ctx.fillRect(s*0.9, -s*0.4, 5, 5);
-        ctx.shadowBlur = 0;
-
-        // 3. 8개의 굵은 거미 다리 (4쌍)
-        ctx.strokeStyle = '#291313'; ctx.lineWidth = 5;
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        for(let i=0; i<4; i++) {
-            let sDir = i % 2 === 0 ? legSway : -legSway;
-            let legY = -s*1.4 + sDir;
-            // 왼쪽 다리
-            ctx.moveTo(-s*0.2, -s*0.4); 
-            ctx.lineTo(-s*1.2 + i*s*0.6, legY); 
-            ctx.lineTo(-s*1.6 + i*s*0.9, s*0.5);
-            // 오른쪽 다리
-            ctx.moveTo(s*0.2, -s*0.4); 
-            ctx.lineTo(s*1.2 - i*s*0.6, legY); 
-            ctx.lineTo(s*1.6 - i*s*0.9, s*0.5);
-        }
-        ctx.stroke();
-
-        // 4. 거대 맹독 송곳니 (공격 모션 연동)
-        ctx.fillStyle = '#f1f5f9'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(s*0.8, -s*0.3); ctx.quadraticCurveTo(s*1.2, atkY, s*1.0, s*0.4 + atkY); ctx.quadraticCurveTo(s*0.7, 0, s*0.6, -s*0.2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s*0.5, -s*0.2); ctx.quadraticCurveTo(s*0.9, atkY, s*0.7, s*0.4 + atkY); ctx.quadraticCurveTo(s*0.4, 0, s*0.3, -s*0.1); ctx.fill(); ctx.stroke();
-        
-        // 타격 시 송곳니 끝에서 떨어지는 맹독 이펙트
-        if (isAttacking) {
-            ctx.fillStyle = '#4ade80';
-            ctx.beginPath(); ctx.arc(s*1.0, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.arc(s*0.7, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill();
-        }
-    }
-// ----------------------------------------------------
-    // 🌳 [타락한 엔트] - 일반 엔트의 거대화 및 기괴화 (부패한 고목)
-    // ----------------------------------------------------
-    else if (safeName.includes('타락한 엔트') || safeName.includes('엔트')) {
-        let sway = isMoving ? Math.sin(ts / 120) * (s * 0.15) : Math.sin(ts / 200) * (s * 0.05);
-        let breathe = isMoving ? Math.sin(ts / 90) * (s * 0.05) : 0;
-
-        // 1. 타락한 독기 오라 (바닥에 깔리는 늪 같은 연기)
-        ctx.fillStyle = 'rgba(132, 204, 22, 0.2)'; // 맹독성 늪 색상
-        ctx.beginPath(); ctx.ellipse(0, s * 0.8, s * 1.5, s * 0.5, 0, 0, Math.PI * 2); ctx.fill();
-
-        // 2. 기괴하게 꼬인 하반신 나무 뿌리
-        ctx.strokeStyle = '#1c1917'; // 썩고 탄 나무껍질
-        ctx.lineWidth = s * 0.25;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        for(let i = -2; i <= 2; i++) {
-            let rootSway = Math.sin(ts / 80 + i) * (s * 0.1);
-            ctx.moveTo(i * s * 0.3, s * 0.5);
-            ctx.quadraticCurveTo(i * s * 0.8 + rootSway, s * 0.8, i * s * 1.2, s * 1.0);
-        }
-        ctx.stroke();
-
-        // 3. 거대하고 뒤틀린 나무 기둥 (몸통)
-        let trunkGrad = ctx.createLinearGradient(-s*0.5, -s*1.5, s*0.5, s*0.5);
-        trunkGrad.addColorStop(0, '#271005');
-        trunkGrad.addColorStop(0.5, '#3f271d');
-        trunkGrad.addColorStop(1, '#1c1917');
-        
-        ctx.fillStyle = trunkGrad;
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 3;
-        
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.5, s * 0.6);
-        ctx.quadraticCurveTo(-s * 0.7 - sway, -s * 0.2, -s * 0.5 - sway, -s * 1.2 - breathe);
-        ctx.lineTo(s * 0.5 - sway, -s * 1.2 - breathe);
-        ctx.quadraticCurveTo(s * 0.7 - sway, -s * 0.2, s * 0.5, s * 0.6);
-        ctx.closePath();
-        ctx.fill(); ctx.stroke();
-
-        // 나무껍질의 기괴한 균열과 흘러내리는 독액
-        ctx.strokeStyle = '#4d7c0f'; // 짙은 독기
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.2 - sway, -s * 0.8 - breathe);
-        ctx.lineTo(0 - sway, -s * 0.4);
-        ctx.lineTo(-s * 0.1, 0);
-        ctx.stroke();
-        
-        ctx.strokeStyle = '#84cc16'; // 형광 독액
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(s * 0.2 - sway, -s * 0.9 - breathe);
-        ctx.lineTo(s * 0.1 - sway, -s * 0.5);
-        ctx.stroke();
-
-        // 4. 악몽 같은 얼굴 (텅 빈 눈, 벌어진 입)
-        ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.ellipse(-s * 0.2 - sway, -s * 0.9 - breathe, s * 0.15, s * 0.1, Math.PI/8, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(s * 0.2 - sway, -s * 0.9 - breathe, s * 0.12, s * 0.08, -Math.PI/8, 0, Math.PI*2); ctx.fill();
-        
-        // 맹독의 안광
-        ctx.shadowBlur = 15; ctx.shadowColor = '#bef264';
-        ctx.fillStyle = '#a3e635';
-        ctx.beginPath(); ctx.arc(-s * 0.2 - sway, -s * 0.9 - breathe, s * 0.05, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.2 - sway, -s * 0.9 - breathe, s * 0.04, 0, Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // 비명을 지르는 듯한 깊고 기괴한 입
-        ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.ellipse(0 - sway, -s * 0.5 - breathe, s * 0.25, s * 0.35, 0, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#4d7c0f'; // 입안에서 뿜어져 나오는 독기
-        ctx.beginPath(); ctx.ellipse(0 - sway, -s * 0.5 - breathe, s * 0.15, s * 0.2, 0, 0, Math.PI*2); ctx.fill();
-
-        // 5. 비대칭적이고 날카로운 나뭇가지 팔 (공격 모션 연동)
-        ctx.strokeStyle = '#271005';
-        ctx.lineJoin = 'round';
-
-        // 왼쪽 팔 (무겁고 뭉툭한 철퇴 형태)
-        ctx.lineWidth = s * 0.35;
-        ctx.beginPath();
-        ctx.moveTo(-s * 0.5 - sway, -s * 0.7 - breathe);
-        ctx.quadraticCurveTo(-s * 1.5, -s * 1.0 + atkY, -s * 1.2, s * 0.2 + atkY);
-        ctx.stroke();
-        ctx.fillStyle = '#1c1917'; // 끝부분 가시
-        ctx.beginPath(); ctx.moveTo(-s * 1.2, s * 0.2 + atkY); ctx.lineTo(-s * 1.5, s * 0.8 + atkY); ctx.lineTo(-s * 0.9, s * 0.5 + atkY); ctx.fill();
-
-        // 오른쪽 팔 (날카로운 창, 찌르기 형태)
-        ctx.lineWidth = s * 0.2;
-        ctx.beginPath();
-        ctx.moveTo(s * 0.5 - sway, -s * 0.8 - breathe);
-        ctx.quadraticCurveTo(s * 1.2, -s * 1.2 + atkY, s * 1.5, -s * 0.2 + atkY);
-        ctx.stroke();
-        ctx.fillStyle = '#1c1917';
-        ctx.beginPath(); ctx.moveTo(s * 1.5, -s * 0.2 + atkY); ctx.lineTo(s * 2.0, s * 0.3 + atkY); ctx.lineTo(s * 1.3, s * 0.1 + atkY); ctx.fill();
-
-        // 6. 주위에 흩날리는 맹독 포자
-        ctx.fillStyle = '#84cc16';
-        for(let j = 0; j < 6; j++) {
-            let sporeX = Math.sin(ts / 50 + j) * (s * 1.2) - sway;
-            let sporeY = -s * 1.5 + (ts / 20 + j * 50) % (s * 2) - breathe;
-            ctx.beginPath(); ctx.arc(sporeX, sporeY, 2 + Math.random()*2, 0, Math.PI*2); ctx.fill();
-        }
-    }
-
-    // ----------------------------------------------------
-    // 🦇 [5] 데몬 (Demon) - 날개 달린 거대 악마
-    // ----------------------------------------------------
-    else if (safeName.includes('데몬')) {
-        let flap = isMoving ? Math.sin(ts / 70) * (s * 0.4) : 0;
-        
-        // 악마 날개
-        ctx.fillStyle = '#450a0a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.0); ctx.lineTo(-s * 2.5, -s * 2.0 + flap); ctx.lineTo(-s * 1.5, 0); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 1.0); ctx.lineTo(s * 2.5, -s * 2.0 + flap); ctx.lineTo(s * 1.5, 0); ctx.fill(); ctx.stroke();
-
-        // 붉은 근육질 몬스터 몸
-        ctx.fillStyle = '#b91c1c';
-        let step = isMoving ? Math.sin(ts / 90) * (s * 0.2) : 0;
-        ctx.fillRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step);
-        ctx.fillRect(s * 0.2, 0, s * 0.4, s * 0.9 + step); ctx.strokeRect(s * 0.2, 0, s * 0.4, s * 0.9 + step);
-        ctx.beginPath(); ctx.roundRect(-s * 0.8, -s * 1.3, s * 1.6, s * 1.4, 10); ctx.fill(); ctx.stroke();
-
-        // 얼굴 & 양각 뿔
-        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#1c1917';
-        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 2.5, -s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.8); ctx.quadraticCurveTo(s * 1.2, -s * 2.5, s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = '#facc15'; ctx.fillRect(-s * 0.2, -s * 1.6, 6, 6); ctx.fillRect(s * 0.1, -s * 1.6, 6, 6);
-    }
-    // ----------------------------------------------------
-    // 🗡️ [6] 명황 단테스 (Dantes) - 다크엘프 수장
-    // ----------------------------------------------------
-    else if (safeName.includes('단테스')) {
-        let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
-        
-        // 펄럭이는 은발
-        ctx.fillStyle = '#e2e8f0';
-        ctx.beginPath(); ctx.moveTo(0, -s * 1.5); ctx.quadraticCurveTo(-s * 1.5, -s * 0.5, -s * 0.8, s * 0.5); ctx.lineTo(0, -s * 1.0); ctx.fill();
-        
-        // 슬릭한 보라/블랙 다크엘프 갑옷
-        let armorGrad = ctx.createLinearGradient(0, -s * 1.3, 0, 0);
-        armorGrad.addColorStop(0, '#1e1b4b'); armorGrad.addColorStop(1, '#312e81');
-        ctx.fillStyle = armorGrad; ctx.strokeStyle = '#a5b4fc'; ctx.lineWidth = 1.5;
-
-        ctx.fillRect(-s * 0.3, 0, s * 0.25, s * 0.9 - step); ctx.strokeRect(-s * 0.3, 0, s * 0.25, s * 0.9 - step);
-        ctx.fillRect(s * 0.05, 0, s * 0.25, s * 0.9 + step); ctx.strokeRect(s * 0.05, 0, s * 0.25, s * 0.9 + step);
-        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.2); ctx.lineTo(s * 0.5, -s * 1.2); ctx.lineTo(s * 0.3, s * 0.2); ctx.lineTo(-s * 0.3, s * 0.2); ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // 얼굴 (어두운 피부)
-        ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.arc(0, -s * 1.4, s * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#ef4444'; ctx.fillRect(-s*0.15, -s*1.45, 4, 4); ctx.fillRect(s*0.05, -s*1.45, 4, 4);
-
-        // 보라빛 쌍검
-        ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 0.5 + atkY); ctx.lineTo(-s * 1.5, atkY - s * 2.0); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.6, -s * 0.5 + atkY); ctx.lineTo(s * 1.5, atkY - s * 2.0); ctx.stroke();
-    }
-    // ----------------------------------------------------
-    // 🪓 [7] 대미노타우르스 (Great Minotaur)
-    // ----------------------------------------------------
-    else if (safeName.includes('미노타우르스')) {
-        let step = isMoving ? Math.sin(ts / 90) * (s * 0.25) : 0;
-        ctx.fillStyle = '#451a03'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-
-        // 거대 다리 & 몸통 (황소)
-        ctx.fillRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step);
-        ctx.fillRect(s * 0.15, 0, s * 0.45, s * 0.8 + step); ctx.strokeRect(s * 0.15, 0, s * 0.45, s * 0.8 + step);
-        ctx.beginPath(); ctx.ellipse(0, -s * 0.8, s * 1.3, s * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = '#78350f'; // 가슴팍 밝은 털
-        ctx.beginPath(); ctx.ellipse(0, -s * 0.7, s * 0.8, s * 0.6, 0, 0, Math.PI * 2); ctx.fill();
-
-        // 소 머리, 뿔, 코뚜레
-        ctx.fillStyle = '#451a03'; ctx.beginPath(); ctx.arc(0, -s * 1.7, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#fef08a';
-        ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 2.2, -s * 1.0, -s * 2.5); ctx.stroke(); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(s * 0.4, -s * 1.8); ctx.quadraticCurveTo(s * 1.2, -s * 2.2, s * 1.0, -s * 2.5); ctx.stroke(); ctx.fill();
-        ctx.strokeStyle = '#eab308'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(0, -s * 1.4, s * 0.15, 0, Math.PI * 2); ctx.stroke();
-
-        // 거대 도끼
-        ctx.save();
-        ctx.translate(s * 0.8, atkY - s * 0.5);
-        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
-        ctx.fillStyle = '#451a03'; ctx.fillRect(-s * 0.1, -s * 2.5, s * 0.2, s * 3.5); 
-        ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#111';
-        ctx.beginPath(); ctx.arc(0, -s * 2.0, s * 0.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); // 양날 도끼
-        ctx.restore();
-    }
-    // ----------------------------------------------------
-    // 👻 [8] 그림 리퍼 / 각성한 사신 (Grim Reaper)
-    // ----------------------------------------------------
-    else if (safeName.includes('리퍼') || safeName.includes('사신')) {
-        let hoverY = Math.sin(ts / 120) * (s * 0.2);
-        ctx.translate(0, hoverY);
-
-        // 하단부 검은 안개
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
-        ctx.beginPath(); ctx.ellipse(0, s * 0.5, s * 1.2, s * 0.4, 0, 0, Math.PI*2); ctx.fill();
-
-        // 너덜거리는 흑색 로브
-        ctx.fillStyle = '#111'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.4); ctx.lineTo(s * 0.5, -s * 1.4);
-        ctx.lineTo(s * 1.0, s * 0.8); ctx.lineTo(-s * 1.0, s * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
-
-        // 해골 얼굴
-        ctx.fillStyle = '#f8fafc'; ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.35, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#000'; ctx.fillRect(-s * 0.15, -s * 1.55, 6, 8); ctx.fillRect(s * 0.05, -s * 1.55, 6, 8);
-
-        // 거대 은빛 낫 (Scythe)
-        ctx.strokeStyle = '#27272a'; ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.moveTo(-s * 0.8, s * 0.8); ctx.lineTo(-s * 0.8, atkY - s * 2.5); ctx.stroke();
-        ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.8, atkY - s * 2.3);
-        ctx.quadraticCurveTo(-s * 2.5, atkY - s * 2.5, -s * 2.8, atkY - s * 1.0);
-        ctx.quadraticCurveTo(-s * 2.0, atkY - s * 1.8, -s * 0.8, atkY - s * 2.0);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-    }
-    // ----------------------------------------------------
-    // 🐜 [9] 여왕 개미 (Queen Ant)
-    // ----------------------------------------------------
-    else if (safeName.includes('여왕 개미') || safeName.includes('퀸')) {
-        let legSway = isMoving ? Math.sin(ts / 60) * (s * 0.2) : 0;
-        
-        // 거대 복부 (황금빛/갈색)
-        let abdGrad = ctx.createRadialGradient(0, -s * 1.5, 0, 0, -s * 1.5, s * 2.0);
-        abdGrad.addColorStop(0, '#b45309'); abdGrad.addColorStop(1, '#451a03');
-        ctx.fillStyle = abdGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(0, -s * 1.5, s * 1.6, s * 1.8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
-        // 흉부 및 머리
-        ctx.fillStyle = '#78350f';
-        ctx.beginPath(); ctx.ellipse(0, -s * 0.5, s * 0.8, s * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(0, 0, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-
-        // 6개의 다리
-        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 5;
-        for (let i = -1; i <= 1; i++) {
-            let sway = (i % 2 === 0) ? legSway : -legSway;
-            ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 0.5 + i * s * 0.3); ctx.lineTo(-s * 1.5, -s * 0.2 + i * s * 0.4 + sway); ctx.lineTo(-s * 2.0, s * 0.8); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 0.5 + i * s * 0.3); ctx.lineTo(s * 1.5, -s * 0.2 + i * s * 0.4 - sway); ctx.lineTo(s * 2.0, s * 0.8); ctx.stroke();
-        }
-
-        // 여왕의 턱
-        ctx.strokeStyle = '#facc15'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(-s * 0.2, s * 0.4); ctx.quadraticCurveTo(-s * 0.8, s * 0.8 + atkY, -s * 0.2, s * 1.2 + atkY); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.2, s * 0.4); ctx.quadraticCurveTo(s * 0.8, s * 0.8 + atkY, s * 0.2, s * 1.2 + atkY); ctx.stroke();
-    }
-    // ----------------------------------------------------
-    // 🧙‍♂️ [10] 흑장로 (Black Elder)
-    // ----------------------------------------------------
-    else if (safeName.includes('흑장로')) {
-        let hoverY = Math.sin(ts / 150) * (s * 0.2);
-        ctx.translate(0, hoverY);
-
-        ctx.fillStyle = '#1e293b'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.0); ctx.lineTo(s * 0.5, -s * 1.0); ctx.lineTo(s * 0.8, s * 0.8); ctx.lineTo(-s * 0.8, s * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
-        
-        ctx.fillStyle = '#0f172a'; // 굽은 등과 후드
-        ctx.beginPath(); ctx.arc(0, -s * 1.2, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#f00'; ctx.fillRect(-s * 0.15, -s * 1.25, 4, 4); ctx.fillRect(s * 0.05, -s * 1.25, 4, 4);
-
-        // 떠다니는 흑마법 서적
-        let bookHover = Math.sin(ts / 100 + Math.PI) * (s * 0.3);
-        ctx.fillStyle = '#7c2d12'; ctx.fillRect(-s * 1.2, atkY - s * 0.8 + bookHover, s * 0.6, s * 0.5);
-        ctx.fillStyle = '#fef08a'; ctx.fillRect(-s * 1.1, atkY - s * 0.7 + bookHover, s * 0.4, s * 0.3);
-        
-        // 해골 지팡이
-        ctx.strokeStyle = '#451a03'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.moveTo(s * 0.8, s * 0.8); ctx.lineTo(s * 0.8, atkY - s * 1.8); ctx.stroke();
-        ctx.fillStyle = '#9333ea'; ctx.beginPath(); ctx.arc(s * 0.8, atkY - s * 1.9, s * 0.2, 0, Math.PI * 2); ctx.fill();
-    }
-    // ----------------------------------------------------
-    // 🐉 [11] 드래곤 공용 (발라카스, 안타라스, 파푸리온 등)
-    // ----------------------------------------------------
-    else if (safeName.includes('발라카스') || safeName.includes('안타라스') || safeName.includes('드레이크') || safeName.includes('드래곤')) {
-        let isFire = safeName.includes('발라카스');
-        let skin = isFire ? '#881337' : '#14532d';
-        let wFlap = isMoving ? Math.sin(ts / 70) * (s * 0.45) : Math.sin(ts / 150) * (s * 0.15);
-
-        ctx.fillStyle = skin; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 0.5); ctx.lineTo(-s * 2.8, -s * 2.4 + wFlap); ctx.lineTo(-s * 1.3, -s * 0.1); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 0.5); ctx.lineTo(s * 2.8, -s * 2.4 + wFlap); ctx.lineTo(s * 1.3, -s * 0.1); ctx.fill(); ctx.stroke();
-
-        ctx.beginPath(); ctx.ellipse(0, -s * 0.35, s * 1.05, s * 0.75, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.ellipse(s * 0.9, atkY - s * 1.0, s * 0.65, s * 0.4, Math.PI / 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
-else if (safeName.includes('제니스 퀸') || safeName.includes('제니스')) {
-        let legSway = isMoving ? Math.sin(ts / 80) * (s * 0.15) : Math.sin(ts / 150) * (s * 0.05);
-
-        // 1. 배후의 거대 마수 다리 (뒤에 깔리는 배경 다리)
-        ctx.strokeStyle = '#1c1917'; // 어두운 흑갈색 외골격
-        ctx.lineCap = 'round';
-        for (let i = -1; i <= 1; i += 2) {
-            ctx.lineWidth = 6;
-            ctx.beginPath();
-            // 위로 뻗은 거대 낫 다리
-            ctx.moveTo(i * s * 0.4, -s * 0.2);
-            ctx.quadraticCurveTo(i * s * 2.2, -s * 2.8 + legSway, i * s * 1.5, s * 0.5 + atkY);
-            ctx.stroke();
-            // 아래쪽 다리
-            ctx.beginPath();
-            ctx.moveTo(i * s * 0.5, 0);
-            ctx.quadraticCurveTo(i * s * 2.4, -s * 0.5 + legSway, i * s * 1.8, s * 1.2);
-            ctx.stroke();
-        }
-
-        // 2. 하반신 (거미 형태의 붉은 몸통)
-        let abdGrad = ctx.createRadialGradient(0, s * 0.4, 0, 0, s * 0.4, s * 1.2);
-        abdGrad.addColorStop(0, '#7f1d1d');
-        abdGrad.addColorStop(1, '#450a0a');
-        ctx.fillStyle = abdGrad;
-        ctx.beginPath(); ctx.ellipse(0, s * 0.5, s * 1.2, s * 0.8, 0, 0, Math.PI * 2); ctx.fill();
-
-        // 3. 상반신 (여성형 창백한 피부 + 붉은 반점 무늬)
-        ctx.fillStyle = '#f1f5f9'; // 창백한 피부색
-        ctx.beginPath(); ctx.ellipse(0, -s * 0.5, s * 0.65, s * 0.8, 0, 0, Math.PI * 2); ctx.fill();
-        
-        ctx.fillStyle = '#991b1b'; // 핏빛 반점
-        ctx.beginPath(); ctx.arc(-s * 0.3, -s * 0.3, s * 0.12, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.2, -s * 0.1, s * 0.18, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(-s * 0.2, -s * 0.7, s * 0.1, 0, Math.PI * 2); ctx.fill();
-
-        // 4. 머리카락 (사방으로 뻗친 날카로운 형태)
-        ctx.fillStyle = '#271005';
-        ctx.beginPath(); 
-        ctx.moveTo(0, -s * 1.7);
-        ctx.lineTo(-s * 1.2, -s * 2.3); ctx.lineTo(-s * 0.7, -s * 1.3);
-        ctx.lineTo(-s * 1.4, -s * 1.1); ctx.lineTo(-s * 0.4, -s * 0.8);
-        ctx.lineTo(s * 0.4, -s * 0.8); ctx.lineTo(s * 1.4, -s * 1.1);
-        ctx.lineTo(s * 0.7, -s * 1.3); ctx.lineTo(s * 1.2, -s * 2.3);
-        ctx.closePath(); ctx.fill();
-
-        // 5. 얼굴 및 강렬한 눈매
-        ctx.fillStyle = '#f8fafc';
-        ctx.beginPath(); ctx.arc(0, -s * 1.2, s * 0.35, 0, Math.PI * 2); ctx.fill();
-
-        ctx.fillStyle = '#000'; // 눈 화장/그림자
-        ctx.beginPath(); ctx.ellipse(-s * 0.15, -s * 1.25, s * 0.12, s * 0.06, Math.PI / 8, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(s * 0.15, -s * 1.25, s * 0.12, s * 0.06, -Math.PI / 8, 0, Math.PI * 2); ctx.fill();
-        
-        ctx.fillStyle = '#f00'; // 붉은 안광
-        ctx.beginPath(); ctx.arc(-s * 0.15, -s * 1.25, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(s * 0.15, -s * 1.25, 2.5, 0, Math.PI * 2); ctx.fill();
-
-        // 6. 전방의 거대한 양팔 (낫 형태의 거미 발톱)
-        ctx.strokeStyle = '#291313';
-        ctx.lineWidth = s * 0.35; // 두꺼운 앞발
-        ctx.lineJoin = 'bevel';
-        ctx.beginPath(); 
-        ctx.moveTo(-s * 0.5, -s * 0.6);
-        ctx.quadraticCurveTo(-s * 1.8, -s * 0.2 + atkY, -s * 0.6, s * 1.0 + atkY);
-        ctx.stroke();
-        
-        ctx.beginPath(); 
-        ctx.moveTo(s * 0.5, -s * 0.6);
-        ctx.quadraticCurveTo(s * 1.8, -s * 0.2 + atkY, s * 0.6, s * 1.0 + atkY);
-        ctx.stroke();
-    }
-    // ----------------------------------------------------
-    // 👹 [12] 그 외 미할당 보스 (공용 그래픽 처리 - 제니스 퀸 등)
-    // ----------------------------------------------------
-    else {
-        ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.roundRect(-s * 0.75, -s * 1.25, s * 1.5, s * 1.25, 6); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#1c1917';
-        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.4); ctx.lineTo(-s * 1.0, -s * 2.3); ctx.lineTo(-s * 0.1, -s * 1.5); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.4); ctx.lineTo(s * 1.0, -s * 2.3); ctx.lineTo(s * 0.1, -s * 1.5); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#334155'; ctx.fillRect(s * 0.75, atkY - s * 2.6, s * 0.35, s * 3.2);
-    }
-    
-    ctx.restore();
-}
-
-
 
 
 
@@ -2218,20 +1822,85 @@ function drawNPC(ctx, n, timestamp) {
 }
 
 function drawItem(ctx, it, timestamp) { 
-    ctx.save(); ctx.translate(it.x, it.y); ctx.translate(0, Math.sin(timestamp/200 + it.x) * 3); 
-    if (it.type === 'potion') { 
-        ctx.fillStyle = it.name.includes('주홍') ? '#f80' : (it.name.includes('초록') ? '#5f5' : (it.name.includes('파란') ? '#55f' : (it.name.includes('맑은') ? '#fff' : (it.name.includes('고기') ? '#a42' : '#f22')))); 
-        ctx.fillRect(-4, -4, 8, 8); ctx.fillStyle = '#ddd'; ctx.fillRect(-2, -8, 4, 4); 
-    } else if (it.type === 'scroll' || it.type === 'book') { 
-        ctx.fillStyle = '#ddb'; ctx.fillRect(-6, -6, 12, 12); ctx.fillStyle = '#822'; ctx.fillRect(-4, -4, 8, 8); 
-    } else if (it.type === 'weapon') { 
-        ctx.save(); ctx.rotate(Math.PI/4); ctx.fillStyle = '#eee'; ctx.fillRect(-2, -10, 4, 20); ctx.fillStyle = '#fd0'; ctx.fillRect(-6, 2, 12, 3); ctx.restore(); 
-    } else { 
-        ctx.fillStyle = gradeColors[it.grade||0]; ctx.fillRect(-6, -6, 12, 12); 
+    ctx.save(); 
+    ctx.translate(it.x, it.y); 
+    ctx.translate(0, Math.sin(timestamp / 200 + it.x) * 3); // 둥둥 떠있는 애니메이션
+
+    let gradeIdx = it.grade || 0;
+    let gColor = (typeof gradeColors !== 'undefined') ? gradeColors[gradeIdx] : '#fff';
+
+    if (it.type === 'potion') {
+        // 물약 종류별 디테일 표현 (병 모양 + 빛나는 액체)
+        let pColor = it.name.includes('주홍') ? '#f97316' : 
+                     (it.name.includes('초록') ? '#22c55e' : 
+                     (it.name.includes('파란') ? '#3b82f6' : 
+                     (it.name.includes('맑은') ? '#f8fafc' : 
+                     (it.name.includes('고기') ? '#78350f' : '#ef4444'))));
+        
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(0, 8, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+
+        // 유리병 몸체
+        ctx.fillStyle = pColor;
+        ctx.beginPath(); ctx.roundRect(-4, -4, 8, 10, 3); ctx.fill();
+        ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1; ctx.stroke();
+        
+        // 코르크 마개 및 하이라이트
+        ctx.fillStyle = '#b45309'; ctx.fillRect(-2, -7, 4, 3);
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.fillRect(-3, -2, 2, 5);
+    } 
+    else if (it.type === 'scroll' || it.type === 'book') { 
+        // 양피지 / 마법서 느낌의 두루마리 디자인
+        ctx.fillStyle = '#1e293b'; ctx.fillRect(-7, -7, 14, 14);
+        ctx.fillStyle = it.type === 'scroll' ? '#fef3c7' : '#1e1b4b'; 
+        ctx.fillRect(-5, -5, 10, 10);
+        
+        ctx.strokeStyle = it.type === 'scroll' ? '#d97706' : '#9333ea';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-5, -5, 10, 10);
+
+        // 책 줄무늬 및 보석 포인트
+        ctx.fillStyle = '#b45309';
+        ctx.fillRect(-3, -2, 6, 2);
+    } 
+    else if (it.type === 'weapon') { 
+        // 무기 아이템 드랍 외형 (황금빛 크로스가드 + 광채)
+        ctx.save(); 
+        ctx.rotate(Math.PI / 4); 
+        
+        let wGrad = ctx.createLinearGradient(0, -12, 0, 12);
+        wGrad.addColorStop(0, '#ffffff');
+        wGrad.addColorStop(0.5, gColor);
+        wGrad.addColorStop(1, '#64748b');
+
+        ctx.fillStyle = wGrad; 
+        ctx.fillRect(-1.5, -12, 3, 24); 
+        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 1;
+        ctx.strokeRect(-1.5, -12, 3, 24);
+
+        // 검의 코로스가드 (손잡이 보호대)
+        ctx.fillStyle = '#fbbf24'; 
+        ctx.fillRect(-6, 2, 12, 3); 
+        ctx.restore(); 
+    } 
+    else { 
+        // 장비 및 기타 아이템 (등급별 보석 광채 박스)
+        ctx.shadowBlur = gradeIdx >= 3 ? 10 : 0;
+        ctx.shadowColor = gColor;
+        
+        ctx.fillStyle = '#0f172a'; 
+        ctx.fillRect(-7, -7, 14, 14);
+        ctx.strokeStyle = gColor; 
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(-7, -7, 14, 14);
+
+        ctx.fillStyle = gColor;
+        ctx.fillRect(-4, -4, 8, 8);
+        ctx.shadowBlur = 0;
     } 
     ctx.restore(); 
 }
-
 function drawEntity(ctx, e, timestamp) { 
     if (isNaN(e.x) || isNaN(e.y)) return;
 
@@ -2527,28 +2196,66 @@ function draw(timestamp) {
             let ry = e.y;
             let isMercOrSummon = e.isMercenary || e.isOtherMerc || e.isSummon;
 
+           // 🌟 [신규] 몬스터 및 보스별 동적 높이(visual height) 계산 로직
+           let drawHeight = sz * 1.3; 
+           let sName = String(e.name || '').replace(/\(.*\)/g, '').trim();
+
+           if (e.isBoss) {
+               let bs = sz * 1.35; // 기본 보스 스케일
+               if (sName.includes('데스나이트')) drawHeight = (sz * 1.7) * 3.0; // 1.7배 크기 + 광선검 높이 보정
+               else if (sName.includes('리퍼') || sName.includes('사신') || sName.includes('제니스')) drawHeight = bs * 3.0; // 낫과 다리 높이 보정
+               else if (sName.includes('여왕 개미') || sName.includes('퀸')) drawHeight = bs * 2.2; 
+               else if (sName.includes('리치') || sName.includes('바포메트') || sName.includes('데몬') || sName.includes('커츠') || sName.includes('미노타우르스') || sName.includes('드래곤')) drawHeight = bs * 2.8;
+               else drawHeight = bs * 2.5;
+           } else if (!e.isPlayer && !isMercOrSummon) {
+               if (sName.includes('오우거') || sName.includes('골렘') || sName.includes('예티') || sName.includes('엔트')) drawHeight = sz * 2.2;
+               else if (sName.includes('해골') || sName.includes('구울') || sName.includes('흑기사')) drawHeight = sz * 1.6;
+               else drawHeight = sz * 1.3;
+           } else {
+               drawHeight = sz * 1.5; // 플레이어 및 용병 기본 높이
+           }
+
+           // 🌟 계산된 동적 높이(drawHeight)를 바탕으로 이름표와 체력바 출력
            if (isMercOrSummon) {
                 let ownerKey = e.ownerId || e.ownerSocketId || e.ownerName || (e.owner === player ? (window.socket?.id || player.name) : 'unknown');
                 let mercColor = getMercColorByOwner(ownerKey);
-                let mercFontSize = isMobile ? 12 : 15; 
-                drawNameTag(ctx, e.name || '용병', rx, ry - sz - 15, false, false, mercFontSize, mercColor);
+                let mercFontSize = isMobile ? 14 : 17; 
+                
+                drawNameTag(ctx, e.name || '용병', rx, ry - drawHeight - 15, false, false, mercFontSize, mercColor);
             }
            else if (e.isPlayer) {
-                let displayName = e.alignment > 10000 ? `[정의] ${e.name}` : (e.alignment < -10000 ? `[악인] ${e.name}` : e.name);
-                let tagColor = e.alignment > 10000 ? '#38bdf8' : (e.alignment < -10000 ? '#f87171' : '#ffffff');
-                drawNameTag(ctx, displayName, rx, ry - sz - 33, false, false, null, tagColor);
+                let displayName = e.name;
+                let tagColor = getAlignmentColor(e.alignment);
+                
+                ctx.save();
+                ctx.textAlign = 'center'; 
+                ctx.textBaseline = 'middle';
+                let isMobile = window.innerWidth < 768;
+                let pFontSize = isMobile ? 15 : 18; 
+                ctx.font = `bold ${pFontSize}px -apple-system, BlinkMacSystemFont, "Malgun Gothic", "Apple SD Gothic Neo", sans-serif`; 
+                
+                let textWidth = ctx.measureText(displayName).width;
+                
+                // 동적 높이 적용
+                let nameY = ry - drawHeight - 25;
+
+                ctx.lineWidth = 3; 
+                ctx.strokeStyle = '#000000';
+                ctx.strokeText(displayName, rx, nameY); 
+                ctx.fillStyle = tagColor;
+                ctx.fillText(displayName, rx, nameY); 
                 
                 let badgeLevel = Math.floor((e.level || 1) / 30);
                 if (badgeLevel > 0) {
-                    ctx.save();
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    let badgeColors = ['#fff', '#5f5', '#5cf', '#f55', '#fd0', '#f0f'];
-                    let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
-                    ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
-                    ctx.font = isMobile ? '17px Arial' : '15px Arial';
-                    ctx.fillText(badgeIcon, rx, ry - sz - 55); 
-                    ctx.restore();
+                    const badgeIcons = ['🗡️', '🛡️', '⚔️', '⚜️', '👑', '🐉'];
+                    let icon = badgeIcons[Math.min(badgeLevel - 1, badgeIcons.length - 1)];
+                    
+                    ctx.font = `${isMobile ? 13 : 15}px Arial`;
+                    ctx.textAlign = 'right';
+                    let iconX = rx - (textWidth / 2) - 4; 
+                    
+                    ctx.strokeText(icon, iconX, nameY);
+                    ctx.fillText(icon, iconX, nameY);
                 }
                 
                 if (e.partyId) {
@@ -2569,7 +2276,7 @@ function draw(timestamp) {
                     
                     let badgeWidth = isMobile ? (isMyParty ? 60 : 54) : (isMyParty ? 70 : 64);
                     let badgeHeight = isMobile ? 15 : 18; 
-                    let badgeY = ry - sz - (isMobile ? 52 : 56) - (badgeLevel > 0 ? 15 : 0);
+                    let badgeY = nameY - (badgeHeight + 6);
                     let badgeX = rx - badgeWidth / 2;
 
                     ctx.shadowColor = '#000000';
@@ -2590,13 +2297,16 @@ function draw(timestamp) {
                     ctx.fillText(badgeText, rx, badgeY + 1);
                     ctx.restore();
                 }
+                ctx.restore();
             }
             else if (e.isBoss) {
-                drawNameTag(ctx, e.name, rx, ry - sz - 30, true, false);
+                // 보스 이름표 높이 동적 적용
+                drawNameTag(ctx, e.name, rx, ry - drawHeight - 25, true, false);
             } 
             else {
                 if (gameOptions.showNames) {
-                    drawNameTag(ctx, e.name, rx, ry - sz - 25, false, false);
+                    // 일반 몬스터 이름표 높이 동적 적용
+                    drawNameTag(ctx, e.name, rx, ry - drawHeight - 20, false, false);
                 }
             }
 
@@ -2607,7 +2317,8 @@ function draw(timestamp) {
                 let barColor = e.isPlayer ? '#0ea5e9' : '#ef4444';
 
                 let barX = rx - barW/2;
-                let barY = ry - sz - 20;
+                // 🌟 체력바 위치 동적 적용
+                let barY = ry - drawHeight - 10;
 
                 ctx.fillStyle = '#000'; ctx.fillRect(barX, barY, barW, 5);
                 ctx.fillStyle = barColor; ctx.fillRect(barX, barY, barW * hpRatio, 5);
@@ -2623,7 +2334,9 @@ function draw(timestamp) {
 
     drawEntity(ctx, player, timestamp); 
     if(gameOptions.showNames) { 
-        let pName = player.alignment > 10000 ? `[정의] ${player.name}` : (player.alignment < -10000 ? `[악인] ${player.name}` : player.name);
+        let pName = player.name;
+        let tagColor = getAlignmentColor(player.alignment);
+
         ctx.save();
         ctx.textAlign = 'center'; 
         ctx.textBaseline = 'middle';
@@ -2635,21 +2348,28 @@ function draw(timestamp) {
         ctx.lineWidth = 4; 
         ctx.strokeStyle = '#000000';
         
-        // 💡 [원상 복구] 플레이어 좌표도 부드러운 소수점 사용
         let rx = player.x;
+        // 🌟 원본 형태의 이름표 Y 위치 복구
         let ry = player.y - player.size - 33;
+        let textWidth = ctx.measureText(pName).width;
 
+        // 내 이름 렌더링
         ctx.strokeText(pName, rx, ry); 
-        ctx.fillStyle = player.alignment > 10000 ? '#38bdf8' : (player.alignment < -10000 ? '#f87171' : '#ffffff');
+        ctx.fillStyle = tagColor;
         ctx.fillText(pName, rx, ry); 
         
+        // 🌟 좌측 뱃지를 이름표와 가깝게 밀착 (- 4)
         let badgeLevel = Math.floor((player.level || 1) / 30);
         if (badgeLevel > 0) {
-            let badgeColors = ['#fff', '#5f5', '#5cf', '#f55', '#fd0', '#f0f'];
-            let badgeIcon = ['🌱', '⚔️', '🛡️', '🔥', '👑', '🌟'][Math.min(badgeLevel - 1, 5)];
-            ctx.fillStyle = badgeColors[Math.min(badgeLevel - 1, badgeColors.length - 1)];
-            ctx.font = isMobile ? '17px Arial' : '15px Arial';
-            ctx.fillText(badgeIcon, rx, player.y - player.size - 55); 
+            const badgeIcons = ['🗡️', '🛡️', '⚔️', '⚜️', '👑', '🐉'];
+            let icon = badgeIcons[Math.min(badgeLevel - 1, badgeIcons.length - 1)];
+            
+            ctx.font = `${isMobile ? 13 : 15}px Arial`;
+            ctx.textAlign = 'right';
+            let iconX = rx - (textWidth / 2) - 4; 
+            
+            ctx.strokeText(icon, iconX, ry);
+            ctx.fillText(icon, iconX, ry);
         }        
         ctx.restore();
     }
@@ -2658,6 +2378,7 @@ function draw(timestamp) {
         let hpRatio = Math.max(0, player.hp / currentMaxHp);
         let barW = 70; 
         let px = player.x;
+        // 🌟 원본 형태의 내 체력바 Y 위치 복구
         let py = player.y - player.size - 25;
         ctx.fillStyle = '#000'; ctx.fillRect(px - barW/2, py, barW, 6);
         ctx.fillStyle = '#5f5'; 
