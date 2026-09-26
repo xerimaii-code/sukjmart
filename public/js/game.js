@@ -1038,30 +1038,62 @@ function drawCharacter(ctx, ent, sz, isAttacking, isMoving, frame, eq, timestamp
     }
 }
 
-// =========================================================================
-// 👑 [전체 교체] 보스 몬스터 렌더링 함수
-// =========================================================================
-function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
+function drawBossDetailed(ctx, target, sz, isAttacking, isMoving, isHit, ts) {
     ctx.save();
     let s = sz * 1.35; 
     let atkY = isAttacking ? -s * 0.45 : 0;
-    let safeName = String(name || '').trim();
+
+    // 💡 1. ID와 한글 이름을 동시에 추출합니다.
+    let bossId = '';
+    let safeName = '';
+
+    if (typeof target === 'object' && target !== null) {
+        bossId = String(target.baseBossId || target.id || '').toLowerCase();
+        safeName = String(target.name || '').trim();
+    } else {
+        bossId = String(target || '').toLowerCase();
+    }
+
+    // 🚨 [최강 방어선] 서버에서 ID를 빼먹거나 어드민 소환(/소환)으로 영문 ID가 깨졌을 때
+    // 화면에 표시되는 한글 이름을 기반으로 고유 ID를 강제로 복원합니다.
+    if (safeName) {
+        if (safeName.includes('여왕 개미')) bossId = 'ant_queen';
+        else if (safeName.includes('흑장로')) bossId = 'black_elder';
+        else if (safeName.includes('제니스 퀸')) bossId = 'zenith_queen';
+        else if (safeName.includes('안타라스')) bossId = 'antharas';
+        else if (safeName.includes('발라카스')) bossId = 'valakas';
+        else if (safeName.includes('타로스')) bossId = 'rune_lord_taros';
+        else if (safeName.includes('드레이크') && !safeName.includes('고대')) bossId = 'drake';
+        else if (safeName.includes('데스나이트')) bossId = 'deathknight';
+        else if (safeName.includes('리치')) bossId = 'lich_boss';
+        else if (safeName.includes('바포메트')) bossId = 'baphomet';
+        else if (safeName.includes('커츠') || safeName.includes('흑기사 대장')) bossId = 'kurz';
+        else if (safeName.includes('웅골리언트')) bossId = 'giant_ungoliant';
+        else if (safeName.includes('타락한 엔트') || safeName.includes('엔트')) bossId = 'corrupted_ent';
+        else if (safeName.includes('단테스')) bossId = 'dantes';
+        else if (safeName.includes('미노타우르스')) bossId = 'great_minotaur';
+        else if (safeName.includes('리퍼') || safeName.includes('사신')) bossId = 'grim_reaper';
+        else if (safeName.includes('재의 오크 대장')) bossId = 'flame_orc_chief';
+        else if (safeName.includes('고대 드레이크')) bossId = 'ancient_drake';
+        else if (safeName.includes('늪지의 군주')) bossId = 'swamp_lord';
+        else if (safeName.includes('데몬')) bossId = 'demon';
+    }
 
     if (isHit) { ctx.globalAlpha = 0.85; ctx.filter = 'brightness(230%)'; }
 
+    // 기본 그림자 렌더링
     ctx.shadowBlur = 0; ctx.save(); ctx.scale(1, 0.35);
     let shadowPulse = Math.sin(ts / 150) * (s * 0.1);
     let sGrad = ctx.createRadialGradient(0, s * 2.2, 0, 0, s * 2.2, s * 1.5 + shadowPulse);
-    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.85)'); sGrad.addColorStop(0.5, 'rgba(45, 0, 0, 0.45)'); sGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    sGrad.addColorStop(0, 'rgba(0, 0, 0, 0.85)'); 
+    sGrad.addColorStop(0.5, 'rgba(45, 0, 0, 0.45)'); 
+    sGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = sGrad; ctx.beginPath(); ctx.arc(0, s * 2.2, s * 1.5 + shadowPulse, 0, Math.PI * 2); ctx.fill(); ctx.restore();
 
-    // ----------------------------------------------------
-    // 🔥 [1] 데스나이트 보스 전용 렌더링 (1.7배 크기 + 전용 광선검)
-    // ----------------------------------------------------
-    if (safeName.includes('데스나이트')) {
+   
+    if (bossId.includes('deathknight')) {
         let bs = sz * 1.7; 
         if (isAttacking) ctx.translate(bs * 0.15, bs * 0.05);
-
         drawDeathKnightPrecise(ctx, bs, false, false, true, isMoving, isAttacking, ts);
 
         ctx.save();
@@ -1104,9 +1136,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.restore();
     }
     // ----------------------------------------------------
-    // 💀 [2] 리치 (Lich)
+    // 💀 [2] lich_boss (리치 보스)
     // ----------------------------------------------------
-    else if (safeName.includes('리치')) {
+    else if (bossId.includes('lich_boss')) {
         let hoverY = Math.sin(ts / 120) * (s * 0.25); ctx.translate(0, hoverY);
         ctx.fillStyle = '#0f172a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-s * 0.65, -s * 1.3); ctx.lineTo(s * 0.65, -s * 1.3); ctx.lineTo(s * 1.1, s * 0.8); ctx.lineTo(0, s * 0.6); ctx.lineTo(-s * 1.1, s * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -1119,9 +1151,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.shadowBlur = 15; ctx.shadowColor = '#0ff'; ctx.fillStyle = '#e0f2fe'; ctx.beginPath(); ctx.arc(s * 0.75, atkY - s * 2.4, s * 0.15, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
     }
     // ----------------------------------------------------
-    // 🦇 [3] 바포메트 (Baphomet)
+    // 🦇 [3] baphomet (바포메트)
     // ----------------------------------------------------
-    else if (safeName.includes('바포메트')) {
+    else if (bossId.includes('baphomet')) {
         let wingMotion = Math.sin(ts / 80) * (s * 0.25);
         ctx.fillStyle = '#260808'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.1); ctx.bezierCurveTo(-s * 1.8, -s * 2.5 + wingMotion, -s * 2.6, -s * 1.5 + wingMotion, -s * 2.4, -s * 0.2 + wingMotion); ctx.lineTo(-s * 0.3, -s * 0.4); ctx.fill(); ctx.stroke();
@@ -1132,22 +1164,10 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.beginPath(); ctx.moveTo(-s * 0.2, -s * 1.5); ctx.bezierCurveTo(-s * 1.4, -s * 2.4, -s * 1.6, -s * 0.9, -s * 1.0, -s * 0.7); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(s * 0.2, -s * 1.5); ctx.bezierCurveTo(s * 1.4, -s * 2.4, s * 1.6, -s * 0.9, s * 1.0, -s * 0.7); ctx.stroke();
     }
-    else if (safeName.includes('대정령') || safeName.includes('정령')) {
-        let hoverY = Math.sin(ts / 150) * (s * 0.2); ctx.translate(0, hoverY); let pulse = Math.sin(ts / 100) * (s * 0.1); 
-        let auraGrad = ctx.createRadialGradient(0, -s * 0.8, 0, 0, -s * 0.8, s * 1.4 + pulse);
-        auraGrad.addColorStop(0, 'rgba(232, 121, 249, 0.9)'); auraGrad.addColorStop(0.4, 'rgba(192, 132, 252, 0.5)'); auraGrad.addColorStop(1, 'rgba(0, 0, 0, 0)'); 
-        ctx.fillStyle = auraGrad; ctx.beginPath(); ctx.arc(0, -s * 0.8, s * 1.4 + pulse, 0, Math.PI * 2); ctx.fill();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = 'rgba(217, 70, 239, 0.6)'; ctx.beginPath(); ctx.moveTo(0, -s * 1.6); ctx.quadraticCurveTo(s * 0.6, -s * 1.3, s * 0.5, -s * 0.7); ctx.lineTo(s * 0.9, -s * 0.2 + atkY); ctx.lineTo(0, -s * 0.1); ctx.lineTo(-s * 0.7, -s * 0.4 + atkY); ctx.quadraticCurveTo(-s * 0.9, -s * 1.1, 0, -s * 1.6); ctx.fill();
-        ctx.strokeStyle = '#fae8ff'; ctx.lineWidth = 3 + (Math.sin(ts / 50) * 1); ctx.shadowBlur = 15; ctx.shadowColor = '#d946ef';
-        let f1 = Math.sin(ts / 70) * (s * 0.15); let f2 = Math.cos(ts / 90) * (s * 0.15);
-        ctx.beginPath(); ctx.moveTo(-s * 0.3 + f1, -s * 1.2); ctx.lineTo(0, -s * 0.9 + f2); ctx.lineTo(-s * 0.2, -s * 0.5); ctx.lineTo(s * 0.3 + f1, -s * 0.2); ctx.moveTo(s * 0.4, -s * 1.1 + f2); ctx.lineTo(s * 0.1, -s * 0.8); ctx.lineTo(s * 0.5 + f1, -s * 0.5); ctx.stroke();
-        ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
-    }
     // ----------------------------------------------------
-    // 🛡️ [4] 커츠 / 흑기사 대장 (Kurz / Black Knight Chief)
+    // 🛡️ [4] kurz (커츠) / black_knight_chief (흑기사 대장)
     // ----------------------------------------------------
-    else if (safeName.includes('커츠') || safeName.includes('흑기사 대장')) {
+    else if (bossId.includes('kurz') || bossId.includes('black_knight_chief')) {
         let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
         ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.moveTo(-s * 0.6, -s * 1.0); ctx.lineTo(-s * 1.3, s * 0.9); ctx.lineTo(s * 1.3, s * 0.9); ctx.lineTo(s * 0.6, -s * 1.0); ctx.fill();
         let armorGrad = ctx.createLinearGradient(0, -s * 1.2, 0, s);
@@ -1163,7 +1183,10 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.fillStyle = '#64748b'; ctx.fillRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0); ctx.strokeRect(-s * 0.15, -s * 2.5, s * 0.3, s * 3.0);
         ctx.fillStyle = '#b45309'; ctx.fillRect(-s * 0.4, -s * 0.2, s * 0.8, s * 0.15); ctx.restore();
     }
-    else if (safeName.includes('웅골리언트')) {
+    // ----------------------------------------------------
+    // 🕷️ [5] giant_ungoliant (거대 웅골리언트)
+    // ----------------------------------------------------
+    else if (bossId.includes('giant_ungoliant')) {
         let legSway = isMoving ? Math.sin(ts / 50) * (s * 0.3) : Math.sin(ts / 150) * (s * 0.1);
         let abdGrad = ctx.createRadialGradient(-s*0.5, -s*0.8, 0, -s*0.5, -s*0.8, s*1.5);
         abdGrad.addColorStop(0, '#991b1b'); abdGrad.addColorStop(1, '#1c1917'); 
@@ -1186,9 +1209,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         if (isAttacking) { ctx.fillStyle = '#4ade80'; ctx.beginPath(); ctx.arc(s*1.0, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.arc(s*0.7, s*0.4 + atkY, s*0.15, 0, Math.PI*2); ctx.fill(); }
     }
     // ----------------------------------------------------
-    // 🌳 [타락한 엔트] - 일반 엔트의 거대화 및 기괴화 (부패한 고목)
+    // 🌳 [6] corrupted_ent (타락한 엔트)
     // ----------------------------------------------------
-    else if (safeName.includes('타락한 엔트') || safeName.includes('엔트')) {
+    else if (bossId.includes('corrupted_ent')) {
         let sway = isMoving ? Math.sin(ts / 120) * (s * 0.15) : Math.sin(ts / 200) * (s * 0.05);
         let breathe = isMoving ? Math.sin(ts / 90) * (s * 0.05) : 0;
         ctx.fillStyle = 'rgba(132, 204, 22, 0.2)'; ctx.beginPath(); ctx.ellipse(0, s * 0.8, s * 1.5, s * 0.5, 0, 0, Math.PI * 2); ctx.fill();
@@ -1210,26 +1233,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.fillStyle = '#84cc16'; for(let j = 0; j < 6; j++) { let sporeX = Math.sin(ts / 50 + j) * (s * 1.2) - sway; let sporeY = -s * 1.5 + (ts / 20 + j * 50) % (s * 2) - breathe; ctx.beginPath(); ctx.arc(sporeX, sporeY, 2 + Math.random()*2, 0, Math.PI*2); ctx.fill(); }
     }
     // ----------------------------------------------------
-    // 🦇 [5] 데몬 (Demon) - 날개 달린 거대 악마
+    // 🗡️ [7] dantes (명황 단테스)
     // ----------------------------------------------------
-    else if (safeName.includes('데몬')) {
-        let flap = isMoving ? Math.sin(ts / 70) * (s * 0.4) : 0;
-        ctx.fillStyle = '#450a0a'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-s * 0.5, -s * 1.0); ctx.lineTo(-s * 2.5, -s * 2.0 + flap); ctx.lineTo(-s * 1.5, 0); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.5, -s * 1.0); ctx.lineTo(s * 2.5, -s * 2.0 + flap); ctx.lineTo(s * 1.5, 0); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#b91c1c'; let step = isMoving ? Math.sin(ts / 90) * (s * 0.2) : 0;
-        ctx.fillRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.4, s * 0.9 - step);
-        ctx.fillRect(s * 0.2, 0, s * 0.4, s * 0.9 + step); ctx.strokeRect(s * 0.2, 0, s * 0.4, s * 0.9 + step);
-        ctx.beginPath(); ctx.roundRect(-s * 0.8, -s * 1.3, s * 1.6, s * 1.4, 10); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#1c1917'; ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 2.5, -s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.8); ctx.quadraticCurveTo(s * 1.2, -s * 2.5, s * 1.0, -s * 1.0); ctx.fill(); ctx.stroke();
-        ctx.fillStyle = '#facc15'; ctx.fillRect(-s * 0.2, -s * 1.6, 6, 6); ctx.fillRect(s * 0.1, -s * 1.6, 6, 6);
-    }
-    // ----------------------------------------------------
-    // 🗡️ [6] 명황 단테스 (Dantes) - 다크엘프 수장
-    // ----------------------------------------------------
-    else if (safeName.includes('단테스')) {
+    else if (bossId.includes('dantes')) {
         let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
         ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.moveTo(0, -s * 1.5); ctx.quadraticCurveTo(-s * 1.5, -s * 0.5, -s * 0.8, s * 0.5); ctx.lineTo(0, -s * 1.0); ctx.fill();
         let armorGrad = ctx.createLinearGradient(0, -s * 1.3, 0, 0); armorGrad.addColorStop(0, '#1e1b4b'); armorGrad.addColorStop(1, '#312e81');
@@ -1244,9 +1250,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.beginPath(); ctx.moveTo(s * 0.6, -s * 0.5 + atkY); ctx.lineTo(s * 1.5, atkY - s * 2.0); ctx.stroke();
     }
     // ----------------------------------------------------
-    // 🪓 [7] 대미노타우르스 (Great Minotaur)
+    // 🪓 [8] great_minotaur (대미노타우르스)
     // ----------------------------------------------------
-    else if (safeName.includes('미노타우르스')) {
+    else if (bossId.includes('great_minotaur')) {
         let step = isMoving ? Math.sin(ts / 90) * (s * 0.25) : 0;
         ctx.fillStyle = '#451a03'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
         ctx.fillRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.45, s * 0.8 - step);
@@ -1263,9 +1269,9 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.restore();
     }
     // ----------------------------------------------------
-    // 👻 [8] 그림 리퍼 / 각성한 사신 (Grim Reaper)
+    // 👻 [9] grim_reaper (그림 리퍼) / awakened_reaper (각성한 사신)
     // ----------------------------------------------------
-    else if (safeName.includes('리퍼') || safeName.includes('사신')) {
+    else if (bossId.includes('grim_reaper') || bossId.includes('awakened_reaper')) {
         let hoverY = Math.sin(ts / 120) * (s * 0.2); ctx.translate(0, hoverY);
         ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; ctx.beginPath(); ctx.ellipse(0, s * 0.5, s * 1.2, s * 0.4, 0, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#111'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
@@ -1276,88 +1282,337 @@ function drawBossDetailed(ctx, name, sz, isAttacking, isMoving, isHit, ts) {
         ctx.fillStyle = '#94a3b8'; ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-s * 0.8, atkY - s * 2.3); ctx.quadraticCurveTo(-s * 2.5, atkY - s * 2.5, -s * 2.8, atkY - s * 1.0); ctx.quadraticCurveTo(-s * 2.0, atkY - s * 1.8, -s * 0.8, atkY - s * 2.0); ctx.closePath(); ctx.fill(); ctx.stroke();
     }
-   
-else if (safeName.includes('재의 오크 대장')) {
+    // ----------------------------------------------------
+    // 🪓 [10] flame_orc_chief (재의 오크 대장)
+    // ----------------------------------------------------
+    else if (bossId.includes('flame_orc_chief')) {
         let step = isMoving ? Math.sin(ts / 80) * (s * 0.2) : 0;
         
-        // 거대한 오크 체형 다리
         ctx.fillStyle = '#8b0000'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
         ctx.fillRect(-s * 0.6, 0, s * 0.45, s * 0.9 - step); ctx.strokeRect(-s * 0.6, 0, s * 0.45, s * 0.9 - step);
         ctx.fillRect(s * 0.15, 0, s * 0.45, s * 0.9 + step); ctx.strokeRect(s * 0.15, 0, s * 0.45, s * 0.9 + step);
         
-        // 거친 갑옷 몸통
         ctx.fillStyle = '#cd853f'; ctx.beginPath(); ctx.roundRect(-s * 0.9, -s * 1.3, s * 1.8, s * 1.4, 8); ctx.fill(); ctx.stroke();
-        
-        // 머리 및 오크 투구 묘사
         ctx.fillStyle = '#8b4513'; ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         
-        // 🪓 화염이 깃든 거대한 양손 전투 도끼 (Melee Weapon)
         ctx.save(); 
         ctx.translate(s * 0.8, atkY - s * 0.5); 
-        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6); // 공격 시 도끼를 휘두르는 애니메이션 각도
-        
-        // 도끼 자루
-        ctx.fillStyle = '#3a2525'; 
-        ctx.fillRect(-s * 0.08, -s * 2.2, s * 0.16, s * 3.2);
-        
-        // 도끼 날 (초승달 모양의 거대한 날과 화염 파티클 느낌)
-        ctx.fillStyle = '#b22222'; 
-        ctx.strokeStyle = '#ff4500';
-        ctx.lineWidth = 2;
+        ctx.rotate(isAttacking ? Math.PI / 3 : -Math.PI / 6);
+        ctx.fillStyle = '#3a2525'; ctx.fillRect(-s * 0.08, -s * 2.2, s * 0.16, s * 3.2);
+        ctx.fillStyle = '#b22222'; ctx.strokeStyle = '#ff4500'; ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(0, -s * 2.5);
-        ctx.lineTo(s * 0.7, -s * 2.2);
-        ctx.lineTo(s * 0.7, -s * 1.6);
-        ctx.lineTo(0, -s * 1.8);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        
+        ctx.moveTo(0, -s * 2.5); ctx.lineTo(s * 0.7, -s * 2.2); ctx.lineTo(s * 0.7, -s * 1.6); ctx.lineTo(0, -s * 1.8);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
         ctx.restore();
-    }    // ----------------------------------------------------
-    // 🐉 [신규 2] 고대 드레이크 (Ancient Drake) - 용의 부락
+    }
     // ----------------------------------------------------
-    else if (safeName.includes('고대 드레이크')) {
+    // 🐉 [11] ancient_drake (고대 드레이크)
+    // ----------------------------------------------------
+    else if (bossId.includes('ancient_drake')) {
         let flap = isMoving ? Math.sin(ts / 60) * (s * 0.45) : 0;
         
-        // 웅장한 거대 날개 (퍼덕이는 애니메이션)
         ctx.fillStyle = '#004d00'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 1.0); ctx.lineTo(-s * 2.8, -s * 2.2 + flap); ctx.lineTo(-s * 1.2, s * 0.2); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(s * 0.4, -s * 1.0); ctx.lineTo(s * 2.8, -s * 2.2 + flap); ctx.lineTo(s * 1.2, s * 0.2); ctx.fill(); ctx.stroke();
         
-        // 드래곤 몸통 및 머리 윤곽
         ctx.fillStyle = '#006400'; ctx.beginPath(); ctx.ellipse(0, -s * 0.8, s * 1.2, s * 0.9, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.ellipse(s * 0.9, -s * 1.3, s * 0.6, s * 0.4, -Math.PI / 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         
-        // 사악하게 빛나는 붉은 눈
         ctx.shadowBlur = 10; ctx.shadowColor = '#ff0000';
         ctx.fillStyle = '#ff0000'; ctx.beginPath(); ctx.arc(s * 1.1, -s * 1.4, 4, 0, Math.PI * 2); ctx.fill();
         ctx.shadowBlur = 0;
     }
     // ----------------------------------------------------
-    // 🐊 [신규 3] 늪지의 군주 (Swamp Lord) - 피의 늪지대
+    // 🐊 [12] swamp_lord (늪지의 군주)
     // ----------------------------------------------------
-    else if (safeName.includes('늪지의 군주')) {
-        let step = isMoving ? Math.sin(ts / 100) * (s * 0.15) : 0;
-        
-        // 늪지 악어/괴수 형태의 거대한 몸체
+    else if (bossId.includes('swamp_lord')) {
         ctx.fillStyle = '#2f4f4f'; ctx.strokeStyle = '#111'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.ellipse(0, -s * 0.7, s * 1.6, s * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         
-        // 등껍질의 날카로운 돌기들
         ctx.fillStyle = '#556b2f';
         for (let i = -3; i <= 3; i++) {
             ctx.beginPath(); ctx.arc(i * s * 0.35, -s * 1.3, s * 0.22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         }
         
-        // 거친 머리 및 붉은 안광 눈
         ctx.fillStyle = '#3b5323'; ctx.beginPath(); ctx.ellipse(-s * 1.2, -s * 0.9, s * 0.7, s * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
         ctx.shadowBlur = 12; ctx.shadowColor = '#ff3300';
         ctx.fillStyle = '#ff3300'; ctx.fillRect(-s * 1.5, -s * 1.1, 6, 6);
         ctx.shadowBlur = 0;
     }
     // ----------------------------------------------------
-    // 👹 [12] 그 외 미할당 보스 (공용 그래픽 처리)
+    // 🐜 [13] ant_queen (여왕 개미) - 클래식 고증: 거대한 갈색 복부와 퇴화된 금빛 날개
+    // ----------------------------------------------------
+    else if (bossId.includes('ant_queen')) {
+        let breathe = isMoving ? Math.sin(ts / 150) * (s * 0.15) : Math.sin(ts / 300) * (s * 0.05);
+        
+        // 거대한 알주머니 (복부)
+        let abdGrad = ctx.createRadialGradient(0, -s * 0.6, 0, 0, -s * 0.6, s * 1.8);
+        abdGrad.addColorStop(0, '#78350f'); abdGrad.addColorStop(1, '#271005');
+        ctx.fillStyle = abdGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.6, s * 1.5 + breathe, s * 1.0 + breathe, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        // 여왕의 퇴화된 금빛 날개 (퍼덕임)
+        let flap = isMoving ? Math.sin(ts / 50) * (s * 0.4) : Math.sin(ts / 100) * (s * 0.1);
+        ctx.fillStyle = 'rgba(250, 204, 21, 0.6)'; ctx.strokeStyle = '#ca8a04'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s * 0.4, -s * 1.2); ctx.quadraticCurveTo(-s * 1.5, -s * 1.8 + flap, -s * 1.8, -s * 0.5); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.4, -s * 1.2); ctx.quadraticCurveTo(s * 1.5, -s * 1.8 + flap, s * 1.8, -s * 0.5); ctx.fill(); ctx.stroke();
+
+        // 다리 6개
+        ctx.strokeStyle = '#451a03'; ctx.lineWidth = s * 0.15; ctx.lineJoin = 'round';
+        let legSway = isMoving ? Math.sin(ts / 60) * (s * 0.3) : 0;
+        ctx.beginPath();
+        for(let i=0; i<3; i++) {
+            let sDir = i % 2 === 0 ? legSway : -legSway;
+            ctx.moveTo(-s*0.3, -s*0.8); ctx.lineTo(-s*1.2 + i*s*0.4, -s*1.2 + sDir); ctx.lineTo(-s*1.5 + i*s*0.5, 0);
+            ctx.moveTo(s*0.3, -s*0.8); ctx.lineTo(s*1.2 - i*s*0.4, -s*1.2 - sDir); ctx.lineTo(s*1.5 - i*s*0.5, 0);
+        }
+        ctx.stroke();
+
+        // 흉부 및 머리
+        ctx.fillStyle = '#451a03';
+        ctx.beginPath(); ctx.ellipse(0, -s * 1.1, s * 0.7, s * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, -s * 1.6 + atkY, s * 0.45, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        // 날카로운 붉은 턱 (공격 시 벌어짐)
+        let jawOpen = isAttacking ? s * 0.2 : 0;
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath(); ctx.moveTo(-s*0.2, -s*1.4 + atkY); ctx.quadraticCurveTo(-s*0.6, -s*1.0 + atkY, -s*0.2 - jawOpen, -s*0.6 + atkY); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s*0.2, -s*1.4 + atkY); ctx.quadraticCurveTo(s*0.6, -s*1.0 + atkY, s*0.2 + jawOpen, -s*0.6 + atkY); ctx.fill(); ctx.stroke();
+    }
+    // ----------------------------------------------------
+    // 🧙‍♂️ [14] black_elder (흑장로) - 클래식 고증: 검은 로브, 공중 부양, 구부정한 노인, 뒤틀린 지팡이
+    // ----------------------------------------------------
+    else if (bossId.includes('black_elder')) {
+        let hover = Math.sin(ts / 150) * (s * 0.2); 
+        ctx.translate(0, hover);
+
+        // 검은 마력 오라
+        ctx.shadowBlur = 20; ctx.shadowColor = '#4c1d95';
+        ctx.fillStyle = 'rgba(76, 29, 149, 0.4)';
+        ctx.beginPath(); ctx.ellipse(0, -s, s * 1.2, s * 1.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 구부정한 검은 로브
+        let robeGrad = ctx.createLinearGradient(0, -s * 2, 0, 0);
+        robeGrad.addColorStop(0, '#18181b'); robeGrad.addColorStop(1, '#09090b');
+        ctx.fillStyle = robeGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, -s * 1.8); ctx.quadraticCurveTo(-s * 1.2, -s * 1.0, -s * 0.8, s * 0.2); ctx.lineTo(s * 0.8, s * 0.2); ctx.quadraticCurveTo(s * 1.2, -s * 1.0, 0, -s * 1.8); ctx.fill(); ctx.stroke();
+
+        // 흑장로의 해골 같은 얼굴 (후드 속)
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(0, -s * 1.6, s * 0.35, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#d4d4d8'; ctx.beginPath(); ctx.ellipse(0, -s * 1.6, s * 0.2, s * 0.25, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#ef4444'; ctx.shadowBlur = 10; ctx.shadowColor = '#f00'; // 붉은 안광
+        ctx.fillRect(-s * 0.1, -s * 1.65, 4, 4); ctx.fillRect(s * 0.05, -s * 1.65, 4, 4); ctx.shadowBlur = 0;
+
+        // 뒤틀린 마법 지팡이
+        ctx.save();
+        ctx.translate(s * 0.6, atkY - s * 0.5);
+        ctx.rotate(isAttacking ? Math.PI / 4 : 0);
+        ctx.strokeStyle = '#451a03'; ctx.lineWidth = s * 0.15; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(0, s * 0.8); ctx.lineTo(0, -s * 1.0); ctx.lineTo(s * 0.2, -s * 1.2); ctx.lineTo(-s * 0.1, -s * 1.4); ctx.stroke();
+        // 지팡이 끝 보라색 마력 구슬
+        ctx.fillStyle = '#a855f7'; ctx.shadowBlur = 15; ctx.shadowColor = '#d946ef';
+        ctx.beginPath(); ctx.arc(-s * 0.1, -s * 1.5, s * 0.2, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+    // ----------------------------------------------------
+    // 🐉 [15] drake (일반 드레이크) - 클래식 고증: 날렵한 푸른색 비룡
+    // ----------------------------------------------------
+    else if (bossId === 'drake') {
+        let flap = isMoving ? Math.sin(ts / 50) * (s * 0.6) : Math.sin(ts / 100) * (s * 0.3);
+        let hover = Math.sin(ts / 120) * (s * 0.2);
+        ctx.translate(0, hover);
+
+        // 푸른 박쥐형 날개
+        ctx.fillStyle = '#1e3a8a'; ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-s * 0.3, -s * 1.0); ctx.quadraticCurveTo(-s * 1.5, -s * 2.0 + flap, -s * 2.2, -s * 1.0 + flap); ctx.lineTo(-s * 1.0, -s * 0.2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s * 0.3, -s * 1.0); ctx.quadraticCurveTo(s * 1.5, -s * 2.0 + flap, s * 2.2, -s * 1.0 + flap); ctx.lineTo(s * 1.0, -s * 0.2); ctx.fill(); ctx.stroke();
+
+        // 꼬리
+        let tailSway = Math.sin(ts / 70) * (s * 0.5);
+        ctx.strokeStyle = '#1d4ed8'; ctx.lineWidth = s * 0.25; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0, -s * 0.5); ctx.quadraticCurveTo(-s * 0.5, s * 0.5, tailSway, s * 1.2); ctx.stroke();
+
+        // 얄쌍한 푸른 몸통 및 긴 목
+        ctx.fillStyle = '#1d4ed8';
+        ctx.beginPath(); ctx.ellipse(0, -s * 0.7, s * 0.6, s * 0.8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-s * 0.2, -s * 1.0); ctx.quadraticCurveTo(-s * 0.5, -s * 1.8 + atkY, 0, -s * 2.2 + atkY); ctx.lineTo(s * 0.2, -s * 1.0); ctx.fill(); ctx.stroke();
+        
+        // 부리 같은 날카로운 입과 노란 눈
+        ctx.beginPath(); ctx.moveTo(0, -s * 2.2 + atkY); ctx.lineTo(-s * 0.3, -s * 2.6 + atkY); ctx.lineTo(s * 0.3, -s * 2.6 + atkY); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(-s * 0.1, -s * 2.4 + atkY, 3, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(s * 0.1, -s * 2.4 + atkY, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    // ----------------------------------------------------
+    // 🕷️ [16] zenith_queen (제니스 퀸) - 클래식 고증: 붉은 보랏빛의 맹독 거대 거미
+    // ----------------------------------------------------
+    else if (bossId.includes('zenith_queen')) {
+        let legSway = isMoving ? Math.sin(ts / 40) * (s * 0.4) : Math.sin(ts / 120) * (s * 0.1);
+        let abdGrad = ctx.createRadialGradient(0, -s*0.9, 0, 0, -s*0.9, s*1.6);
+        abdGrad.addColorStop(0, '#9333ea'); abdGrad.addColorStop(1, '#4c1d95'); 
+        
+        // 징그러운 8개의 긴 다리
+        ctx.strokeStyle = '#3b0764'; ctx.lineWidth = s * 0.15; ctx.lineJoin = 'round';
+        ctx.beginPath();
+        for(let i=0; i<4; i++) {
+            let sDir = i % 2 === 0 ? legSway : -legSway; let legY = -s*1.2 + sDir;
+            ctx.moveTo(-s*0.2, -s*0.5); ctx.lineTo(-s*1.4 + i*s*0.4, legY); ctx.lineTo(-s*1.8 + i*s*0.6, s*0.2);
+            ctx.moveTo(s*0.2, -s*0.5); ctx.lineTo(s*1.4 - i*s*0.4, legY); ctx.lineTo(s*1.8 - i*s*0.6, s*0.2);
+        }
+        ctx.stroke();
+
+        // 기괴한 줄무늬 보라색 복부
+        ctx.fillStyle = abdGrad; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, -s * 1.0, s * 1.2, s * 1.4, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.strokeStyle = '#c084fc'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-s*0.8, -s*1.0); ctx.quadraticCurveTo(0, -s*0.6, s*0.8, -s*1.0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-s*0.6, -s*1.4); ctx.quadraticCurveTo(0, -s*1.0, s*0.6, -s*1.4); ctx.stroke();
+
+        // 흉부 및 수많은 눈
+        ctx.fillStyle = '#581c87';
+        ctx.beginPath(); ctx.arc(0, -s * 0.4, s * 0.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#22c55e'; ctx.shadowBlur = 10; ctx.shadowColor = '#4ade80'; // 맹독성 초록 눈
+        [-0.3, -0.15, 0.15, 0.3].forEach(nx => {
+            ctx.beginPath(); ctx.arc(s * nx, -s * 0.5 + atkY * 0.5, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(s * nx * 1.2, -s * 0.3 + atkY * 0.5, 3, 0, Math.PI*2); ctx.fill();
+        });
+        ctx.shadowBlur = 0;
+        
+        // 독니 (공격 시 초록색 맹독)
+        ctx.fillStyle = isAttacking ? '#4ade80' : '#d4d4d8';
+        ctx.beginPath(); ctx.moveTo(-s*0.2, -s*0.1); ctx.lineTo(-s*0.1, s*0.2 + atkY); ctx.lineTo(0, -s*0.1); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(s*0.2, -s*0.1); ctx.lineTo(s*0.1, s*0.2 + atkY); ctx.lineTo(0, -s*0.1); ctx.fill(); ctx.stroke();
+    }
+    // ----------------------------------------------------
+    // ⛰️ [17] antharas (안타라스) - 클래식 고증: 압도적인 크기의 바위 등껍질 지룡
+    // ----------------------------------------------------
+    else if (bossId.includes('antharas')) {
+        let as = s * 1.6; // 지룡의 거대한 덩치 보정
+        let heavyBreathe = Math.sin(ts / 200) * (as * 0.05);
+        let stompY = isAttacking ? -as * 0.3 : 0;
+        
+        // 육중한 네 다리
+        ctx.fillStyle = '#14532d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3;
+        [-0.8, 0.8].forEach(lx => {
+            ctx.fillRect(as * lx - as*0.2, -as*0.2, as*0.4, as*0.8 + stompY); ctx.strokeRect(as * lx - as*0.2, -as*0.2, as*0.4, as*0.8 + stompY);
+            ctx.fillRect(as * lx * 0.8 - as*0.2, -as*0.5, as*0.4, as*0.8); ctx.strokeRect(as * lx * 0.8 - as*0.2, -as*0.5, as*0.4, as*0.8);
+        });
+
+        // 꼬리
+        ctx.beginPath(); ctx.moveTo(0, -as*0.5); ctx.quadraticCurveTo(as*1.5, 0, as*1.8, -as*0.2 + Math.sin(ts/150)*as*0.2); ctx.lineTo(0, -as*0.2); ctx.fill(); ctx.stroke();
+
+        // 두꺼운 몸통과 바위 등껍질
+        ctx.fillStyle = '#166534';
+        ctx.beginPath(); ctx.ellipse(0, -as * 0.8 + heavyBreathe, as * 1.4, as * 1.0, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        
+        ctx.fillStyle = '#78350f'; // 바위 껍질
+        ctx.beginPath(); ctx.arc(0, -as * 1.2 + heavyBreathe, as * 1.1, Math.PI, 0); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#d97706'; // 뿔/가시
+        [-0.8, -0.4, 0, 0.4, 0.8].forEach(px => {
+            ctx.beginPath(); ctx.moveTo(as*px, -as*1.2 + heavyBreathe); ctx.lineTo(as*px, -as*1.8 + heavyBreathe); ctx.lineTo(as*px + as*0.2, -as*1.2 + heavyBreathe); ctx.fill(); ctx.stroke();
+        });
+
+        // 거대한 머리
+        ctx.fillStyle = '#14532d';
+        ctx.beginPath(); ctx.ellipse(0, -as * 1.0 + stompY, as * 0.6, as * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#facc15'; ctx.shadowBlur = 15; ctx.shadowColor = '#facc15';
+        ctx.beginPath(); ctx.arc(-as*0.25, -as*1.1 + stompY, 6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(as*0.25, -as*1.1 + stompY, 6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+        
+        // 턱/이빨
+        ctx.fillStyle = '#e2e8f0';
+        ctx.beginPath(); ctx.moveTo(-as*0.3, -as*0.6 + stompY); ctx.lineTo(-as*0.1, -as*0.3 + stompY); ctx.lineTo(0, -as*0.6 + stompY); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(as*0.3, -as*0.6 + stompY); ctx.lineTo(as*0.1, -as*0.3 + stompY); ctx.lineTo(0, -as*0.6 + stompY); ctx.fill();
+    }
+    // ----------------------------------------------------
+    // 🔥 [18] valakas (발라카스) - 클래식 고증: 용암이 흐르는 붉은 화룡
+    // ----------------------------------------------------
+    else if (bossId.includes('valakas')) {
+        let vs = s * 1.7; // 화룡의 거대한 덩치 보정
+        let flap = isMoving ? Math.sin(ts / 70) * (vs * 0.5) : Math.sin(ts / 140) * (vs * 0.2);
+        let lunge = isAttacking ? -vs * 0.4 : 0;
+
+        // 거대한 화염 날개
+        ctx.fillStyle = '#991b1b'; ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, -vs * 1.0); ctx.quadraticCurveTo(-vs * 2.5, -vs * 2.5 + flap, -vs * 3.0, -vs * 0.5 + flap); ctx.lineTo(-vs * 1.0, 0); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -vs * 1.0); ctx.quadraticCurveTo(vs * 2.5, -vs * 2.5 + flap, vs * 3.0, -vs * 0.5 + flap); ctx.lineTo(vs * 1.0, 0); ctx.fill(); ctx.stroke();
+
+        // 꼬리
+        ctx.strokeStyle = '#dc2626'; ctx.lineWidth = vs * 0.3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0, -vs * 0.5); ctx.quadraticCurveTo(vs * 1.0, vs * 0.5, 0, vs * 1.5 + Math.sin(ts/100)*vs*0.3); ctx.stroke();
+
+        // 화산암 같은 붉은 몸통
+        let bodyGrad = ctx.createRadialGradient(0, -vs*0.8, 0, 0, -vs*0.8, vs*1.2);
+        bodyGrad.addColorStop(0, '#dc2626'); bodyGrad.addColorStop(1, '#7f1d1d');
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath(); ctx.ellipse(0, -vs * 0.8, vs * 1.0, vs * 1.2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+        // 몸통의 용암 균열 (발광 효과)
+        ctx.strokeStyle = '#f97316'; ctx.lineWidth = 3; ctx.shadowBlur = 15; ctx.shadowColor = '#ea580c';
+        ctx.beginPath(); ctx.moveTo(-vs*0.5, -vs*1.2); ctx.lineTo(0, -vs*0.5); ctx.lineTo(vs*0.5, -vs*1.2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-vs*0.3, -vs*0.8); ctx.lineTo(0, -vs*0.2); ctx.lineTo(vs*0.3, -vs*0.8); ctx.stroke(); ctx.shadowBlur = 0;
+
+        // 화룡의 날카로운 머리와 거대한 뿔
+        ctx.fillStyle = '#991b1b';
+        ctx.beginPath(); ctx.ellipse(0, -vs * 1.8 + lunge, vs * 0.5, vs * 0.6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#111'; // 검은 뿔
+        ctx.beginPath(); ctx.moveTo(-vs*0.3, -vs*2.0 + lunge); ctx.quadraticCurveTo(-vs*0.8, -vs*2.5, -vs*1.0, -vs*2.2 + lunge); ctx.lineTo(-vs*0.4, -vs*1.8 + lunge); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(vs*0.3, -vs*2.0 + lunge); ctx.quadraticCurveTo(vs*0.8, -vs*2.5, vs*1.0, -vs*2.2 + lunge); ctx.lineTo(vs*0.4, -vs*1.8 + lunge); ctx.fill();
+
+        // 타오르는 눈
+        ctx.fillStyle = '#fef08a'; ctx.shadowBlur = 20; ctx.shadowColor = '#facc15';
+        ctx.beginPath(); ctx.ellipse(-vs*0.2, -vs*1.9 + lunge, 8, 4, Math.PI/6, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(vs*0.2, -vs*1.9 + lunge, 8, 4, -Math.PI/6, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+
+        // 공격 시 브레스 이펙트
+        if (isAttacking) {
+            ctx.fillStyle = '#ea580c'; ctx.shadowBlur = 30; ctx.shadowColor = '#ef4444';
+            ctx.beginPath(); ctx.moveTo(-vs*0.2, -vs*1.4 + lunge); ctx.lineTo(vs*0.2, -vs*1.4 + lunge); ctx.lineTo(0, -vs*0.4 + lunge); ctx.fill(); ctx.shadowBlur = 0;
+        }
+    }
+    // ----------------------------------------------------
+    // ⚔️ [19] rune_lord_taros (루운 영주 타로스) - 클래식 고증: 거대한 저주받은 기사, 핏빛 대검
+    // ----------------------------------------------------
+    else if (bossId.includes('taros')) {
+        let tsStep = isMoving ? Math.sin(ts / 80) * (s * 0.25) : 0;
+        let capeWave = isMoving ? Math.sin(ts / 100) * (s * 0.3) : Math.sin(ts / 200) * (s * 0.1);
+
+        // 펄럭이는 핏빛 낡은 망토
+        ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-s*0.5, -s*1.2); ctx.quadraticCurveTo(-s*1.5, -s*0.5 + capeWave, -s*1.2, s*0.8); ctx.lineTo(s*1.2, s*0.8); ctx.quadraticCurveTo(s*1.5, -s*0.5 - capeWave, s*0.5, -s*1.2); ctx.fill(); ctx.stroke();
+
+        // 다크 스틸 중갑주
+        let tArmor = ctx.createLinearGradient(0, -s * 1.5, 0, s * 0.5);
+        tArmor.addColorStop(0, '#334155'); tArmor.addColorStop(0.5, '#0f172a'); tArmor.addColorStop(1, '#000000');
+        
+        ctx.fillStyle = tArmor; ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
+        // 다리
+        ctx.fillRect(-s * 0.5, 0, s * 0.4, s * 0.9 - tsStep); ctx.strokeRect(-s * 0.5, 0, s * 0.4, s * 0.9 - tsStep);
+        ctx.fillRect(s * 0.1, 0, s * 0.4, s * 0.9 + tsStep); ctx.strokeRect(s * 0.1, 0, s * 0.4, s * 0.9 + tsStep);
+        // 육중한 몸통
+        ctx.beginPath(); ctx.moveTo(-s*0.7, -s*1.2); ctx.lineTo(s*0.7, -s*1.2); ctx.lineTo(s*0.4, 0); ctx.lineTo(-s*0.4, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        
+        // 투구와 붉은 바이저 안광
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath(); ctx.arc(0, -s * 1.5, s * 0.4, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#000'; ctx.fillRect(-s*0.2, -s*1.6, s*0.4, s*0.15); // 투구 틈
+        ctx.fillStyle = '#ef4444'; ctx.shadowBlur = 20; ctx.shadowColor = '#dc2626';
+        ctx.fillRect(-s*0.15, -s*1.55, s*0.3, s*0.05); ctx.shadowBlur = 0; // 붉은 안광 라인
+
+        // 타로스의 거대한 루운의 저주받은 대검
+        ctx.save();
+        ctx.translate(s * 0.6, atkY - s * 0.5);
+        ctx.rotate(isAttacking ? Math.PI / 2 : -Math.PI / 6);
+        ctx.fillStyle = '#020617'; ctx.fillRect(-s * 0.1, -s * 0.5, s * 0.2, s * 1.0); // 팔
+        
+        // 피를 머금은 거대한 검신
+        ctx.fillStyle = '#991b1b'; ctx.strokeStyle = '#450a0a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-s*0.2, 0); ctx.lineTo(-s*0.3, -s*3.0); ctx.lineTo(0, -s*3.5); ctx.lineTo(s*0.3, -s*3.0); ctx.lineTo(s*0.2, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fca5a5'; ctx.fillRect(-s*0.02, -s*3.0, s*0.04, s*3.0); // 검 중앙 혈조
+        ctx.fillStyle = '#b45309'; ctx.fillRect(-s*0.5, -s*0.2, s*1.0, s*0.2); // 크로스가드
+        ctx.restore();
+    }
+    // ----------------------------------------------------
+    // 👹 [공용 폴백] 전용 렌더링 코드가 없는 나머지 보스
     // ----------------------------------------------------
     else {
         ctx.fillStyle = '#7f1d1d'; ctx.strokeStyle = '#000'; ctx.lineWidth = 2;
@@ -1368,7 +1623,6 @@ else if (safeName.includes('재의 오크 대장')) {
     }
     ctx.restore();
 }
-
 window.checkLevelUp = function() {
     if (!player) return;
     let leveledUp = false;
@@ -1943,7 +2197,7 @@ function drawEntity(ctx, e, timestamp) {
         let eq = e.equip || { weapon: null, armor: null };
         drawCharacter(ctx, e, sz, isAttacking, e.isMoving, frame, eq, timestamp); 
     } else if (e.isBoss) {
-        drawBossDetailed(ctx, e.name, sz, isAttacking, e.isMoving, isHit, timestamp);
+       drawBossDetailed(ctx, e, sz, isAttacking, e.isMoving, isHit, timestamp);
     } else {
         drawHumanoid(ctx, e.name, e.color, sz, isAttacking, e.isMoving, frame, isHit, timestamp);
     }
