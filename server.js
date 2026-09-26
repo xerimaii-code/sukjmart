@@ -1,4 +1,4 @@
-// server.js
+
 
 require('dotenv').config();let targetGrade = 0;
 const { exec, spawn } = require('child_process');
@@ -364,12 +364,14 @@ io.on('connection', (socket) => {
         let baseBossDef = Math.min(50, Math.floor(30 + (partyCombatPower / 500)));
         let baseBossAtk = Math.floor(50 + (partyCombatPower / 200));
 
-        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
-        let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
+        let bossKeys = Object.keys(data.templates.bosses);
+       let selectedBossKey = bossKeys[Math.floor(Math.random() * bossKeys.length)];
+       let selectedBossName = data.templates.bosses[selectedBossKey].name;
         let tierTitles = ["", "[정예]", "[악몽]", "[지옥]", "[불지옥]"];
 
         let raidBoss = {
-            id: payload.id || ('raid_boss_' + Date.now()),
+          id: payload.id || ('raid_boss_' + Date.now()), 
+          baseBossId: selectedBossKey, 
             name: `${tierTitles[payload.tierIndex || 0]} ${selectedBoss} (1/2)`,
             isBoss: true,
             x: 2000, 
@@ -884,7 +886,10 @@ io.on('connection', (socket) => {
         let count = Math.min(20, Math.max(1, payload.count || 1));
 
         let template = Object.values(data.templates.bosses).find(b => b.name.includes(mobName)) ||
-                       Object.values(data.templates.mobs).find(m => m.name.includes(mobName));
+                            Object.values(data.templates.mobs).find(m => m.name.includes(mobName));
+        
+
+        let bKey = Object.keys(data.templates.bosses).find(k => data.templates.bosses[k].name.includes(mobName));
 
         if (!template) {
             socket.emit('system_message', { message: `[소환 실패] '${mobName}' 이름의 몬스터 템플릿이 없습니다.`, color: '#f55' });
@@ -895,6 +900,7 @@ io.on('connection', (socket) => {
             let spawned = {
                 ...template,
                 id: 'admin_mob_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                baseBossId: bKey || null, 
                 x: payload.x + (Math.random() * 80 - 40),
                 y: payload.y + (Math.random() * 80 - 40),
                 maxHp: template.hp,
@@ -1178,12 +1184,14 @@ io.on('connection', (socket) => {
                     });
 
                     setTimeout(() => {
-                        let baseBosses = Object.values(data.templates.bosses).map(b => b.name);
-                        let selectedBoss = baseBosses[Math.floor(Math.random() * baseBosses.length)];
-                        let fullBossHp = monster.maxHp; 
+                      let bossKeys = Object.keys(data.templates.bosses);
+                      let selectedBossKey = bossKeys[Math.floor(Math.random() * bossKeys.length)];
+                      let selectedBossName = data.templates.bosses[selectedBossKey].name;
+                      let fullBossHp = monster.maxHp; 
 
-                        let nextBoss = {
+                            let nextBoss = {
                             id: 'raid_boss_w2_' + Date.now(),
+                            baseBossId: selectedBossKey,
                             name: `[2차 최종 웨이브] ${selectedBoss}`,
                             isBoss: true,
                             x: 2000, 
@@ -1919,7 +1927,8 @@ function processMonsterAI() {
             id: m.id, name: m.name, x: Math.round(m.x), y: Math.round(m.y), size: m.size || 20, color: m.color,
             hp: Math.max(0, Math.round(m.hp)), h: Math.max(0, Math.round(m.hp)), maxHp: m.maxHp, 
             isBoss: Boolean(m.isBoss), isDead: Boolean(m.isDead || m.hp <= 0),
-            angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), targetId: m.targetId, t: m.targetId
+            angle: Number((m.angle || 0).toFixed(2)), a: Number((m.angle || 0).toFixed(2)), targetId: m.targetId, t: m.targetId,
+            baseBossId: m.baseBossId
         }));
 
         const VIEW_RADIUS_SQ = 1440000; // 1200 * 1200
