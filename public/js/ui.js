@@ -716,27 +716,29 @@ const customAudio = {
 };
 
 const soundMultipliers = {
-    swing: 0.05,       
-    hit_flesh: 0.08,   
-    hit_stone: 0.08, 
-    hit_armor: 0.08,
+    // ⚔️ 물리 타격 및 스윙 (타격감 대폭 상향)
+    swing: 0.4,       
+    hit_flesh: 0.6,   
+    hit_stone: 0.6, 
+    hit_armor: 0.6,
     
-   
-    player_hit: 0.2, player_dead: 0.5,
+    // 🩸 피격 및 사망
+    player_hit: 0.8, player_dead: 1.0,
     
- 
-    drink: 0.25, buy: 0.3, chest: 0.3, break: 0.3, 
+    // ⚙️ UI 및 동작
+    drink: 0.5, buy: 0.5, chest: 0.5, break: 0.5, 
     
-
-    boss_roar: 0.5,
-    death_boss_demon: 0.4, death_boss_human: 0.4, death_dragon: 0.4,
+    // 🐲 보스 
+    boss_roar: 1.2,
+    death_boss_demon: 1.0, death_boss_human: 1.0, death_dragon: 1.0,
     
-    // 💀 일반 몬스터 사망 (전체적으로 부드럽게 하향)
-    death_female: 0.15, death_creepy: 0.15, death_reptile: 0.15,
-    death_kobold: 0.15, death_troll: 0.15, death_ogre: 0.15, 
-    death_orc: 0.15, death_golem: 0.15, death_beast: 0.15,
-    death_common: 0.15, death_slime: 0.1, death_bugbear: 0.15
+    // 💀 몬스터 사망음 (기존 대비 2~3배 빵빵하게 상향)
+    death_female: 0.3, death_creepy: 1.0, death_reptile: 1.0,
+    death_kobold: 1.0, death_troll: 1.0, death_ogre: 1.0, 
+    death_orc: 1.0, death_golem: 1.0, death_beast: 1.0,
+    death_common: 1.0, death_slime: 0.4, death_bugbear: 1.0
 };
+
 const soundCooldowns = {
     player_hit: 450, hit_flesh: 120, hit_stone: 150, hit_armor: 150,
     swing: 100, drink: 300, 
@@ -859,7 +861,7 @@ function playSound(type, targetEntity = null) {
             return; 
         }
 
-        let vol = baseVol * 0.85; 
+        let vol = baseVol * 0.25; 
         let gain = audioCtx.createGain(); 
         gain.connect(audioCtx.destination);
 
