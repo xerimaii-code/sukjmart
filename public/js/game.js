@@ -1,6 +1,7 @@
 // ========================================================
 // 💻 [PC 백그라운드 사냥 유지 & 모바일 백그라운드 차단 엔진]
 // ========================================================
+let lastTime = performance.now();
 let bgGameInterval = null;
 let mainLoopId = null; // 💡 메인 루프 중복 방지 식별자
 const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
