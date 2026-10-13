@@ -1,7 +1,6 @@
 // ========================================================
 // 💻 [PC 백그라운드 사냥 유지 & 모바일 백그라운드 차단 엔진]
 // ========================================================
-
 let bgGameInterval = null;
 let mainLoopId = null; // 💡 메인 루프 중복 방지 식별자
 const isMobileDevice = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -91,44 +90,46 @@ function triggerPassiveBroadcast(skillName, targetX, targetY, targetId = null, t
         });
     }
 }
-
 // ==========================================
 // [1. 뷰포트, 캔버스 & 초고화질 맵 그래픽 텍스처]
 // ==========================================
+let width, height, lastTime = performance.now(), ZOOM = 0.75; 
+let textures = {};
+const generatedMaps = {};
+let isBgTick = false;
+let lastUiUpdateTime = 0;
+
 const canvas = document.getElementById('gameCanvas'); 
-//const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-const ctx = canvas.getContext('2d', { alpha: false });
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 const minimapCanvas = document.getElementById('minimap'); 
 const mCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 window.playerComboCount = 0;
 
-// ==========================================
-// 🚀 [신규 추가] PixiJS WebGL 렌더러 (하이브리드 이펙트 전용)
-// ==========================================
-window.pixiApp = new PIXI.Application({
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundAlpha: 0, // 배경 투명 (기존 캔버스 위에 오버레이)
-    resolution: window.devicePixelRatio || 1,
-    autoDensity: true,
-    antialias: true
-});
-document.body.appendChild(window.pixiApp.view);
-window.pixiApp.view.style.position = 'absolute';
-window.pixiApp.view.style.top = '0';
-window.pixiApp.view.style.left = '0';
-window.pixiApp.view.style.pointerEvents = 'none'; // 클릭 이벤트 통과
-window.pixiApp.view.style.zIndex = '50'; // 배경 위에 이펙트 출력
+// 🚀 PixiJS 안전 방어 (index.html에 PixiJS가 없어도 에러가 나지 않도록 보호)
+if (typeof PIXI !== 'undefined') {
+    window.pixiApp = new PIXI.Application({
+        width: window.innerWidth,
+        height: window.innerHeight,
+        backgroundAlpha: 0,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+        antialias: true
+    });
+    document.body.appendChild(window.pixiApp.view);
+    window.pixiApp.view.style.position = 'absolute';
+    window.pixiApp.view.style.top = '0';
+    window.pixiApp.view.style.left = '0';
+    window.pixiApp.view.style.pointerEvents = 'none';
+    window.pixiApp.view.style.zIndex = '50';
 
-window.pixiParticleLayer = new PIXI.Container();
-window.pixiApp.stage.addChild(window.pixiParticleLayer);
+    window.pixiParticleLayer = new PIXI.Container();
+    window.pixiApp.stage.addChild(window.pixiParticleLayer);
 
-// 고급 발광 필터 (Bloom) 적용
-if (PIXI.filters && PIXI.filters.AdvancedBloomFilter) {
-    const bloom = new PIXI.filters.AdvancedBloomFilter({ threshold: 0.4, bloomScale: 1.5, brightness: 1.2, blur: 4 });
-    window.pixiParticleLayer.filters = [bloom];
+    if (PIXI.filters && PIXI.filters.AdvancedBloomFilter) {
+        const bloom = new PIXI.filters.AdvancedBloomFilter({ threshold: 0.4, bloomScale: 1.5, brightness: 1.2, blur: 4 });
+        window.pixiParticleLayer.filters = [bloom];
+    }
 }
-// ==========================================
 
 // 캔버스 roundRect 미지원 환경 에러 방지 패치
 if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D.prototype.roundRect) {
@@ -137,12 +138,6 @@ if (typeof CanvasRenderingContext2D !== 'undefined' && !CanvasRenderingContext2D
         return this;
     };
 }
-
-let width, height, lastTime = performance.now(), ZOOM = 0.75; 
-let textures = {};
-const generatedMaps = {};
-let isBgTick = false;
-let lastUiUpdateTime = 0;
 
 function resize() {
     width = window.innerWidth; 
@@ -170,9 +165,9 @@ function resize() {
     ctx.imageSmoothingEnabled = false;
 
     // 🚀 PixiJS 리사이즈 및 스케일 동기화
-    if (window.pixiApp) {
+    if (window.pixiApp && window.pixiParticleLayer) {
         window.pixiApp.renderer.resize(width, height);
-        window.pixiParticleLayer.scale.set(dpr); // 비율 동기화
+        window.pixiParticleLayer.scale.set(dpr);
     }
 }
 
