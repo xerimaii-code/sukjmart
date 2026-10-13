@@ -73,8 +73,15 @@
 :root { --ui-bg: #111116; --ui-border: #33333d; --text-main: #d0d0d0; }
 * { box-sizing: border-box; user-select: none; -webkit-user-select: none; }
 body, html { margin: 0; padding: 0; width: 100%; height: 100%; background-color: #000; overflow: hidden; font-family: 'Gulim', '돋움', sans-serif; }
-canvas { display: block; width: 100%; height: 100%; touch-action: none; }
-
+canvas { 
+    display: block; 
+    width: 100%; 
+    height: 100%; 
+    touch-action: none; 
+    transform: translateZ(0); /* Vulkan/GPU 레이어 강제 분리 */
+    backface-visibility: hidden; /* 화면 깜빡임 및 잔상 방지 */
+    image-rendering: pixelated; /* 픽셀 뭉개짐 방지 */
+}
 #orientation-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; color: #fff; z-index: 99999; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
 #orientation-warning .icon { font-size: 50px; margin-bottom: 20px; transform: rotate(90deg); animation: tilt 2s infinite; }
 @keyframes tilt { 0% { transform: rotate(0deg); } 50% { transform: rotate(90deg); } 100% { transform: rotate(90deg); } }
