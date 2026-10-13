@@ -95,7 +95,7 @@ function triggerPassiveBroadcast(skillName, targetX, targetY, targetId = null, t
 // [1. 뷰포트, 캔버스 & 초고화질 맵 그래픽 텍스처]
 // ==========================================
 const canvas = document.getElementById('gameCanvas'); 
-const ctx = canvas.getContext('2d', { alpha: false });
+const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
 const minimapCanvas = document.getElementById('minimap'); 
 const mCtx = minimapCanvas ? minimapCanvas.getContext('2d') : null;
 window.playerComboCount = 0;
