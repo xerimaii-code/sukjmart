@@ -9,16 +9,18 @@ module.exports = {
         NODE_ENV: "production"
       }
     },
+  /*
     {
       name: "ai-agent-runner",
       script: "./aiAgentRunner.js",
       autorestart: true,
       watch: false,
-    
+     
       env: {
         NODE_ENV: "production",
         DOTENV_CONFIG_PATH: "./.env"
       }
     }
+    */
   ]
 };
