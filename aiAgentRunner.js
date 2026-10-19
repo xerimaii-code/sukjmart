@@ -53,7 +53,7 @@ async function initGroqModel() {
 }
 
 let activeAgents = []; 
-const MAX_CONCURRENT = 20;
+const MAX_CONCURRENT = 10;
 
 class AIAgentClient {
     constructor(dbRow) {
