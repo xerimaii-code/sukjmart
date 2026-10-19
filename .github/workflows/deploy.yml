@@ -18,9 +18,10 @@ jobs:
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
           script: |
-            cd /root/sukjmart
-            git fetch origin main
-            git reset --hard origin/main
-            npm install
-            pm2 reload ecosystem_config.js || pm2 start ecosystem_config.js
-            pm2 save
+      cd /root/sukjmart
+      git fetch origin main
+      git reset --hard origin/main
+      npm install
+      pm2 delete all
+      pm2 start ecosystem.config.js
+      pm2 save
