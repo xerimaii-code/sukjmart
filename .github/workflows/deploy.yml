@@ -18,13 +18,10 @@ jobs:
           username: ${{ secrets.USERNAME }}
           password: ${{ secrets.PASSWORD }}
           script: |
-            cd /root/sukjmart
+             cd /root/sukjmart
             git fetch origin main
             git reset --hard origin/main
             npm install
-            # 기존 찌꺼기 삭제
-            pm2 delete ecosystem_config || true
-            pm2 delete lineage-game-server || true
-            # 설정 파일 안에 정의된 정보대로 재시작/실행
-            pm2 start ecosystem_config.js
+            pm2 delete Lineage-game-server || true
+            pm2 start Lineage.config.js
             pm2 save
